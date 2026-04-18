@@ -48,7 +48,9 @@ def to_minutes(val):
 
 def fmt(minutes):
     h, m = divmod(int(minutes), 60)
-    return f"{h:02d}:{m:02d}"
+    suffix = 'AM' if h < 12 else 'PM'
+    h12 = h % 12 or 12
+    return f"{h12}:{m:02d} {suffix}"
 
 
 # ── Data loading ──────────────────────────────────────────────────────────────
@@ -118,52 +120,80 @@ def next_free(pianist_unavail, pianist_booked, name, from_min, duration):
 
 # ── Area scheduling ───────────────────────────────────────────────────────────
 
-def find_gapfree_start(students, earliest, slot_min, pianist_unavail, pianist_booked):
+def find_actual_start(students, earliest, slot_min, pianist_unavail, pianist_booked):
     """
-    Find the earliest start time >= earliest from which the greedy algorithm
-    can schedule all students with no internal waiting gaps.
+    Return the best start time >= earliest for this area.
 
-    Tries 'earliest' plus every minute where any pianist transitions from
-    busy→free, picking the first that results in a fully contiguous schedule.
+    The goal is to eliminate avoidable gaps while not starting earlier than
+    necessary.  The algorithm works as follows:
+
+    1. Find the naive earliest start: the first moment at least one student
+       can be placed.
+
+    2. Identify any 'unavailability boundary': the earliest time a currently-
+       blocked pianist becomes free.  Students placeable before that boundary
+       will create a gap if scheduled too early.
+
+    3. If placing those students starting at the naive start would leave a gap
+       larger than one slot, delay the start so they fill the time immediately
+       before the boundary instead — eliminating the gap.
+
+    This handles cases like: two no-pianist students + Roberts available from
+    09:00, but Matthys/Schaner not free until 10:30.  Rather than starting at
+    09:00 and leaving a 42-minute gap, we start at 10:04 so the available
+    students run flush into 10:30.
     """
     if not students:
         return earliest
 
-    # Candidate start times: earliest + every busy→free transition
-    candidates = {earliest}
-    for _, _, needs, pianist in students:
-        if needs and pianist:
-            busy = pianist_unavail.get(pianist, set()) | pianist_booked.get(pianist, set())
-            for m in range(earliest, earliest + 10 * 60):
-                if (m - 1) in busy and m not in busy:
-                    candidates.add(m)
-
-    for t_start in sorted(candidates):
-        sim_booked = {k: set(v) for k, v in pianist_booked.items()}
-        t = t_start
-        remaining = list(students)
-        ok = True
-        while remaining:
-            placed = False
-            for i, (name, instr, needs, pianist) in enumerate(remaining):
-                free = True
-                if needs and pianist:
-                    busy = pianist_unavail.get(pianist, set()) | sim_booked.get(pianist, set())
-                    free = not any((t + k) in busy for k in range(slot_min))
-                if free:
-                    if needs and pianist:
-                        sim_booked.setdefault(pianist, set()).update(range(t, t + slot_min))
-                    remaining.pop(i)
-                    t += slot_min
-                    placed = True
-                    break
-            if not placed:
-                ok = False
+    # Step 1: naive earliest start — first moment any student can be placed
+    naive = earliest
+    while naive < 23 * 60:
+        for _, _, needs, pianist in students:
+            free = is_free(pianist_unavail, pianist_booked, pianist, naive, slot_min) \
+                   if (needs and pianist) else True
+            if free:
                 break
-        if ok:
-            return t_start
+        else:
+            # nothing placeable — jump to next free transition
+            nf_times = [
+                next_free(pianist_unavail, pianist_booked, p, naive + 1, slot_min)
+                for _, _, needs, p in students if needs and p
+            ]
+            nf_times = [t for t in nf_times if t is not None]
+            naive = min(nf_times) if nf_times else naive + 1
+            continue
+        break
 
-    return earliest  # fallback
+    # Step 2: find the earliest unavailability boundary — the first time a
+    # currently-blocked pianist becomes free (after naive)
+    boundary = None
+    for _, _, needs, pianist in students:
+        if not (needs and pianist):
+            continue
+        if not is_free(pianist_unavail, pianist_booked, pianist, naive, slot_min):
+            nf = next_free(pianist_unavail, pianist_booked, pianist, naive, slot_min)
+            if nf is not None:
+                boundary = nf if boundary is None else min(boundary, nf)
+
+    if boundary is None:
+        return naive  # no blocked pianists — start as early as possible
+
+    # Step 3: count students placeable before the boundary (free at naive)
+    pre_boundary = sum(
+        1 for _, _, needs, pianist in students
+        if (not (needs and pianist)) or is_free(pianist_unavail, pianist_booked, pianist, naive, slot_min)
+    )
+
+    # If we start at naive, those students finish at naive + pre_boundary * slot_min.
+    # The gap = boundary - (naive + pre_boundary * slot_min).
+    # If that gap exceeds one slot, shift the start so they finish right at boundary.
+    gap_if_naive = boundary - (naive + pre_boundary * slot_min)
+    if gap_if_naive > slot_min:
+        delayed = boundary - pre_boundary * slot_min
+        return max(naive, delayed)
+
+    return naive
 
 
 def schedule_area(students, earliest, slot_min, hourly_break, lunch_break,
@@ -177,7 +207,10 @@ def schedule_area(students, earliest, slot_min, hourly_break, lunch_break,
     representing only commitments from OTHER areas (used for sorting, not conflict checks).
 
     Strategy:
-    - Find the actual start time (find_gapfree_start).
+    - Find the actual start time (find_actual_start): the earliest moment at
+      least one student can be placed. If some pianists are unavailable, we
+      start with whoever is ready and accept the resulting gap — it would
+      exist regardless of start time.
     - Pre-sort remaining students to form compact pianist blocks:
         1. Group students by pianist.
         2. Order groups by when that pianist last appears in cross_area_booked
@@ -197,8 +230,8 @@ def schedule_area(students, earliest, slot_min, hourly_break, lunch_break,
     if not students:
         return [], earliest
 
-    actual_start = find_gapfree_start(students, earliest, slot_min,
-                                      pianist_unavail, pianist_booked)
+    actual_start = find_actual_start(students, earliest, slot_min,
+                                     pianist_unavail, pianist_booked)
 
     # ── Pre-sort students into compact pianist blocks ─────────────────────────
     # For each pianist, find their last minute of cross-area commitment.
@@ -236,8 +269,10 @@ def schedule_area(students, earliest, slot_min, hourly_break, lunch_break,
     lunch_done = False
 
     while remaining:
-        # Insert 10-min break after every full cycle of juries
-        if hourly_break and juries_since_reset > 0 and juries_since_reset % juries_per_cycle == 0:
+        # Insert 10-min break after every full cycle of juries,
+        # but skip it if only one student remains (no point breaking for one).
+        if hourly_break and juries_since_reset > 0 and juries_since_reset % juries_per_cycle == 0 \
+                and len(remaining) > 1:
             slots.append({'type': 'break', 'time': t, 'label': '10-Minute Break'})
             t += 10
             juries_since_reset = 0
