@@ -89,7 +89,7 @@ def load_students(xl):
     for _, row in df.iterrows():
         if str(row.get('Jury?', '')).strip().upper() != 'Y':
             continue
-        name    = str(row['Name']).strip()
+        name    = f"{str(row['Student Preferred']).strip()} {str(row['Student Last Name']).strip()}"
         area    = str(row['Area']).strip()
         instr   = str(row.get('Instrument', '')).strip() if pd.notna(row.get('Instrument')) else ''
         pianist = str(row['Pianist']).strip() if pd.notna(row.get('Pianist')) else ''
@@ -179,18 +179,44 @@ def find_actual_start(students, earliest, slot_min, pianist_unavail, pianist_boo
     if boundary is None:
         return naive  # no blocked pianists — start as early as possible
 
-    # Step 3: count students placeable before the boundary (free at naive)
-    pre_boundary = sum(
-        1 for _, _, needs, pianist in students
-        if (not (needs and pianist)) or is_free(pianist_unavail, pianist_booked, pianist, naive, slot_min)
-    )
+    # Step 3: greedy-simulate from naive up to boundary, counting how many
+    # students can be placed. Uses the same "pick any free student" logic as
+    # the real greedy, so ordering in the original sheet doesn't matter —
+    # Kwiecien/Roberts students get counted even if Schaner is first on the sheet.
+    sim_remaining = list(students)
+    sim_booked = {k: set(v) for k, v in pianist_booked.items()}
+    sim_t = naive
+    pre_boundary = 0
+    while sim_remaining and sim_t < boundary:
+        for i, (_, _, needs, pianist) in enumerate(sim_remaining):
+            free = is_free(pianist_unavail, sim_booked, pianist, sim_t, slot_min) \
+                   if (needs and pianist) else True
+            if free:
+                if needs and pianist:
+                    sim_booked.setdefault(pianist, set()).update(range(sim_t, sim_t + slot_min))
+                sim_remaining.pop(i)
+                pre_boundary += 1
+                sim_t += slot_min
+                break
+        else:
+            break  # nothing free at this slot — stop counting
 
-    # If we start at naive, those students finish at naive + pre_boundary * slot_min.
-    # The gap = boundary - (naive + pre_boundary * slot_min).
-    # If that gap exceeds one slot, shift the start so they finish right at boundary.
-    gap_if_naive = boundary - (naive + pre_boundary * slot_min)
-    if gap_if_naive > slot_min:
-        delayed = boundary - pre_boundary * slot_min
+    if pre_boundary == 0:
+        return naive  # nothing placeable before boundary anyway
+
+    # Find the earliest start >= naive such that the resulting gap to the boundary
+    # is at most 3 slot-lengths (matching the hourly-break cycle).  Starting
+    # earlier than this would leave an uncomfortably long gap; starting later
+    # wastes time needlessly.
+    #
+    # Example: 3 available students, boundary=10:30, slot=10min.
+    #   naive=9:00 → gap=60m (too large). delayed=10:00 → gap=0m but 60m late.
+    #   Best: start=9:30 → gap=30m (≤3 slots), delay=30m — earliest that fits.
+    max_gap = 3 * slot_min
+    gap_if_naive = boundary - sim_t  # gap if we start at naive
+    if gap_if_naive > max_gap:
+        # Shift start forward until the gap ≤ max_gap
+        delayed = boundary - pre_boundary * slot_min - max_gap
         return max(naive, delayed)
 
     return naive
@@ -237,8 +263,22 @@ def schedule_area(students, earliest, slot_min, hourly_break, lunch_break,
     # For each pianist, find their last minute of cross-area commitment.
     # Groups are ordered so pianists who finish their other work earliest
     # are scheduled first — minimising idle gaps across the full day.
+    def first_available_minute(pianist):
+        """Earliest minute >= actual_start when this pianist is free for one slot.
+        Pianists available right now return actual_start; blocked ones return
+        when they next become free. This ensures available pianists always sort
+        before unavailable ones, filling the pre-boundary window cleanly."""
+        if not pianist:
+            return actual_start
+        t = actual_start
+        while t < 23 * 60:
+            if is_free(pianist_unavail, pianist_booked, pianist, t, slot_min):
+                return t
+            t += 1
+        return actual_start
+
     def last_cross_area_minute(pianist):
-        """Latest minute this pianist is committed in other areas (or earliest if none)."""
+        """Latest minute this pianist is committed in other areas (or 0 if none)."""
         busy = pianist_unavail.get(pianist, set()) | cross_area_booked.get(pianist, set())
         return max(busy) if busy else 0
 
@@ -252,8 +292,9 @@ def schedule_area(students, earliest, slot_min, hourly_break, lunch_break,
             group_order.append(pianist)
         groups[pianist].append(student)
 
-    # Sort groups: pianists with earlier last cross-area minute go first
-    group_order.sort(key=lambda p: last_cross_area_minute(p) if p else -1)
+    # Sort groups: pianists available soonest go first (fills pre-boundary window
+    # cleanly); break ties by last cross-area commitment (earlier = first).
+    group_order.sort(key=lambda p: (first_available_minute(p), last_cross_area_minute(p)) if p else (-1, -1))
 
     # Flatten back into a sorted student list
     remaining = []
