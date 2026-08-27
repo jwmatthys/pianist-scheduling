@@ -41,7 +41,8 @@ Workload:
     as evenly as possible within caps. Over-cap assignments are flagged.
 
 Block scheduling:
-    Minimizes number of separate blocks and total gap time per accompanist per day.
+    Prefers fewer on-campus days for each accompanist before minimizing
+    separate blocks and same-day gap time.
 """
 
 import argparse
@@ -246,29 +247,39 @@ def overlap_minutes(a_start, a_end, b_start, b_end):
     return max(0, min(a_end, b_end) - max(a_start, b_start))
 
 
-# ── Scatter penalty ───────────────────────────────────────────────────────────
+# ── Schedule penalty ──────────────────────────────────────────────────────────
 
-def scatter_penalty(assignments):
+def schedule_penalty(assignments):
     """
     assignments: list of (day, start_min, end_min)
-    Returns blocks + total_gap_hours (equally weighted, lower = better).
+    Returns a tuple sorted lexicographically as:
+      1. active_days
+      2. total_blocks
+      3. total_gap_minutes
+
+    This makes fewer campus days the highest-priority travel optimization,
+    while still preferring fewer separate blocks and shorter same-day gaps.
     """
     if not assignments:
-        return 0.0
+        return 0, 0, 0
+
     by_day = {}
     for day, s, e in assignments:
         by_day.setdefault(day, []).append((s, e))
-    penalty = 0.0
+
+    total_blocks = 0
+    total_gap_min = 0
     for slots in by_day.values():
         slots.sort()
-        blocks, gap_min = 1, 0
+        day_blocks = 1
         for i in range(1, len(slots)):
             gap = slots[i][0] - slots[i - 1][1]
             if gap > 0:
-                blocks += 1
-                gap_min += gap
-        penalty += blocks + gap_min / 60.0
-    return penalty
+                day_blocks += 1
+                total_gap_min += gap
+        total_blocks += day_blocks
+
+    return len(by_day), total_blocks, total_gap_min
 
 
 def resolve_required_name(raw, acc_names):
@@ -312,7 +323,8 @@ def assign_lessons(lessons_df, accompanists):
       3. Overlap fit (only when neither lesson has a required accompanist)
       4. Conflict (no fit — best partial match)
 
-    Within each fit tier: prefer not-over-cap > non-tentative > lower workload > less scatter.
+    Within each fit tier: prefer not-over-cap > non-tentative > fewer active
+    days/blocks/gaps > lower workload.
 
     Returns: (list of result dicts, dict of hours_per_accompanist)
     """
@@ -400,10 +412,10 @@ def assign_lessons(lessons_df, accompanists):
                 over_cap      = bool(mh and hours_after > mh)
                 workload      = (hours_after / mh) if mh else hours_after
                 new_assigns   = current_assigns[name] + [(day, s_min, e_min)]
-                scat          = scatter_penalty(new_assigns)
+                sched_penalty = schedule_penalty(new_assigns)
                 candidates.append({
                     "name": name, "fit": fit, "tentative": tentative,
-                    "over_cap": over_cap, "workload": workload, "scatter": scat,
+                    "over_cap": over_cap, "workload": workload, "schedule_penalty": sched_penalty,
                     "hours_after": hours_after, "max_hours": mh,
                 })
 
@@ -413,7 +425,7 @@ def assign_lessons(lessons_df, accompanists):
             if best_standard_fit >= FIT_NEAR:
                 # Use standard fit candidates
                 pool = [c for c in candidates if c["fit"] == best_standard_fit]
-                pool.sort(key=lambda c: (c["over_cap"], c["tentative"], c["workload"], c["scatter"]))
+                pool.sort(key=lambda c: (c["over_cap"], c["tentative"], c["schedule_penalty"], c["workload"]))
                 chosen       = pool[0]
                 assigned_name = chosen["name"]
                 fit_score     = chosen["fit"]
@@ -444,11 +456,11 @@ def assign_lessons(lessons_df, accompanists):
                             over_cap  = bool(mh and current_hours[paired_name] + dur > mh)
                             workload  = ((current_hours[paired_name] + dur) / mh) if mh else (current_hours[paired_name] + dur)
                             new_a     = current_assigns[paired_name] + [(day, s_min, e_min)]
-                            scat      = scatter_penalty(new_a)
+                            sched_penalty = schedule_penalty(new_a)
                             overlap_candidate = {
                                 "name": paired_name, "fit": FIT_OVERLAP,
                                 "tentative": False, "over_cap": over_cap,
-                                "workload": workload, "scatter": scat,
+                                "workload": workload, "schedule_penalty": sched_penalty,
                                 "paired_with": prev,
                             }
                             break   # take the first valid overlap partner found
@@ -469,7 +481,7 @@ def assign_lessons(lessons_df, accompanists):
 
                 else:
                     # ── Conflict: assign best partial match ───────────────────
-                    candidates.sort(key=lambda c: (c["over_cap"], c["workload"], c["scatter"]))
+                    candidates.sort(key=lambda c: (c["over_cap"], c["schedule_penalty"], c["workload"]))
                     chosen        = candidates[0]
                     assigned_name = chosen["name"]
                     fit_score     = FIT_NONE

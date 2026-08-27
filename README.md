@@ -2,7 +2,7 @@
 
 A pair of Python scripts that automate two distinct scheduling problems for music programs:
 
-1. **`generate_pianist_schedule.py`** — Assigns piano accompanists to student lessons based on availability, workload caps, preference, and overlap rules.
+1. **`generate_pianist_schedule.py`** — Assigns piano accompanists to student lessons based on availability, workload caps, preference, overlap rules, and travel-aware block scheduling.
 2. **`generate_jury_schedule.py`** — Generates a jury day schedule by sequencing students across rooms, resolving pianist conflicts across concurrent areas, and inserting breaks.
 
 Both scripts read from a shared Excel workbook and write timestamped `.xlsx` output files.
@@ -231,16 +231,23 @@ For each lesson, the algorithm applies the following decision tree:
 2. **Best standard fit:** Among all accompanists, the highest fit tier is identified. All candidates at that tier are ranked by:
    - Not over weekly hour cap (preferred)
    - Non-tentative availability (preferred)
+   - Fewer active campus days
+   - Fewer separate blocks, then less same-day gap time
    - Lower workload ratio (hours assigned / cap)
-   - Lower scatter penalty (fewer blocks, less gap time)
 
 3. **Overlap fit:** If no accompanist achieves `Near` fit or better, the algorithm checks whether the lesson can share an accompanist with a recently assigned lesson that overlaps by ≤30 minutes, provided the accompanist covers the combined window.
 
 4. **Conflict fallback:** If no fit exists, the least-loaded accompanist is assigned and the lesson is flagged as a conflict.
 
-#### 4. Scatter Penalty
+#### 4. Travel-Aware Schedule Penalty
 
-To encourage contiguous schedules (fewer commutes, less idle time), each candidate is scored by their projected scatter: the number of separate blocks they would have per day, plus total gap time between blocks (in hours). Lower scatter is preferred in tie-breaking.
+To reduce pianist travel to and from campus, each candidate is scored by the schedule they would have *after* receiving the lesson. Tie-breaking prefers, in order:
+
+1. **Fewer active campus days**
+2. **Fewer separate blocks across the week**
+3. **Less same-day gap time**
+
+This means a pianist keeping two students on the same day with a longer break between them is intentionally preferred over splitting those students across additional days.
 
 #### 5. Workload Balancing
 
