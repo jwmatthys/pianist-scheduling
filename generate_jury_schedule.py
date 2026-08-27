@@ -2,19 +2,23 @@
 Jury Day Schedule Generator
 
 Reads:
-  - JuryList .xlsx, which must contain:
-      "Pianist" sheet       — one row per student: Name, Area, Instrument,
-                              Pianist (last name; blank = no pianist needed),
-                              Jury? (Y to include)
-      "Jury Information"    — Area, Jury Length, Start Time, Hourly Break,
-                              Lunch Break, Location
-      "Pianist - <Name>"    — one sheet per accompanist; availability is read
-                              from the "Jury Day Availability" column (col 8).
-                              Non-"Available" slots (including Tentative) are
-                              treated as unavailable.
+  - --lessons workbook: "Lessons" sheet — one row per student's lesson,
+                        including Student Name, Instrument, Need Pianist,
+                        Jury (1 to include), and Area
+  - --pianists workbook: "Pianist - <Name>" sheets — one per accompanist;
+                        jury-day availability is read from the
+                        "Jury Day Availability" column. Non-"Available"
+                        values (including Tentative) are treated as
+                        unavailable.
+  - --assignments workbook: the timestamped output of
+                        generate_pianist_schedule.py, containing the
+                        "Schedule - Assignments" sheet (Student -> Assigned
+                        Accompanist)
+  - --jury-info workbook: "Jury Information" sheet — Area, Jury Length,
+                        Start Time, Hourly Break, Lunch Break, Location
 
 Writes:
-  - jury_schedule_<timestamp>.xlsx  (same directory as input)
+  - jury_schedule_<timestamp>.xlsx  (same directory as --lessons)
 
 Scheduling rules:
   - Assigned pianists are inflexible (no substitutions).
@@ -55,46 +59,90 @@ def fmt(minutes):
 
 # ── Data loading ──────────────────────────────────────────────────────────────
 
-def load_pianist_unavailability(xl):
+def load_pianist_unavailability(pianists_xl):
     """
     Returns {pianist_name: set_of_unavailable_minutes}.
-    Reads from the "Jury Day Availability" column (column 8, index 7) of each
-    "Pianist - <Name>" sheet. Non-"Available" slots (including Tentative) mark
-    all 30 minutes of that slot as unavailable.
+    Reads from the "Jury Day Availability" column of each "Pianist - <Name>"
+    sheet in the --pianists workbook. Non-"Available" values (including
+    Tentative) mark all 30 minutes of that slot as unavailable.
     """
     result = {}
-    for sheet in [s for s in xl.sheet_names if s.startswith('Pianist -')]:
-        df = pd.read_excel(xl, sheet_name=sheet, header=None)
-        name = str(df.iloc[0, 1]).strip()
-        unavail = set()
-        for _, row in df.iloc[3:].iterrows():
-            if pd.isna(row.iloc[0]):
+    for sheet in [s for s in pianists_xl.sheet_names if s.startswith('Pianist -')]:
+        df = pd.read_excel(pianists_xl, sheet_name=sheet, header=None)
+
+        # Name — look for a "Name:" label, then take the adjacent cell
+        name = None
+        for row_i in range(min(3, len(df))):
+            row = df.iloc[row_i]
+            for col in range(len(row)):
+                val = row.iloc[col]
+                if isinstance(val, str) and val.strip().lower().rstrip(':') == 'name':
+                    for col2 in range(col + 1, len(row)):
+                        v2 = row.iloc[col2]
+                        if isinstance(v2, str) and v2.strip():
+                            name = v2.strip()
+                            break
+                    break
+            if name:
                 break
-            val = row.iloc[7] if len(row) > 7 and not pd.isna(row.iloc[7]) else ''
-            if str(val).strip() != 'Available':
+        if name is None:
+            name = sheet[len('Pianist - '):].strip() if sheet.startswith('Pianist - ') else sheet
+
+        # Find the header row and the "Jury Day Availability" column
+        header_row_idx, jury_col = None, None
+        for i, row in df.iterrows():
+            for j, cell in enumerate(row):
+                if isinstance(cell, str) and cell.strip() == 'Jury Day Availability':
+                    header_row_idx, jury_col = i, j
+                    break
+            if header_row_idx is not None:
+                break
+        if header_row_idx is None:
+            raise ValueError(f"Could not find 'Jury Day Availability' column in sheet '{sheet}'")
+
+        unavail = set()
+        for i in range(header_row_idx + 1, len(df)):
+            row = df.iloc[i]
+            if pd.isna(row.iloc[0]):
+                continue
+            val = row.iloc[jury_col] if jury_col < len(row) else None
+            if not (isinstance(val, str) and val.strip() == 'Available'):
                 base = to_minutes(row.iloc[0])
                 unavail.update(range(base, base + 30))
         result[name] = unavail
     return result
 
-def load_students(xl):
+def load_students(lessons_xl, assignments_xl):
     """
-    Read the Pianist sheet.
+    Build the per-area jury roster from the --lessons workbook's "Lessons"
+    sheet, joined against the --assignments workbook's "Schedule -
+    Assignments" sheet (produced by generate_pianist_schedule.py) to resolve
+    each student's assigned accompanist.
+
     Returns {area: [(name, instrument, needs_pianist, pianist), ...]}.
-    Rows where Jury? != 'Y' are skipped.
-    A blank Pianist cell means the student does not need an accompanist.
+    Rows where Jury != 1 are skipped. Students with Need Pianist != 1, or who
+    were left UNASSIGNED, are treated as not needing an accompanist.
     """
-    df = pd.read_excel(xl, sheet_name='Pianist')
+    lessons_df = pd.read_excel(lessons_xl, sheet_name='Lessons')
+    lessons_df = lessons_df[lessons_df['Jury'].apply(
+        lambda v: str(v).strip() in ('1', '1.0', 'True', 'TRUE'))]
+
+    # Header banner row pushes the real header down to row index 1 (0-based)
+    assign_df = pd.read_excel(assignments_xl, sheet_name='Schedule - Assignments', header=1)
+    student_pianist = {
+        str(row['Student']).strip(): str(row['Accompanist']).strip()
+        for _, row in assign_df.iterrows()
+        if str(row['Accompanist']).strip() and str(row['Accompanist']).strip() != 'UNASSIGNED'
+    }
+
     area_students = {}
-    for _, row in df.iterrows():
-        if str(row.get('Jury?', '')).strip().upper() != 'Y':
-            continue
-        name    = f"{str(row['Student Preferred']).strip()} {str(row['Student Last Name']).strip()}"
-        area    = str(row['Area']).strip()
-        instr   = str(row.get('Instrument', '')).strip() if pd.notna(row.get('Instrument')) else ''
-        pianist = str(row['Pianist']).strip() if pd.notna(row.get('Pianist')) else ''
-        needs   = bool(pianist)
-        area_students.setdefault(area, []).append((name, instr, needs, pianist))
+    for _, row in lessons_df.iterrows():
+        name = str(row['Student Name']).strip()
+        area = str(row['Area']).strip()
+        instr = str(row.get('Instrument', '')).strip() if pd.notna(row.get('Instrument')) else ''
+        need_pianist = str(row.get('Need Pianist', '')).strip() in ('1', '1.0', 'True', 'TRUE')
+        pianist = student_pianist.get(name, '') if need_pianist else ''
+        area_students.setdefault(area, []).append((name, instr, bool(pianist), pianist))
     return area_students
 
 
@@ -612,20 +660,31 @@ def write_excel(area_schedule, output_path):
 
 def main():
     parser = argparse.ArgumentParser(description='Generate jury day schedule.')
-    parser.add_argument('--input', required=True,
-                        help='JuryList .xlsx (Pianist sheet, Jury Information sheet, Pianist - * sheets)')
+    parser.add_argument('--lessons', required=True,
+                        help='Excel workbook containing the Lessons sheet (with Jury/Area columns)')
+    parser.add_argument('--pianists', required=True,
+                        help='Excel workbook containing the Pianist - * availability sheets')
+    parser.add_argument('--assignments', required=True,
+                        help='Pianist assignment output workbook (Schedule - Assignments sheet) '
+                             'from generate_pianist_schedule.py')
+    parser.add_argument('--jury-info', required=True, dest='jury_info',
+                        help='Excel workbook containing the Jury Information sheet')
     args = parser.parse_args()
 
     timestamp   = datetime.now().strftime('%Y%m%d_%H%M')
-    output_dir  = os.path.dirname(os.path.abspath(args.input)) or '.'
+    output_dir  = os.path.dirname(os.path.abspath(args.lessons)) or '.'
     if not os.access(output_dir, os.W_OK):
         output_dir = '.'
     output_file = os.path.join(output_dir, f'jury_schedule_{timestamp}.xlsx')
 
-    xl              = pd.ExcelFile(args.input)
-    jury_info       = pd.read_excel(xl, sheet_name='Jury Information')
-    pianist_unavail = load_pianist_unavailability(xl)
-    area_students   = load_students(xl)
+    lessons_xl      = pd.ExcelFile(args.lessons)
+    pianists_xl     = pd.ExcelFile(args.pianists)
+    assignments_xl  = pd.ExcelFile(args.assignments)
+    jury_info_xl    = pd.ExcelFile(args.jury_info)
+
+    jury_info       = pd.read_excel(jury_info_xl, sheet_name='Jury Information')
+    pianist_unavail = load_pianist_unavailability(pianists_xl)
+    area_students   = load_students(lessons_xl, assignments_xl)
 
     area_schedule = build_schedule(area_students, jury_info, pianist_unavail)
     write_excel(area_schedule, output_file)

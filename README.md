@@ -67,13 +67,36 @@ pandas>=2.0
 openpyxl>=3.1
 ```
 
+### 3. Using the Makefile
+
+A `Makefile` wraps the common commands:
+
+```bash
+make install    # pip install -r requirements.txt
+make testdata   # generate sample lesson/pianist/jury-info workbooks
+make pianist    # run the pianist assignment scheduler
+make jury       # run the jury schedule generator (auto-detects the latest assignments file)
+make clean      # remove generated timestamped output workbooks
+make distclean  # also remove the generated sample input workbooks
+```
+
+Override any input file via variables, e.g. `make pianist LESSONS=my_lessons.xlsx PIANISTS=my_pianists.xlsx`.
+
 ---
 
 ## Workbook Structure
 
-Both scripts operate on the same Excel workbook file. It must contain the following sheets:
+The scripts operate on **three separate Excel workbooks**, each with a single responsibility:
 
-### `Lessons` Sheet
+| Workbook | Contains | Used by |
+|---|---|---|
+| **Lesson information** | `Lessons` sheet | Both scripts |
+| **Pianist availability** | `Pianist - [Name]` sheets | Both scripts |
+| **Jury information** | `Jury Information` sheet | `generate_jury_schedule.py` |
+
+`generate_jury_schedule.py` additionally reads the timestamped **assignments** workbook produced by `generate_pianist_schedule.py` to know which accompanist was assigned to each student.
+
+### Lesson Information Workbook — `Lessons` Sheet
 
 The lesson schedule. Required columns:
 
@@ -91,7 +114,7 @@ The lesson schedule. Required columns:
 | `Jury` | `1` if this student has a jury exam |
 | `Area` | The jury area this student belongs to |
 
-### `Jury Information` Sheet
+### Jury Information Workbook — `Jury Information` Sheet
 
 One row per jury area. Required columns:
 
@@ -104,19 +127,19 @@ One row per jury area. Required columns:
 | `Hourly Break` | `1` / `TRUE` to insert 10-minute breaks each hour |
 | `Lunch Break` | `1` / `TRUE` to insert a 30-minute lunch break at noon |
 
-### `Pianist - [Name]` Sheets
+### Pianist Availability Workbook — `Pianist - [Name]` Sheets
 
 One sheet per accompanist, named exactly `Pianist - Firstname Lastname`. Each sheet contains:
 
 - **Cell with label `Name:`** followed by the pianist's full name
 - **Cell referencing weekly hour cap** (a cell with "hour" in its label, followed by a number)
-- **Day header row** with day names (`Monday`, `Tuesday`, etc.)
-- **Availability grid**: rows of 30-minute time slots, one column per day, with status values:
+- **Day header row** with day names (`Monday`, `Tuesday`, etc.) plus a final `Jury Day Availability` column
+- **Availability grid**: rows of 30-minute time slots, one column per weekday plus one `Jury Day Availability` column, with status values:
   - `Available` — fully available (highest preference)
   - `Tentative` — available but deprioritized
   - `Unavailable` — cannot be assigned
 
-> **Note:** `Tentative` slots are treated as **unavailable** in the jury scheduler, but as a lower-preference option in the pianist assignment scheduler.
+> **Note:** `Tentative` slots are treated as **unavailable** in the jury scheduler (which reads the `Jury Day Availability` column), but as a lower-preference option in the pianist assignment scheduler (which reads the weekday columns).
 
 ---
 
@@ -127,49 +150,55 @@ One sheet per accompanist, named exactly `Pianist - Firstname Lastname`. Each sh
 Assigns accompanists to all lessons flagged with `Need Pianist = 1`.
 
 ```bash
-python generate_pianist_schedule.py --workbook <path/to/workbook.xlsx>
+python generate_pianist_schedule.py --lessons <lessons.xlsx> --pianists <pianists.xlsx>
 ```
 
 **CLI Arguments:**
 
 | Argument | Required | Description |
 |---|---|---|
-| `--workbook` | ✅ Yes | Path to the Excel workbook containing `Lessons` and `Pianist - *` sheets |
+| `--lessons` | ✅ Yes | Path to the lesson information workbook (`Lessons` sheet) |
+| `--pianists` | ✅ Yes | Path to the pianist availability workbook (`Pianist - *` sheets) |
 
 **Example:**
 
 ```bash
-python generate_pianist_schedule.py --workbook sample_lesson_schedule.xlsx
+python generate_pianist_schedule.py --lessons lesson_information.xlsx --pianists pianist_availability.xlsx
 ```
 
-Output is written to the same directory as the input file, with a timestamp appended:
+Output is written to the same directory as `--lessons`, with a timestamp appended:
 ```
-sample_lesson_schedule_2026-02-20_14-35.xlsx
+lesson_information_2026-02-20_14-35.xlsx
 ```
 
 ---
 
 ### Jury Schedule Generation
 
-Builds a jury day timetable from lesson data and pre-assigned pianist pairings.
+Builds a jury day timetable from lesson data, jury area rules, and pre-assigned pianist pairings.
 
 ```bash
-python generate_jury_schedule.py --lessons <lessons.xlsx> --pianists <assignments.xlsx>
+python generate_jury_schedule.py --lessons <lessons.xlsx> --pianists <pianists.xlsx> \
+  --assignments <assignments.xlsx> --jury-info <jury_information.xlsx>
 ```
 
 **CLI Arguments:**
 
 | Argument | Required | Description |
 |---|---|---|
-| `--lessons` | ✅ Yes | Path to the workbook with `Lessons`, `Jury Information`, and `Pianist - *` sheets |
-| `--pianists` | ✅ Yes | Path to a timestamped assignments file (output of `generate_pianist_schedule.py`) containing the `Schedule - Assignments` sheet |
+| `--lessons` | ✅ Yes | Path to the lesson information workbook (`Lessons` sheet, filtered to `Jury = 1` rows) |
+| `--pianists` | ✅ Yes | Path to the pianist availability workbook (reads the `Jury Day Availability` column) |
+| `--assignments` | ✅ Yes | Path to the timestamped output of `generate_pianist_schedule.py` (`Schedule - Assignments` sheet) |
+| `--jury-info` | ✅ Yes | Path to the jury information workbook (`Jury Information` sheet) |
 
 **Example:**
 
 ```bash
 python generate_jury_schedule.py \
-  --lessons sample_lesson_schedule.xlsx \
-  --pianists sample_lesson_schedule_2026-02-20_14-35.xlsx
+  --lessons lesson_information.xlsx \
+  --pianists pianist_availability.xlsx \
+  --assignments lesson_information_2026-02-20_14-35.xlsx \
+  --jury-info jury_information.xlsx
 ```
 
 Output is written to the same directory as `--lessons`, timestamped:

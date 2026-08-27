@@ -6,12 +6,13 @@ workload limits, block scheduling, required accompanist constraints,
 and overlap handling.
 
 Usage:
-    python generate_pianist_schedule.py --workbook scheduling.xlsx
+    python generate_pianist_schedule.py --lessons lessons.xlsx --pianists pianists.xlsx
 
 Workbook structure:
-    - Sheet named "Lessons"        — the lesson schedule
-    - Sheets prefixed "Pianist - " — one per accompanist (e.g. "Pianist - Michael")
-    - Output written as new timestamped sheet: "Schedule 2026-02-20 14:35"
+    - --lessons workbook: a sheet named "Lessons" — the lesson schedule
+    - --pianists workbook: sheets prefixed "Pianist - " — one per accompanist
+      (e.g. "Pianist - Michael"), each with a weekly availability grid
+    - Output written as a new timestamped workbook next to the --lessons file
 
 Lesson schedule columns:
     Lesson Teacher Name, Student Name, Lesson Day, Lesson Start Time,
@@ -738,28 +739,33 @@ def write_output(results, hours_summary, accompanists_meta, workbook_path):
 
 def main():
     parser = argparse.ArgumentParser(description="Assign accompanists to lessons.")
-    parser.add_argument("--workbook", required=True,
-                        help="Excel workbook containing Lessons sheet and Pianist - * sheets")
+    parser.add_argument("--lessons", required=True,
+                        help="Excel workbook containing the Lessons sheet")
+    parser.add_argument("--pianists", required=True,
+                        help="Excel workbook containing the Pianist - * availability sheets")
     args = parser.parse_args()
 
-    print(f"Loading workbook: {args.workbook}")
-    xl = pd.ExcelFile(args.workbook)
+    print(f"Loading lessons: {args.lessons}")
+    lessons_xl = pd.ExcelFile(args.lessons)
 
     # Load lessons sheet
-    if LESSONS_SHEET not in xl.sheet_names:
+    if LESSONS_SHEET not in lessons_xl.sheet_names:
         raise ValueError(f"No sheet named '{LESSONS_SHEET}' found in workbook. "
-                         f"Available sheets: {xl.sheet_names}")
-    lessons_df = xl.parse(LESSONS_SHEET)
+                         f"Available sheets: {lessons_xl.sheet_names}")
+    lessons_df = lessons_xl.parse(LESSONS_SHEET)
     print(f"  '{LESSONS_SHEET}': {len(lessons_df)} lessons found")
 
+    print(f"Loading pianists: {args.pianists}")
+    pianists_xl = pd.ExcelFile(args.pianists)
+
     # Load all accompanist sheets
-    pianist_sheets = [s for s in xl.sheet_names if s.startswith(PIANIST_PREFIX)]
+    pianist_sheets = [s for s in pianists_xl.sheet_names if s.startswith(PIANIST_PREFIX)]
     if not pianist_sheets:
         raise ValueError(f"No sheets starting with '{PIANIST_PREFIX}' found in workbook.")
 
     accompanists = []
     for sheet_name in pianist_sheets:
-        df = xl.parse(sheet_name, header=None)
+        df = pianists_xl.parse(sheet_name, header=None)
         name, max_hours, avail = load_availability(df, sheet_name)
         accompanists.append((name, max_hours, avail))
         cap_str = f"{max_hours}h cap" if max_hours else "no cap"
@@ -797,7 +803,7 @@ def main():
             print(f"  {r['Lesson Day']} {s} — {r['Teacher']} / {r['Student']}"
                   f"  (required: {r['Required Pianist']})")
 
-    write_output(results, hours_summary, accompanists, args.workbook)
+    write_output(results, hours_summary, accompanists, args.lessons)
 
 
 if __name__ == "__main__":
