@@ -248,6 +248,12 @@ def overlap_minutes(a_start, a_end, b_start, b_end):
     return max(0, min(a_end, b_end) - max(a_start, b_start))
 
 
+def has_conflict(existing_assigns, day, s_min, e_min):
+    """True if any existing (day, start, end) assignment overlaps the given window at all."""
+    return any(d == day and overlap_minutes(s_min, e_min, es, ee) > 0
+               for d, es, ee in existing_assigns)
+
+
 # ── Schedule penalty ──────────────────────────────────────────────────────────
 
 def schedule_penalty(assignments):
@@ -383,6 +389,9 @@ def assign_lessons(lessons_df, accompanists):
         if required_raw:
             if required is None:
                 flags.append(f"⚠ REQUIRED PIANIST '{required_raw}' NOT FOUND — lesson unassigned")
+            elif has_conflict(current_assigns[required], day, s_min, e_min):
+                flags.append(f"⚠ REQUIRED PIANIST '{required}' has a CONFLICTING lesson at this time — lesson unassigned")
+                assigned_name = None
             else:
                 fit_score, has_tentative = get_fit(day, start, end, acc_map[required])
                 if fit_score == FIT_NONE:
@@ -408,6 +417,7 @@ def assign_lessons(lessons_df, accompanists):
             candidates = []
             for name, _, avail in accompanists:
                 fit, tentative = get_fit(day, start, end, avail)
+                conflict      = has_conflict(current_assigns[name], day, s_min, e_min)
                 hours_after   = current_hours[name] + dur
                 mh            = max_hours_map.get(name)
                 over_cap      = bool(mh and hours_after > mh)
@@ -415,17 +425,19 @@ def assign_lessons(lessons_df, accompanists):
                 new_assigns   = current_assigns[name] + [(day, s_min, e_min)]
                 sched_penalty = schedule_penalty(new_assigns)
                 candidates.append({
-                    "name": name, "fit": fit, "tentative": tentative,
+                    "name": name, "fit": fit, "tentative": tentative, "conflict": conflict,
                     "over_cap": over_cap, "workload": workload, "schedule_penalty": sched_penalty,
                     "hours_after": hours_after, "max_hours": mh,
                 })
 
-            # Filter to best standard fit tier (Full/Partial/Near)
-            best_standard_fit = max(c["fit"] for c in candidates)
+            # Filter to best standard fit tier (Full/Partial/Near), excluding anyone
+            # already double-booked at this time
+            non_conflicting = [c for c in candidates if not c["conflict"]]
+            best_standard_fit = max((c["fit"] for c in non_conflicting), default=FIT_NONE)
 
             if best_standard_fit >= FIT_NEAR:
                 # Use standard fit candidates
-                pool = [c for c in candidates if c["fit"] == best_standard_fit]
+                pool = [c for c in non_conflicting if c["fit"] == best_standard_fit]
                 pool.sort(key=lambda c: (c["over_cap"], c["tentative"], c["schedule_penalty"], c["workload"]))
                 chosen       = pool[0]
                 assigned_name = chosen["name"]
@@ -482,11 +494,14 @@ def assign_lessons(lessons_df, accompanists):
 
                 else:
                     # ── Conflict: assign best partial match ───────────────────
-                    candidates.sort(key=lambda c: (c["over_cap"], c["schedule_penalty"], c["workload"]))
+                    # Prefer candidates who aren't already double-booked at this time
+                    candidates.sort(key=lambda c: (c["conflict"], c["over_cap"], c["schedule_penalty"], c["workload"]))
                     chosen        = candidates[0]
                     assigned_name = chosen["name"]
                     fit_score     = FIT_NONE
                     flags.append("⚠ CONFLICT: No available accompanist — best match assigned")
+                    if chosen["conflict"]:
+                        flags.append(f"⚠ DOUBLE-BOOKED: '{assigned_name}' already has an overlapping lesson at this time")
                     if chosen["over_cap"]:
                         flags.append(f"⚠ OVER CAP: Exceeds {chosen['max_hours']}h weekly limit")
 

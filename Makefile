@@ -2,6 +2,7 @@ LESSONS     ?= lesson_information.xlsx
 PIANISTS    ?= pianist_availability.xlsx
 JURY_INFO   ?= jury_information.xlsx
 ASSIGNMENTS ?= $(shell ls -t $(basename $(LESSONS))_20*.xlsx 2>/dev/null | head -n1)
+SEED        ?= 42
 
 PYTHON ?= python3
 
@@ -11,7 +12,7 @@ install:
 	$(PYTHON) -m pip install -r requirements.txt
 
 testdata:
-	$(PYTHON) generate_test_data.py
+	$(PYTHON) generate_test_data.py --seed $(SEED)
 
 pianist:
 	$(PYTHON) generate_pianist_schedule.py --lessons $(LESSONS) --pianists $(PIANISTS)

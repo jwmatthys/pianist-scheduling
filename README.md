@@ -82,6 +82,8 @@ make distclean  # also remove the generated sample input workbooks
 
 Override any input file via variables, e.g. `make pianist LESSONS=my_lessons.xlsx PIANISTS=my_pianists.xlsx`.
 
+`make testdata` uses a fixed seed (`SEED=42`) by default so runs are reproducible. Pass `make testdata SEED=random` for a fresh random dataset each time, or `SEED=<int>` for a different fixed dataset.
+
 ---
 
 ## Workbook Structure
