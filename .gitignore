@@ -1,2 +1,13 @@
 # Created by venv; see https://docs.python.org/3/library/venv.html
-*
+.venv/
+bin/
+lib/
+lib64
+include/
+pyvenv.cfg
+__pycache__/
+*.pyc
+
+# Generated output workbooks
+*_20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]_*.xlsx
+jury_schedule_*.xlsx
