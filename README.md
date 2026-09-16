@@ -76,11 +76,18 @@ make install    # pip install -r requirements.txt
 make testdata   # generate sample lesson/pianist/jury-info workbooks
 make pianist    # run the pianist assignment scheduler
 make jury       # run the jury schedule generator (auto-detects the latest assignments file)
-make clean      # remove generated timestamped output workbooks
+make markdown   # generate pianist and instructor Markdown schedules
+make clean      # remove generated workbooks and Markdown reports
 make distclean  # also remove the generated sample input workbooks
 ```
 
 Override any input file via variables, e.g. `make pianist LESSONS=my_lessons.xlsx PIANISTS=my_pianists.xlsx`.
+For the Markdown report, use `make markdown` or override the master workbook and output path:
+
+```bash
+make markdown
+make markdown MARKDOWN_INPUT=my_master.xlsx MARKDOWN_OUTPUT=my_schedule.md
+```
 
 `make testdata` uses a fixed seed (`SEED=42`) by default so runs are reproducible. Pass `make testdata SEED=random` for a fresh random dataset each time, or `SEED=<int>` for a different fixed dataset.
 
@@ -207,6 +214,22 @@ Output is written to the same directory as `--lessons`, timestamped:
 ```
 jury_schedule_20260223_1213.xlsx
 ```
+
+---
+
+### Markdown Schedule Report
+
+Generates a Markdown report from a master lesson workbook. The report contains
+each pianist's schedule and an instructor-by-instructor list of students with
+their assigned pianist.
+
+```bash
+make markdown
+```
+
+By default, this reads `lesson_final_fa26.xlsx` and writes
+`lesson_final_fa26.md`. Override either path with `MARKDOWN_INPUT` and
+`MARKDOWN_OUTPUT`.
 
 ---
 

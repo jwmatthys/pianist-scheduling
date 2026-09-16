@@ -34,8 +34,9 @@ Fit levels (highest to lowest):
 
 Required accompanist:
     If "Required Accompanist" column is populated, only that accompanist may be
-    assigned. If they are Unavailable for that time, the lesson is left unassigned
-    and flagged. If they are a near/partial fit, they are assigned and flagged.
+    assigned. Required lessons are assigned before ordinary lessons; scheduling,
+    overlap, and availability problems are assigned and flagged as warnings.
+    If they are a near/partial fit, they are assigned and flagged.
 
 Workload:
     Each accompanist specifies a maximum weekly hours cap. Lessons are distributed
@@ -254,6 +255,29 @@ def has_conflict(existing_assigns, day, s_min, e_min):
                for d, es, ee in existing_assigns)
 
 
+def assigned_minutes(assignments):
+    """Return the duration of the union of assigned lesson windows."""
+    by_day = {}
+    for day, start, end in assignments:
+        by_day.setdefault(day, []).append((start, end))
+
+    total = 0
+    for windows in by_day.values():
+        merged = []
+        for start, end in sorted(windows):
+            if merged and start <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+            else:
+                merged.append((start, end))
+        total += sum(end - start for start, end in merged)
+    return total
+
+
+def projected_hours(assignments, lesson):
+    """Return union-based hours after adding a lesson window."""
+    return assigned_minutes(assignments + [lesson]) / 60.0
+
+
 # ── Schedule penalty ──────────────────────────────────────────────────────────
 
 def schedule_penalty(assignments):
@@ -324,14 +348,16 @@ def assign_lessons(lessons_df, accompanists):
     Main assignment loop.
     accompanists: list of (name, max_hours, avail_dict)
 
-    Assignment priority per lesson:
-      1. Required accompanist (hard constraint)
+        Assignment priority per lesson:
+            1. Required accompanist (hard constraint, processed first)
       2. Best standard fit (Full > Partial > Near)
       3. Overlap fit (only when neither lesson has a required accompanist)
-      4. Conflict (no fit — best partial match)
+    4. Conflict (no fit — best partial match, with a warning)
 
-    Within each fit tier: prefer not-over-cap > non-tentative > fewer active
-    days/blocks/gaps > lower workload.
+    Ordinary lessons prefer an available under-cap pianist before comparing fit
+    quality. Within that group: prefer Full > Partial > Near, then non-tentative,
+    lower normalized workload, and fewer active days/blocks/gaps. If every available pianist
+    would exceed cap, the best available fit is used and flagged.
 
     Returns: (list of result dicts, dict of hours_per_accompanist)
     """
@@ -347,14 +373,22 @@ def assign_lessons(lessons_df, accompanists):
     # Drop rows with no valid day or time (empty trailing rows)
     df = df[df["Lesson Day"].notna() & df["Lesson Start Time"].notna()].reset_index(drop=True)
 
-    df["_day_order"] = df["Lesson Day"].map(lambda d: day_order.get(d, 99))
-    df["_start_min"] = df["Lesson Start Time"].map(lambda t: to_min(parse_time(t)))
-    df["_end_min"]   = df["Lesson End Time"].map(lambda t: to_min(parse_time(t)))
-    df = df.sort_values(["_day_order", "_start_min"]).reset_index(drop=True)
-
     # Find required pianist column (accepts "Required Pianist" or "Required Accompanist")
     req_col = next((c for c in df.columns
                     if "required" in c.lower() and ("pianist" in c.lower() or "accompanist" in c.lower())), None)
+
+    df["_day_order"] = df["Lesson Day"].map(lambda d: day_order.get(d, 99))
+    df["_start_min"] = df["Lesson Start Time"].map(lambda t: to_min(parse_time(t)))
+    df["_end_min"]   = df["Lesson End Time"].map(lambda t: to_min(parse_time(t)))
+    # Required lessons claim their named pianist before ordinary lessons are assigned.
+    if req_col:
+        df["_required_order"] = (
+            df[req_col].fillna("").astype(str).str.strip().ne("").astype(int)
+        )
+    else:
+        df["_required_order"] = 0
+    df = df.sort_values(["_required_order", "_day_order", "_start_min"],
+                        ascending=[False, True, True]).reset_index(drop=True)
 
     acc_names         = [name for name, _, _ in accompanists]
     acc_map           = {name: avail for name, _, avail in accompanists}
@@ -389,28 +423,25 @@ def assign_lessons(lessons_df, accompanists):
         if required_raw:
             if required is None:
                 flags.append(f"⚠ REQUIRED PIANIST '{required_raw}' NOT FOUND — lesson unassigned")
-            elif has_conflict(current_assigns[required], day, s_min, e_min):
-                flags.append(f"⚠ REQUIRED PIANIST '{required}' has a CONFLICTING lesson at this time — lesson unassigned")
-                assigned_name = None
             else:
                 fit_score, has_tentative = get_fit(day, start, end, acc_map[required])
+                assigned_name = required
+                if has_conflict(current_assigns[required], day, s_min, e_min):
+                    flags.append(f"⚠ REQUIRED PIANIST '{required}' has a CONFLICTING lesson at this time")
                 if fit_score == FIT_NONE:
-                    flags.append(f"⚠ REQUIRED PIANIST '{required}' is UNAVAILABLE — lesson unassigned")
-                    assigned_name = None
-                else:
-                    assigned_name = required
-                    if fit_score == FIT_NEAR:
-                        flags.append(f"⚠ NEAR FIT: '{required}' available within 15 min of lesson start")
-                    elif fit_score == FIT_PARTIAL:
-                        flags.append(f"ℹ PARTIAL FIT: '{required}' has Tentative availability for this slot")
-                    if has_tentative:
-                        flags.append("ℹ TENTATIVE availability")
-                    mh = max_hours_map.get(required)
-                    if mh and current_hours[required] + dur > mh:
-                        flags.append(f"⚠ OVER CAP: Exceeds {mh}h weekly limit")
-                    # Note if we matched on a partial name
-                    if required_raw.strip().lower() != required.lower():
-                        flags.append(f"ℹ Required pianist '{required_raw}' matched to '{required}'")
+                    flags.append(f"⚠ REQUIRED PIANIST '{required}' is UNAVAILABLE for this time")
+                elif fit_score == FIT_NEAR:
+                    flags.append(f"⚠ NEAR FIT: '{required}' available within 15 min of lesson start")
+                elif fit_score == FIT_PARTIAL:
+                    flags.append(f"ℹ PARTIAL FIT: '{required}' has Tentative availability for this slot")
+                if has_tentative:
+                    flags.append("ℹ TENTATIVE availability")
+                mh = max_hours_map.get(required)
+                if mh and projected_hours(current_assigns[required], (day, s_min, e_min)) > mh:
+                    flags.append(f"⚠ OVER CAP: Exceeds {mh}h weekly limit")
+                # Note if we matched on a partial name
+                if required_raw.strip().lower() != required.lower():
+                    flags.append(f"ℹ Required pianist '{required_raw}' matched to '{required}'")
 
         # ── CASE 2: Normal assignment ─────────────────────────────────────────
         else:
@@ -418,7 +449,7 @@ def assign_lessons(lessons_df, accompanists):
             for name, _, avail in accompanists:
                 fit, tentative = get_fit(day, start, end, avail)
                 conflict      = has_conflict(current_assigns[name], day, s_min, e_min)
-                hours_after   = current_hours[name] + dur
+                hours_after   = projected_hours(current_assigns[name], (day, s_min, e_min))
                 mh            = max_hours_map.get(name)
                 over_cap      = bool(mh and hours_after > mh)
                 workload      = (hours_after / mh) if mh else hours_after
@@ -436,9 +467,16 @@ def assign_lessons(lessons_df, accompanists):
             best_standard_fit = max((c["fit"] for c in non_conflicting), default=FIT_NONE)
 
             if best_standard_fit >= FIT_NEAR:
-                # Use standard fit candidates
-                pool = [c for c in non_conflicting if c["fit"] == best_standard_fit]
-                pool.sort(key=lambda c: (c["over_cap"], c["tentative"], c["schedule_penalty"], c["workload"]))
+                # Keep ordinary assignments within cap whenever an available
+                # under-cap candidate exists, even if an over-cap candidate has
+                # a slightly better fit.
+                under_cap = [c for c in non_conflicting
+                             if c["fit"] >= FIT_NEAR and not c["over_cap"]]
+                eligible = under_cap or [c for c in non_conflicting
+                                         if c["fit"] >= FIT_NEAR]
+                best_eligible_fit = max(c["fit"] for c in eligible)
+                pool = [c for c in eligible if c["fit"] == best_eligible_fit]
+                pool.sort(key=lambda c: (c["over_cap"], c["tentative"], c["workload"], c["schedule_penalty"]))
                 chosen       = pool[0]
                 assigned_name = chosen["name"]
                 fit_score     = chosen["fit"]
@@ -466,8 +504,9 @@ def assign_lessons(lessons_df, accompanists):
                             day, combined_s, combined_e, acc_map[paired_name])
                         if combined_fit >= FIT_PARTIAL:
                             mh        = max_hours_map.get(paired_name)
-                            over_cap  = bool(mh and current_hours[paired_name] + dur > mh)
-                            workload  = ((current_hours[paired_name] + dur) / mh) if mh else (current_hours[paired_name] + dur)
+                            hours_after = projected_hours(current_assigns[paired_name], (day, s_min, e_min))
+                            over_cap  = bool(mh and hours_after > mh)
+                            workload  = (hours_after / mh) if mh else hours_after
                             new_a     = current_assigns[paired_name] + [(day, s_min, e_min)]
                             sched_penalty = schedule_penalty(new_a)
                             overlap_candidate = {
@@ -518,7 +557,7 @@ def assign_lessons(lessons_df, accompanists):
         # ── Record result ─────────────────────────────────────────────────────
         if assigned_name:
             current_assigns[assigned_name].append((day, s_min, e_min))
-            current_hours[assigned_name] += dur
+            current_hours[assigned_name] = assigned_minutes(current_assigns[assigned_name]) / 60.0
 
         results.append({
             "Lesson Day":           day,
@@ -535,6 +574,87 @@ def assign_lessons(lessons_df, accompanists):
             "Notes":                " | ".join(flags),
             "_required":            bool(required_raw),
         })
+
+    # Repair ordinary assignments that pushed a pianist over cap when another
+    # pianist can take the lesson without a conflict and remain within cap.
+    changed = True
+    while changed:
+        changed = False
+        for result in results:
+            old_name = result["Assigned Accompanist"]
+            if result["_required"] or old_name == "UNASSIGNED":
+                continue
+            old_cap = max_hours_map.get(old_name)
+            if not old_cap or current_hours[old_name] <= old_cap:
+                continue
+
+            day = result["Lesson Day"]
+            start = parse_time(result["Lesson Start Time"])
+            end = parse_time(result["Lesson End Time"])
+            s_min = to_min(start)
+            e_min = to_min(end)
+            dur = duration_hours(start, end)
+            candidates = []
+            for name, _, avail in accompanists:
+                if name == old_name:
+                    continue
+                fit, tentative = get_fit(day, start, end, avail)
+                if fit < FIT_NEAR:
+                    continue
+                if projected_hours(current_assigns[name], (day, s_min, e_min)) > (max_hours_map.get(name) or float("inf")):
+                    continue
+                if has_conflict(current_assigns[name], day, s_min, e_min):
+                    continue
+                projected = projected_hours(current_assigns[name], (day, s_min, e_min))
+                workload = (projected / max_hours_map[name]) if max_hours_map.get(name) else projected
+                candidates.append((workload, -fit, tentative, name, fit))
+
+            if not candidates:
+                continue
+
+            _, _, tentative, new_name, new_fit = min(candidates)
+            current_assigns[old_name].remove((day, s_min, e_min))
+            current_hours[old_name] = assigned_minutes(current_assigns[old_name]) / 60.0
+            current_assigns[new_name].append((day, s_min, e_min))
+            current_hours[new_name] = assigned_minutes(current_assigns[new_name]) / 60.0
+            result["Assigned Accompanist"] = new_name
+            result["Fit Quality"] = FIT_LABELS[new_fit]
+            notes = [note for note in result["Notes"].split(" | ") if "OVER CAP" not in note]
+            notes.append(f"ℹ REASSIGNED FROM '{old_name}' TO STAY WITHIN CAP")
+            if tentative:
+                notes.append("ℹ TENTATIVE availability")
+            result["Notes"] = " | ".join(note for note in notes if note)
+            changed = True
+
+    # Remove stale cap warnings from lessons moved back under their new pianist's cap.
+    for result in results:
+        assigned = result["Assigned Accompanist"]
+        cap = max_hours_map.get(assigned)
+        if cap and current_hours[assigned] <= cap:
+            result["Notes"] = " | ".join(
+                note for note in result["Notes"].split(" | ") if "OVER CAP" not in note
+            )
+
+    # Report each lesson's marginal covered time so row totals add up to the
+    # pianist's union-based total when lessons overlap.
+    prior_windows = {name: [] for name, _, _ in accompanists}
+    for result in results:
+        assigned = result["Assigned Accompanist"]
+        if assigned == "UNASSIGNED":
+            continue
+        start = parse_time(result["Lesson Start Time"])
+        end = parse_time(result["Lesson End Time"])
+        window = (result["Lesson Day"], to_min(start), to_min(end))
+        before = assigned_minutes(prior_windows[assigned])
+        prior_windows[assigned].append(window)
+        after = assigned_minutes(prior_windows[assigned])
+        result["Hours"] = round((after - before) / 60.0, 2)
+
+    for name in current_hours:
+        current_hours[name] = round(
+            sum(result["Hours"] for result in results
+                if result["Assigned Accompanist"] == name), 2
+        )
 
     return results, current_hours
 
