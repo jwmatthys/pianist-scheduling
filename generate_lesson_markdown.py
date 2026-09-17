@@ -120,6 +120,7 @@ def load_lessons(path, sheet):
         )
         instructor_last = clean(row["Instructor Last"])
         instructor_email = clean(row.get("Instructor Email", ""))
+        student_email = clean(row.get("Student Email", ""))
         pianist_email = email_address(row.get("Pianist Email", ""))
         if not student or not pianist:
             continue
@@ -132,6 +133,7 @@ def load_lessons(path, sheet):
         lessons.append(
             {
                 "student": student,
+                "student_email": student_email,
                 "pianist": pianist,
                 "pianist_email": pianist_email,
                 "instructor": instructor or "Unknown instructor",
@@ -170,9 +172,14 @@ def lesson_line(lesson, include_pianist=False):
         )
     return (
         f"- **{lesson['day']} {lesson['start']}–{lesson['end']}**"
-        f" — {lesson['student']} — {lesson['room']} — {lesson['instructor_last']}"
+        f" — {lesson['room']} — {lesson['student']} — {lesson['student_email']}"
+        f" — {lesson['instructor_last']}"
         f" — {lesson['instructor_email']}"
     )
+
+
+def student_pianist_line(lesson):
+    return f"- **{lesson['student']}** — {lesson['pianist']} — {lesson['pianist_email']}"
 
 
 def build_markdown(lessons, source_name):
@@ -199,6 +206,10 @@ def build_markdown(lessons, source_name):
         lines.extend([f"### {instructor}", ""])
         lines.extend(lesson_line(lesson, include_pianist=True) for lesson in instructor_lessons)
         lines.append("")
+
+    lines.extend(["## Students by Name", ""])
+    for lesson in sorted(lessons, key=lambda item: item["student"].casefold()):
+        lines.append(student_pianist_line(lesson))
 
     return "\n".join(lines).rstrip() + "\n"
 

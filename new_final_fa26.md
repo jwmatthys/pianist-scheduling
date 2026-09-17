@@ -1,6 +1,6 @@
 # Lesson Schedules
 
-Source: `lesson_final_fa26.xlsx`
+Source: `LessonsMegasheetFA26.xlsx`
 
 ## Pianist Schedules
 
@@ -18,7 +18,8 @@ Source: `lesson_final_fa26.xlsx`
 
 ### Ian Huh
 
-- **Tuesday 11:10 AM–12:10 PM** — G04 — Joshua Demik — jdemik@carrollu.edu — Dziuk — adziuk@carrollu.edu
+- **Wednesday 1:00 PM–1:50 PM** — G05 — Maisie Cleveland — mclevela@carrollu.edu — Henneberry — chennebe@carrollu.edu
+- **Wednesday 2:30 PM–3:20 PM** — G24 — Sophia Mann — smann@carrollu.edu — Fuerst — afuerst@carrollu.edu
 - **Friday 10:40 AM–11:30 AM** — 201 — Brooklyn Fessenden — bfessend@carrollu.edu — Roberts — jorobert@carrollu.edu
 - **Friday 11:00 AM–11:50 AM** — G05 — Ava Berger — aeberger@carrollu.edu — Jordheim — ajordhei@carrollu.edu
 - **Friday 12:00 PM–12:50 PM** — G05 — Josie Picard — jpicard@carrollu.edu — Jordheim — ajordhei@carrollu.edu
@@ -28,8 +29,8 @@ Source: `lesson_final_fa26.xlsx`
 
 - **Monday 4:20 PM–5:10 PM** — G24 — Mason Foulkes — mfoulkes@carrollu.edu — Lovas — jlovas@carrollu.edu
 - **Monday 5:10 PM–6:00 PM** — G24 — Jay Cordero — jcordero@carrollu.edu — Lovas — jlovas@carrollu.edu
+- **Tuesday 11:10 AM–12:10 PM** — G04 — Joshua Demik — jdemik@carrollu.edu — Dziuk — adziuk@carrollu.edu
 - **Tuesday 12:10 PM–1:10 PM** — G04 — Ryan Sullivan — sullivar@carrollu.edu — Dziuk — adziuk@carrollu.edu
-- **Wednesday 2:30 PM–3:20 PM** — G24 — Sophia Mann — smann@carrollu.edu — Fuerst — afuerst@carrollu.edu
 - **Thursday 2:00 PM–2:50 PM** — G05 — Rafaella Burkhart — rburkhar@carrollu.edu — Brighty — tbrighty@carrollu.edu
 - **Thursday 4:00 PM–4:50 PM** — G05 — Jamison Shea — jmshea@carrollu.edu — Brighty — tbrighty@carrollu.edu
 - **Thursday 5:00 PM–5:50 PM** — G05 — Maddie Eul — meul@carrollu.edu — Brighty — tbrighty@carrollu.edu
@@ -53,7 +54,6 @@ Source: `lesson_final_fa26.xlsx`
 - **Tuesday 11:00 AM–11:50 AM** — G05 — Rachel Gorte — rgorte@carrollu.edu — Suson — msuson@carrollu.edu
 - **Tuesday 12:00 PM–12:50 PM** — G05 — Joseph Vancleve — jvanclev@carrollu.edu — Suson — msuson@carrollu.edu
 - **Wednesday 10:40 AM–11:30 AM** — G04 — Zoey Helle-Kuczynski — zhelleku@carrollu.edu — Stein — acstein@carrollu.edu
-- **Wednesday 1:00 PM–1:50 PM** — G05 — Maisie Cleveland — mclevela@carrollu.edu — Henneberry — chennebe@carrollu.edu
 - **Wednesday 3:30 PM–4:20 PM** — G24 — Scotland Nicholson — snichols@carrollu.edu — Fuerst — afuerst@carrollu.edu
 - **Thursday 10:00 AM–11:00 AM** — G04 — Jack Tenwinkel — jtenwink@carrollu.edu — Dziuk — adziuk@carrollu.edu
 - **Thursday 10:10 AM–11:00 AM** — 105 or G13 — Mailen Fingland — mfinglan@carrollu.edu — Spies — dspies@carrollu.edu
@@ -74,7 +74,7 @@ Source: `lesson_final_fa26.xlsx`
 
 ### Amanda Fuerst
 
-- **Wednesday 2:30 PM–3:20 PM** — Sophia Mann — G24 — Joel Matthys — jmatthys@carrollu.edu
+- **Wednesday 2:30 PM–3:20 PM** — Sophia Mann — G24 — Ian Huh — ihuh@carrollu.edu
 - **Wednesday 3:30 PM–4:20 PM** — Scotland Nicholson — G24 — Rhonda Kwiecien — rkwiecie@carrollu.edu
 - **Wednesday 4:30 PM–5:20 PM** — Ella Rocklewitz — G24 — Alyssa Roberts — alrobert@carrollu.edu
 
@@ -86,7 +86,7 @@ Source: `lesson_final_fa26.xlsx`
 
 ### Andrew Dziuk
 
-- **Tuesday 11:10 AM–12:10 PM** — Joshua Demik — G04 — Ian Huh — ihuh@carrollu.edu
+- **Tuesday 11:10 AM–12:10 PM** — Joshua Demik — G04 — Joel Matthys — jmatthys@carrollu.edu
 - **Tuesday 12:10 PM–1:10 PM** — Ryan Sullivan — G04 — Joel Matthys — jmatthys@carrollu.edu
 - **Thursday 10:00 AM–11:00 AM** — Jack Tenwinkel — G04 — Rhonda Kwiecien — rkwiecie@carrollu.edu
 
@@ -95,7 +95,7 @@ Source: `lesson_final_fa26.xlsx`
 - **Wednesday 9:50 AM–10:40 AM** — Anna Schumacher — G05 — Alyssa Roberts — alrobert@carrollu.edu
 - **Wednesday 10:40 AM–11:30 AM** — Kelly Parker — G05 — Michael Schaner — mschaner@carrollu.edu
 - **Wednesday 11:30 AM–12:20 PM** — Brianna Buckingham — G05 — Alyssa Roberts — alrobert@carrollu.edu
-- **Wednesday 1:00 PM–1:50 PM** — Maisie Cleveland — G05 — Rhonda Kwiecien — rkwiecie@carrollu.edu
+- **Wednesday 1:00 PM–1:50 PM** — Maisie Cleveland — G05 — Ian Huh — ihuh@carrollu.edu
 - **Wednesday 1:50 PM–2:40 PM** — Sarah Billman — G05 — Alyssa Roberts — alrobert@carrollu.edu
 
 ### Daniel O'Dea
@@ -173,7 +173,7 @@ Source: `lesson_final_fa26.xlsx`
 - **Jamison Shea** — Joel Matthys — jmatthys@carrollu.edu
 - **Jay Cordero** — Joel Matthys — jmatthys@carrollu.edu
 - **Joseph Vancleve** — Rhonda Kwiecien — rkwiecie@carrollu.edu
-- **Joshua Demik** — Ian Huh — ihuh@carrollu.edu
+- **Joshua Demik** — Joel Matthys — jmatthys@carrollu.edu
 - **Josie Picard** — Ian Huh — ihuh@carrollu.edu
 - **Katelyn Pivonka** — Rhonda Kwiecien — rkwiecie@carrollu.edu
 - **Kelly Parker** — Michael Schaner — mschaner@carrollu.edu
@@ -183,7 +183,7 @@ Source: `lesson_final_fa26.xlsx`
 - **Maddie Eul** — Joel Matthys — jmatthys@carrollu.edu
 - **Madeleine Resnick** — Michael Schaner — mschaner@carrollu.edu
 - **Mailen Fingland** — Rhonda Kwiecien — rkwiecie@carrollu.edu
-- **Maisie Cleveland** — Rhonda Kwiecien — rkwiecie@carrollu.edu
+- **Maisie Cleveland** — Ian Huh — ihuh@carrollu.edu
 - **Mason Foulkes** — Joel Matthys — jmatthys@carrollu.edu
 - **Matthew Michael** — Rhonda Kwiecien — rkwiecie@carrollu.edu
 - **Rachel Gorte** — Rhonda Kwiecien — rkwiecie@carrollu.edu
@@ -192,7 +192,7 @@ Source: `lesson_final_fa26.xlsx`
 - **Sarah Billman** — Alyssa Roberts — alrobert@carrollu.edu
 - **Sarah Tinder** — Rhonda Kwiecien — rkwiecie@carrollu.edu
 - **Scotland Nicholson** — Rhonda Kwiecien — rkwiecie@carrollu.edu
-- **Sophia Mann** — Joel Matthys — jmatthys@carrollu.edu
+- **Sophia Mann** — Ian Huh — ihuh@carrollu.edu
 - **Sophie Wiegel** — Ian Huh — ihuh@carrollu.edu
 - **Trinity Kohls** — Michael Schaner — mschaner@carrollu.edu
 - **Val Hinz** — Alyssa Roberts — alrobert@carrollu.edu
