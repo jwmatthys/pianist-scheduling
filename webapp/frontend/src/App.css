@@ -1,0 +1,435 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: #f4f6f9;
+  color: #1f2933;
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-header {
+  background: #1f4e79;
+  color: white;
+  padding: 0.75rem 1.5rem;
+}
+
+.app-header h1 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.4rem;
+}
+
+.tab-nav {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.tab-button {
+  background: rgba(255, 255, 255, 0.12);
+  border: none;
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 6px 6px 0 0;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.tab-button.active {
+  background: #f4f6f9;
+  color: #1f4e79;
+  font-weight: 600;
+}
+
+.app-main {
+  flex: 1;
+  padding: 1.25rem 1.5rem;
+}
+
+.page h2 {
+  margin-top: 0;
+}
+
+.muted {
+  color: #7b8794;
+  font-size: 0.9rem;
+}
+
+button {
+  font: inherit;
+}
+
+.primary-btn {
+  background: #2e75b6;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.primary-btn:disabled {
+  background: #9fb8cc;
+  cursor: not-allowed;
+}
+
+.secondary-btn {
+  background: white;
+  border: 1px solid #c6cdd5;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.danger-btn {
+  background: #fce4d6;
+  border: 1px solid #e2b8a1;
+  color: #8a3a1c;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.danger-btn.small {
+  padding: 0.1rem 0.5rem;
+  font-size: 0.85rem;
+}
+
+.error-banner {
+  background: #fce4d6;
+  border: 1px solid #e2b8a1;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  color: #8a3a1c;
+}
+
+.mapping-table td {
+  padding: 0.2rem 0.6rem 0.2rem 0;
+}
+
+.required-star {
+  color: #c0392b;
+  margin-left: 0.15rem;
+}
+
+.preview-table-wrap {
+  overflow-x: auto;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid #dfe4ea;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+}
+
+.preview-table,
+.schedule-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.85rem;
+}
+
+.preview-table th,
+.preview-table td,
+.schedule-table th,
+.schedule-table td {
+  border: 1px solid #e3e7eb;
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.preview-table th,
+.schedule-table th {
+  background: #eef2f6;
+  position: sticky;
+  top: 0;
+}
+
+.import-result {
+  margin-top: 1rem;
+}
+
+.warnings-list {
+  color: #8a3a1c;
+}
+
+.pianists-page {
+  display: flex;
+  gap: 1.5rem;
+}
+
+.pianists-sidebar {
+  width: 280px;
+  flex-shrink: 0;
+}
+
+.add-pianist-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.add-pianist-form input {
+  padding: 0.4rem;
+  border: 1px solid #c6cdd5;
+  border-radius: 4px;
+}
+
+.pianist-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.pianist-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.25rem;
+  border-radius: 6px;
+}
+
+.pianist-list li.selected {
+  background: #dae8fc;
+}
+
+.pianist-list-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.cap-input {
+  width: 70px;
+  padding: 0.2rem;
+  border: 1px solid #c6cdd5;
+  border-radius: 4px;
+}
+
+.pianists-detail {
+  flex: 1;
+  min-width: 0;
+}
+
+.availability-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.legend-chip {
+  padding: 0.15rem 0.55rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+.legend-hint {
+  color: #7b8794;
+  font-size: 0.8rem;
+}
+
+.availability-grid {
+  display: grid;
+  gap: 2px;
+  align-items: stretch;
+}
+
+.avail-header {
+  font-weight: 600;
+  text-align: center;
+  padding: 0.3rem 0;
+  font-size: 0.85rem;
+}
+
+.avail-corner {
+  background: transparent;
+}
+
+.avail-time-label {
+  font-size: 0.75rem;
+  color: #52606d;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 0.4rem;
+}
+
+.avail-cell {
+  border: 1px solid #d0d7de;
+  height: 22px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.slot-unset {
+  background: #ffffff;
+}
+
+.slot-available {
+  background: #c6efce;
+}
+
+.slot-tentative {
+  background: #ffeb9c;
+}
+
+.slot-unavailable {
+  background: #ffc7ce;
+}
+
+.availability-actions {
+  margin-top: 0.75rem;
+}
+
+.schedule-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.schedule-toolbar h2 {
+  margin: 0;
+  margin-right: 0.5rem;
+}
+
+.toolbar-message {
+  color: #1f4e79;
+  font-size: 0.9rem;
+}
+
+.conflicts-banner {
+  background: #fce4d6;
+  border: 1px solid #e2b8a1;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+  color: #8a3a1c;
+  font-size: 0.85rem;
+}
+
+.conflicts-banner ul {
+  margin: 0.25rem 0 0 1.25rem;
+}
+
+.workload-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.workload-chip {
+  background: #eef2f6;
+  border-radius: 6px;
+  padding: 0.3rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.8rem;
+  min-width: 100px;
+}
+
+.workload-chip.over-cap {
+  background: #fce4d6;
+  color: #8a3a1c;
+}
+
+.schedule-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #dfe4ea;
+  border-radius: 6px;
+}
+
+.schedule-table input,
+.schedule-table select {
+  border: 1px solid #d0d7de;
+  border-radius: 4px;
+  padding: 0.15rem 0.3rem;
+  font-size: 0.85rem;
+  width: 100%;
+  min-width: 90px;
+}
+
+.schedule-table select {
+  min-width: 130px;
+}
+
+.notes-cell {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-unassigned {
+  background: #fce4d6;
+}
+
+.row-conflict {
+  background: #ffc7ce;
+}
+
+.row-overcap {
+  background: #fce4d6;
+}
+
+.row-warn {
+  background: #fff2cc;
+}
+
+.fit-badge {
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.78rem;
+}
+
+.fit-full {
+  background: #c6efce;
+}
+
+.fit-partial {
+  background: #ffeb9c;
+}
+
+.fit-near {
+  background: #ffcc99;
+}
+
+.fit-overlap {
+  background: #dae8fc;
+}
+
+.fit-none {
+  background: #ffc7ce;
+}
+
+.reports-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.markdown-preview {
+  background: white;
+  border: 1px solid #dfe4ea;
+  border-radius: 6px;
+  padding: 1rem;
+  white-space: pre-wrap;
+  max-height: 60vh;
+  overflow-y: auto;
+}

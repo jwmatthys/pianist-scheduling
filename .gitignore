@@ -11,3 +11,9 @@ __pycache__/
 # Generated output workbooks
 *_20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]_*.xlsx
 jury_schedule_*.xlsx
+
+# Webapp
+webapp/backend/.venv/
+webapp/backend/pianist_scheduling.db
+webapp/frontend/node_modules/
+webapp/frontend/dist/
