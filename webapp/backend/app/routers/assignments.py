@@ -74,6 +74,19 @@ def run_assignment(db: Session = Depends(get_db)):
     return _persist_and_respond(db, lessons, engine_lessons, hours_by_name, conflicts)
 
 
+@router.delete("")
+def clear_assignments(db: Session = Depends(get_db)):
+    """Clear all assignment-derived state while retaining the lessons themselves."""
+    for lesson in db.query(models.Lesson).all():
+        lesson.assigned_pianist_id = None
+        lesson.fit_quality = ""
+        lesson.notes = ""
+        lesson.hours = 0.0
+        lesson.manually_edited = False
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/validate", response_model=schemas.ValidationResult)
 def validate(db: Session = Depends(get_db)):
     """Recomputes hours/conflicts without re-running the assignment algorithm

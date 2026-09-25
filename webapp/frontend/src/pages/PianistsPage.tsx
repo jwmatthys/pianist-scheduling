@@ -1,14 +1,23 @@
-import { useEffect, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { api } from "../lib/api";
 import type { Pianist } from "../lib/types";
-import { AvailabilityGrid } from "../components/AvailabilityGrid";
+import { AvailabilityGrid, type AvailabilityGridHandle } from "../components/AvailabilityGrid";
 
-export function PianistsPage() {
+export type PianistsPageHandle = {
+  saveAvailabilityBeforeLeaving: () => Promise<void>;
+};
+
+export const PianistsPage = forwardRef<PianistsPageHandle>(function PianistsPage(_, ref) {
   const [pianists, setPianists] = useState<Pianist[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [maxHours, setMaxHours] = useState("");
+  const availabilityGridRef = useRef<AvailabilityGridHandle>(null);
+
+  useImperativeHandle(ref, () => ({
+    saveAvailabilityBeforeLeaving: () => availabilityGridRef.current?.saveBeforeLeaving() ?? Promise.resolve(),
+  }));
 
   function refresh() {
     api.listPianists().then((list) => {
@@ -46,6 +55,12 @@ export function PianistsPage() {
     refresh();
   }
 
+  async function selectPianist(id: number) {
+    if (id === selectedId) return;
+    await availabilityGridRef.current?.saveBeforeLeaving();
+    setSelectedId(id);
+  }
+
   const selected = pianists.find((p) => p.id === selectedId) ?? null;
 
   return (
@@ -70,7 +85,7 @@ export function PianistsPage() {
         <ul className="pianist-list">
           {pianists.map((p) => (
             <li key={p.id} className={p.id === selectedId ? "selected" : ""}>
-              <button className="pianist-list-item" onClick={() => setSelectedId(p.id)}>
+              <button className="pianist-list-item" onClick={() => selectPianist(p.id)}>
                 <strong>{p.name}</strong>
                 <span className="muted">{p.email}</span>
               </button>
@@ -98,7 +113,7 @@ export function PianistsPage() {
               {selected.name}'s weekly availability
               {selected.max_hours_per_week ? ` \u2014 ${selected.max_hours_per_week}h cap` : ""}
             </h3>
-            <AvailabilityGrid pianist={selected} />
+            <AvailabilityGrid ref={availabilityGridRef} pianist={selected} />
           </>
         ) : (
           <p className="muted">Select a pianist to edit their availability.</p>
@@ -106,4 +121,4 @@ export function PianistsPage() {
       </div>
     </div>
   );
-}
+});

@@ -32,6 +32,7 @@ def commit(payload: schemas.ImportCommit, db: Session = Depends(get_db)):
     except KeyError as exc:
         raise HTTPException(400, str(exc)) from exc
 
+    db.query(models.Lesson).delete()
     for d in lesson_dicts:
         db.add(models.Lesson(**d))
 

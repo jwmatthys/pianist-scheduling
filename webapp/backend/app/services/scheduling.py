@@ -4,8 +4,8 @@ This is a direct adaptation of the fit-scoring / assignment-loop logic from
 the original ``generate_pianist_schedule.py`` CLI tool, retargeted to work
 against the webapp's ORM objects (``Lesson`` / ``Pianist`` / ``AvailabilitySlot``)
 instead of pandas DataFrames read from Excel. The scoring tiers, tie-break
-order, required-pianist handling, overlap rule, and workload-cap logic are
-preserved so results match the original tool.
+order, required-pianist handling, conflict prevention, and workload-cap logic
+are preserved for the desktop application.
 """
 
 from __future__ import annotations
@@ -219,7 +219,7 @@ def assign_lessons(
             else:
                 p = pianist_by_name[required]
                 fit_score, has_tentative = get_fit(day, start, end, p.avail)
-                assigned = p
+                assigned = p if not has_conflict(current_assigns[p.id], day, start, end) else None
                 if has_conflict(current_assigns[p.id], day, start, end):
                     flags.append(f"\u26a0 REQUIRED PIANIST '{required}' has a CONFLICTING lesson at this time")
                 if fit_score == FIT_NONE:
@@ -265,39 +265,7 @@ def assign_lessons(
                 fit_score = chosen["fit"]
                 has_tentative = chosen["tentative"]
             else:
-                overlap_candidate = None
-                for prev in results_so_far:
-                    if prev.day != day or prev.required_pianist_name.strip():
-                        continue
-                    ov = overlap_minutes(start, end, prev.start_min, prev.end_min)
-                    if 0 < ov <= OVERLAP_MAX_MINUTES and prev.assigned_pianist_id is not None:
-                        p = next((pp for pp in pianists if pp.id == prev.assigned_pianist_id), None)
-                        if p is None:
-                            continue
-                        combined_start = min(start, prev.start_min)
-                        combined_end = max(end, prev.end_min)
-                        fit_window = get_fit(day, combined_start, combined_end, p.avail)[0]
-                        if fit_window >= FIT_PARTIAL:
-                            overlap_candidate = p
-                            break
-                if overlap_candidate is not None:
-                    assigned = overlap_candidate
-                    fit_score = FIT_OVERLAP
-                    flags.append("\u2139 OVERLAP: shares a slot with another lesson (\u226430 min)")
-                else:
-                    # No fit at all -- pick the best partial match and flag it.
-                    pool = sorted(
-                        candidates,
-                        key=lambda c: (c["conflict"], -c["fit"], c["tentative"], c["workload"], c["schedule_penalty"]),
-                    )
-                    if pool:
-                        chosen = pool[0]
-                        assigned = chosen["pianist"]
-                        fit_score = chosen["fit"]
-                        has_tentative = chosen["tentative"]
-                        if chosen["conflict"]:
-                            flags.append(f"\u26a0 CONFLICT: '{assigned.name}' is double-booked at this time")
-                        flags.append("\u26a0 NO GOOD FIT: best available match assigned")
+                flags.append("No pianist available.")
 
         if assigned is not None:
             lesson.assigned_pianist_id = assigned.id
@@ -305,7 +273,7 @@ def assign_lessons(
             lesson.fit_quality = FIT_LABELS[fit_score]
         else:
             lesson.fit_quality = "None"
-            flags.append("\u26a0 UNASSIGNED")
+            flags = ["No pianist available."]
 
         lesson.notes = " | ".join(f for f in flags if f)
         results_so_far.append(lesson)

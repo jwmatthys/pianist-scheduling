@@ -2,23 +2,81 @@
   "name": "frontend",
   "private": true,
   "version": "0.0.0",
+  "description": "Desktop scheduling application for piano accompanists",
+  "homepage": "https://github.com/jwmatthys/pianist-scheduling",
+  "desktopName": "pianist-scheduling",
+  "author": {
+    "name": "Pianist Scheduling",
+    "email": "support@pianistscheduling.local"
+  },
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:api": "node scripts/build-api.cjs",
+    "dist": "npm run build && npm run build:api && electron-builder",
+    "dist:linux": "npm run dist -- --linux",
+    "dist:linux:portable": "npm run dist -- --linux tar.gz",
+    "dist:mac": "npm run dist -- --mac",
+    "dist:win": "npm run dist -- --win",
     "lint": "echo (lint skipped)",
     "preview": "vite preview"
   },
   "dependencies": {
+    "jspdf": "^4.2.1",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "react-markdown": "^10.1.0"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^37.2.6",
+    "electron-builder": "^26.0.12",
     "typescript": "~5.7.2",
     "vite": "^5.4.11"
+  },
+  "build": {
+    "appId": "edu.pianistscheduling.desktop",
+    "productName": "Pianist Scheduling",
+    "files": [
+      "dist/**",
+      "electron/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend/dist",
+        "to": "api",
+        "filter": [
+          "pianist-scheduling-api*"
+        ]
+      }
+    ],
+    "toolsets": {
+      "appimage": "1.0.3"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "tar.gz"
+      ],
+      "category": "Office",
+      "syncDesktopName": true,
+      "synopsis": "Schedule piano accompanists"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    }
   }
 }

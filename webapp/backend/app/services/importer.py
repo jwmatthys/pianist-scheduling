@@ -18,7 +18,9 @@ from ..models import DAYS_ORDER
 # Fields the app understands; the user maps their spreadsheet's columns to these.
 TARGET_FIELDS = [
     "teacher",
+    "teacher_email",
     "student",
+    "student_id",
     "day",
     "start_time",
     "end_time",
@@ -127,7 +129,9 @@ def commit_upload(token: str, mapping: dict[str, str | None]) -> tuple[list[dict
 
         lessons.append({
             "teacher": text("teacher"),
+            "teacher_email": text("teacher_email"),
             "student": text("student"),
+            "student_id": text("student_id"),
             "day": day,
             "start_minute": start_min,
             "end_minute": end_min,

@@ -4,7 +4,9 @@ import type { ImportPreview } from "../lib/types";
 
 const FIELD_LABELS: Record<string, string> = {
   teacher: "Teacher",
+  teacher_email: "Instructor email (optional)",
   student: "Student",
+  student_id: "Student ID (optional)",
   day: "Day",
   start_time: "Start time",
   end_time: "End time",
@@ -52,6 +54,8 @@ export function ImportPage({ onImported }: { onImported: () => void }) {
       setError(`Please map required fields: ${missing.map((f) => FIELD_LABELS[f]).join(", ")}`);
       return;
     }
+    const existingLessons = await api.listLessons();
+    if (existingLessons.length && !confirm("Importing will delete all existing lessons. Continue?")) return;
     setBusy(true);
     setError(null);
     try {

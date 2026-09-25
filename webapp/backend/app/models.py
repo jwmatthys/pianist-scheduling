@@ -76,7 +76,9 @@ class Lesson(Base):
     organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), default=1, index=True)
 
     teacher: Mapped[str] = mapped_column(String(200), default="")
+    teacher_email: Mapped[str] = mapped_column(String(200), default="")
     student: Mapped[str] = mapped_column(String(200), default="")
+    student_id: Mapped[str] = mapped_column(String(100), default="")
     day: Mapped[str] = mapped_column(String(20))  # one of DAYS_ORDER
     start_minute: Mapped[int] = mapped_column(Integer)
     end_minute: Mapped[int] = mapped_column(Integer)

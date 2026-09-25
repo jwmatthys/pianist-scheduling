@@ -84,6 +84,27 @@ export function SchedulePage() {
     refresh();
   }
 
+  async function removeAllLessons() {
+    if (!lessons.length || !confirm("Delete all lessons? This cannot be undone.")) return;
+    await api.deleteAllLessons();
+    refresh();
+  }
+
+  async function clearAssignments() {
+    if (!lessons.some((lesson) => lesson.assigned_pianist_id !== null)) return;
+    if (!confirm("Clear all pianist assignments? Lessons will be kept.")) return;
+    setBusy(true);
+    try {
+      await api.clearAssignments();
+      setMessage("All pianist assignments cleared.");
+      await refresh();
+    } catch (e: any) {
+      setMessage(e.message ?? String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const sortedLessons = useMemo(
     () =>
       [...lessons].sort(
@@ -101,6 +122,16 @@ export function SchedulePage() {
         </button>
         <button className="secondary-btn" onClick={addLesson}>
           + Add lesson
+        </button>
+        <button
+          className="secondary-btn"
+          onClick={clearAssignments}
+          disabled={busy || !lessons.some((lesson) => lesson.assigned_pianist_id !== null)}
+        >
+          Clear assignments
+        </button>
+        <button className="danger-btn" onClick={removeAllLessons} disabled={!lessons.length}>
+          Delete all lessons
         </button>
         {message && <span className="toolbar-message">{message}</span>}
       </div>
@@ -246,7 +277,12 @@ export function SchedulePage() {
                   {lesson.notes}
                 </td>
                 <td>
-                  <button className="danger-btn small" onClick={() => removeLesson(lesson.id)}>
+                  <button
+                    className="danger-btn small"
+                    onClick={() => removeLesson(lesson.id)}
+                    title="Delete lesson"
+                    aria-label={`Delete ${lesson.student}'s lesson`}
+                  >
                     &times;
                   </button>
                 </td>

@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import "./App.css";
 import { ImportPage } from "./pages/ImportPage";
-import { PianistsPage } from "./pages/PianistsPage";
+import { PianistsPage, type PianistsPageHandle } from "./pages/PianistsPage";
 import { SchedulePage } from "./pages/SchedulePage";
 import { ReportsPage } from "./pages/ReportsPage";
 
@@ -16,6 +16,14 @@ const TABS: { id: Tab; label: string }[] = [
 
 function App() {
   const [tab, setTab] = useState<Tab>("import");
+  const pianistsPageRef = useRef<PianistsPageHandle>(null);
+
+  async function changeTab(nextTab: Tab) {
+    if (tab === "pianists" && nextTab !== "pianists") {
+      await pianistsPageRef.current?.saveAvailabilityBeforeLeaving();
+    }
+    setTab(nextTab);
+  }
 
   return (
     <div className="app-shell">
@@ -26,7 +34,7 @@ function App() {
             <button
               key={t.id}
               className={`tab-button ${tab === t.id ? "active" : ""}`}
-              onClick={() => setTab(t.id)}
+              onClick={() => changeTab(t.id)}
             >
               {t.label}
             </button>
@@ -35,7 +43,7 @@ function App() {
       </header>
       <main className="app-main">
         {tab === "import" && <ImportPage onImported={() => {}} />}
-        {tab === "pianists" && <PianistsPage />}
+        {tab === "pianists" && <PianistsPage ref={pianistsPageRef} />}
         {tab === "schedule" && <SchedulePage />}
         {tab === "reports" && <ReportsPage />}
       </main>

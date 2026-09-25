@@ -42,7 +42,9 @@ class AvailabilitySlotOut(BaseModel):
 
 class LessonCreate(BaseModel):
     teacher: str = ""
+    teacher_email: str = ""
     student: str = ""
+    student_id: str = ""
     day: str
     start_minute: int
     end_minute: int
@@ -54,7 +56,9 @@ class LessonCreate(BaseModel):
 
 class LessonUpdate(BaseModel):
     teacher: str | None = None
+    teacher_email: str | None = None
     student: str | None = None
+    student_id: str | None = None
     day: str | None = None
     start_minute: int | None = None
     end_minute: int | None = None
@@ -70,7 +74,9 @@ class LessonOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     teacher: str
+    teacher_email: str
     student: str
+    student_id: str
     day: str
     start_minute: int
     end_minute: int

@@ -62,7 +62,9 @@ def build_markdown(lessons: list[Lesson], pianists_by_id: dict[int, Pianist], so
     lines.extend(["## Students by Instructor", ""])
     for teacher in sorted(by_teacher, key=str.casefold):
         teacher_lessons = sorted(by_teacher[teacher], key=_sort_key)
-        lines.extend([f"### {teacher}", ""])
+        teacher_email = next((lesson.teacher_email for lesson in teacher_lessons if lesson.teacher_email), "")
+        heading = f"### {teacher} - {teacher_email}" if teacher_email else f"### {teacher}"
+        lines.extend([heading, ""])
         for lesson in teacher_lessons:
             pianist = pianists_by_id.get(lesson.assigned_pianist_id)
             pname = pianist.name if pianist else "Unknown"
@@ -75,7 +77,8 @@ def build_markdown(lessons: list[Lesson], pianists_by_id: dict[int, Pianist], so
         pianist = pianists_by_id.get(lesson.assigned_pianist_id)
         pname = pianist.name if pianist else "Unknown"
         pemail = pianist.email if pianist else ""
-        lines.append(f"- **{lesson.student}** \u2014 {pname} \u2014 {pemail}")
+        student_label = f"{lesson.student} ({lesson.student_id})" if lesson.student_id else lesson.student
+        lines.append(f"- **{student_label}** \u2014 {pname} \u2014 {pemail}")
 
     unassigned = [l for l in lessons if l.assigned_pianist_id is None and l.need_pianist]
     if unassigned:
