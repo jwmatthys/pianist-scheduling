@@ -1,1077 +1,753 @@
-PROJECT GOAL
+# Music Program Scheduler
+# Electron-to-Tauri Migration and Architecture Plan
 
-I want to migrate this application from Electron to Tauri 2 while preserving its existing user interface, scheduling behavior, data formats, and functionality.
+## PROJECT VISION
 
-This is an early-stage application, so now is the appropriate time to establish a clean long-term architecture.
+This project is evolving from a single-purpose accompanist scheduling application into a modular suite of scheduling tools designed specifically for university and conservatory music programs.
 
-The eventual product will be a commercial scheduling application for small university and music-school departments. It will process student scheduling information, so security, privacy, maintainability, cross-platform support, code signing, and easy distribution are priorities.
+The existing application schedules pianists to student lessons according to pianist availability, lesson times, travel, workload, and schedule-block optimization.
 
-The product should initially work as a desktop application for Windows and macOS, but the architecture must preserve the ability to offer essentially the same product later as a browser-hosted SaaS/web application.
+This will become the first scheduling module in a larger product.
 
-A major privacy goal is that BOTH the desktop application and a future web application should be capable of performing their core scheduling functions without sending student scheduling data to our servers.
+Known future modules include:
 
-The guiding principle is:
+1. Accompanist Scheduling
+   - Assign pianists to student lessons.
+   - Respect pianist availability.
+   - Avoid conflicts.
+   - Minimize travel.
+   - Prefer contiguous blocks.
+   - Balance workload.
+   - Track overlapping assignments correctly.
 
-"The application provider does not need possession of student scheduling data in order to provide the scheduling service."
+2. Music Therapy Clinical Placements
+   - Assign every music therapy student to an appropriate clinical site.
+   - Consider student availability.
+   - Consider clinical-site availability.
+   - Consider population type and placement requirements.
+   - Consider prior placement history.
+   - Consider transportation requirements.
+   - Consider whether the student has access to a car.
+   - Consider travel feasibility and travel burden.
+   - Optimize the overall quality/equity of placements.
 
-IMPORTANT: Before changing anything, inspect the entire existing repository, including:
+3. Performance Jury Scheduling
+   - Schedule students into end-of-semester performance jury time slots.
+   - Incorporate data produced by accompanist scheduling where relevant.
+   - Consider pianist assignments and availability.
+   - Consider students, faculty, rooms, panels, times, durations, and other jury constraints.
+   - Preserve and eventually migrate the functionality of the existing Python jury-scheduling program.
 
-- package.json
-- Electron main/preload code
-- frontend code
-- Python/FastAPI/uvicorn backend
-- scheduling/optimization code
-- build scripts
-- tests
-- spreadsheet/file import/export logic
-- persistence/data formats
-- any native Node dependencies
-- any Electron IPC
-- any localhost HTTP APIs
+Additional university music scheduling modules may be developed later.
 
-Determine and document how the existing application currently works.
+Examples might eventually include:
+- auditions
+- recital scheduling
+- ensemble placement
+- chamber music
+- studio classes
+- room scheduling
+- masterclasses
+- festival scheduling
 
-Do NOT simply perform a mechanical Electron-to-Tauri translation.
+Do NOT implement speculative future modules now.
 
-First create a migration plan based on the actual repository. Then execute the migration incrementally, testing after each major phase. Preserve existing working functionality unless a change is necessary for the new architecture.
+Architect the application so new scheduling modules can be added cleanly without restructuring the entire product.
+
+
+## FUNDAMENTAL ARCHITECTURAL PRINCIPLE
+
+GENERALIZE SHARED DOMAIN CONCEPTS AND INFRASTRUCTURE.
+
+DO NOT FORCE DIFFERENT OPTIMIZATION PROBLEMS INTO ONE UNIVERSAL ALGORITHM.
+
+Shared concepts may include:
+
+- academic terms
+- people
+- students
+- faculty
+- staff
+- pianists
+- locations
+- rooms
+- off-campus sites
+- dates
+- days
+- times
+- time ranges
+- availability
+- travel
+- assignments
+- preferences
+- constraints
+- imports
+- exports
+- project persistence
+- validation
+- schedule visualization
+
+But each scheduling module should own its own:
+
+- module-specific inputs
+- module-specific data
+- constraints
+- objective/scoring model
+- optimization algorithm
+- validation
+- workflow
+- output representation
+- reports
+
+Conceptually:
+
+                    Music Program Scheduler
+                            |
+                    Common Domain Layer
+                            |
+       +--------------------+--------------------+
+       |                    |                    |
+ Accompanist Module    Clinical Module       Jury Module
+       |                    |                    |
+ Accompanist Solver    Clinical Solver        Jury Solver
+       |                    |                    |
+       +--------------------+--------------------+
+                            |
+                    Shared Infrastructure
+                            |
+                  Platform Abstraction
+                     /            \
+                Tauri/Desktop    Browser/Web
+
+
+## PRODUCT ORGANIZATION
+
+Do not model major scheduling modules as simple tabs in one giant scheduler.
+
+Use a product-level dashboard and module-based workflow.
+
+Conceptually:
+
+Music Program Scheduler
+        |
+        +-- Academic Terms
+               |
+               +-- Fall 2026
+                      |
+                      +-- Accompanist Scheduling
+                      +-- Clinical Placements
+                      +-- Performance Juries
+
+Each module may have its own internal tabs/views.
+
+For example:
+
+Accompanist Scheduling:
+- Students/Lessons
+- Pianists
+- Availability
+- Assignments
+- Schedule
+- Reports
+
+Clinical Placements:
+- Students
+- Clinical Sites
+- Requirements
+- Availability
+- Placements
+- Reports
+
+Performance Juries:
+- Students
+- Jury Requirements
+- Faculty/Panels
+- Rooms/Times
+- Schedule
+- Reports
+
+Do not assume these exact tabs are final.
+
+Base actual UI decisions on workflow usability.
 
 
 ==================================================
-1. TARGET ARCHITECTURE
+1. CURRENT MIGRATION GOAL
+==================================================
+
+Migrate the current Electron application to Tauri 2 while preserving:
+
+- existing UI
+- scheduling behavior
+- data formats
+- import/export functionality
+- manual adjustment functionality
+- current accompanist scheduling functionality
+
+At the same time, restructure the project so the existing accompanist scheduler becomes a MODULE within the larger Music Program Scheduler architecture.
+
+Do not build the Clinical Placement or Jury modules as part of the Electron-to-Tauri migration unless code already exists that can be integrated safely.
+
+The immediate objective is:
+
+1. establish the shared architecture
+2. migrate the existing accompanist module into it
+3. establish clean extension points for future modules
+
+Do not let future extensibility prevent completion of the current accompanist scheduler.
+
+
+==================================================
+2. EXISTING PROJECT ANALYSIS
+==================================================
+
+Before changing application code, inspect the entire repository.
+
+Inspect:
+
+- package.json
+- Electron main process
+- preload code
+- Electron IPC
+- frontend
+- React components
+- TypeScript/JavaScript
+- Python code
+- FastAPI
+- uvicorn
+- scheduling/optimization code
+- Excel handling
+- CSV handling
+- persistence
+- saved projects
+- build scripts
+- tests
+- sample data
+- documentation
+
+Document the existing architecture.
+
+Determine:
+
+- what runs in Electron
+- what runs in the frontend
+- what runs in Python
+- what currently requires HTTP
+- how scheduling data flows through the application
+- how imports and exports work
+- how manual assignments work
+- what parts are truly accompanist-specific
+- what concepts can reasonably become shared domain concepts
+
+Do not begin with a mechanical Electron-to-Tauri translation.
+
+
+==================================================
+3. TARGET TECHNOLOGY STACK
 ==================================================
 
 Use:
 
 - Tauri 2
-- the existing frontend framework and UI wherever practical
-- React if that is the existing frontend
-- TypeScript rather than JavaScript where practical without creating an unnecessary frontend rewrite
-- Rust for the Tauri native backend and native/system integration
-- current stable Tauri 2 APIs and plugins
-- npm as the JavaScript package manager unless this project already intentionally uses something else
+- existing React frontend where practical
+- TypeScript where practical
+- Rust for Tauri/native functionality
+- npm unless the existing project deliberately uses something else
+- current stable Tauri APIs/plugins
 
-The final installed desktop application must NOT require the user to install:
+The installed desktop application must not require:
 
-- Python
-- Node.js
-- Rust
+- Python installation
+- Node installation
+- Rust installation
 - uvicorn
-- a web server
+- an external web server
 - developer tools
 
-The installed desktop application must be self-contained.
+Temporary bundled sidecars are acceptable during migration if necessary.
 
-The long-term conceptual architecture should be:
-
-                    Shared Application
-                           |
-             Shared application/domain layer
-                           |
-            Platform-independent interfaces
-                   /                 \
-                  /                   \
-            Tauri adapter          Browser adapter
-                |                       |
-        Rust/native services        Browser APIs
-                |                       |
-            Local data              Local data
-
-
-Core scheduling functionality should not depend unnecessarily on:
-
-- Electron
-- Tauri
-- HTTP
-- a remote server
-- cloud storage
-- a cloud account
+Ordinary end users must receive a self-contained application.
 
 
 ==================================================
-2. FUTURE WEB / SAAS COMPATIBILITY
+4. PRODUCT DOMAIN MODEL
 ==================================================
 
-A major architectural requirement is that this application may later also be offered as a web/SaaS product.
+Introduce a product-level model appropriate to university music programs.
 
-Design the application so that the frontend, scheduling domain model, import/export formats, and as much application logic as practical can be reused in both:
+Conceptually:
 
-1. the Tauri desktop application
-2. a browser-hosted web/SaaS application
+MusicProgram
+    |
+    +-- AcademicTerms
+    |
+    +-- People
+    |     +-- Students
+    |     +-- Faculty
+    |     +-- Staff
+    |     +-- Pianists
+    |
+    +-- Locations
+    |     +-- Buildings
+    |     +-- Rooms
+    |     +-- OffCampusSites
+    |
+    +-- SharedSchedulingData
+    |
+    +-- ModuleData
+          +-- Accompanist
+          +-- ClinicalPlacements
+          +-- Juries
 
-IMPORTANT PRIVACY REQUIREMENT:
+Do NOT build an enormous universal Person or Student object containing every field every future module might possibly need.
 
-The future SaaS/web version should be capable of operating in a local-data mode in which student scheduling data remains on the user's computer and is not uploaded to our servers.
+Prefer:
 
-In such a web deployment, our server may deliver:
+shared person/student identity
+        +
+module-specific records
 
-- the web application
-- static frontend assets
-- application updates
-- documentation
-- licensing/account information if eventually needed
+For example:
 
-but the scheduling dataset itself should be capable of remaining entirely client-side.
+Student
+- id
+- name
+- shared/basic properties
 
-The future web architecture should be capable of looking conceptually like:
+AccompanistStudentData
+- lesson
+- instrument
+- accompanist requirement
+- assigned pianist
 
-Browser downloads application
+ClinicalPlacementStudentData
+- placement requirements
+- placement history
+- transportation/car access
+- clinical availability/preferences
+
+JuryStudentData
+- jury duration
+- panel requirements
+- repertoire/instrument requirements
+- accompanist relationship
+- jury scheduling requirements
+
+Avoid speculative fields.
+
+Only move information into the shared model when it is genuinely shared.
+
+
+==================================================
+5. ACADEMIC TERMS
+==================================================
+
+Use Academic Term as an important organizing concept.
+
+Examples:
+
+Fall 2026
+Spring 2027
+Summer 2027
+
+Scheduling modules should normally operate within a term.
+
+Conceptually:
+
+Fall 2026
+    |
+    +-- Accompanist Assignments
+    +-- Clinical Placements
+    +-- Jury Schedule
+
+Module data should be capable of referencing shared term-level data.
+
+
+==================================================
+6. CROSS-MODULE DEPENDENCIES
+==================================================
+
+Modules must remain independent but should be capable of consuming finalized outputs from other modules.
+
+Known example:
+
+Accompanist Scheduling
+        |
+        v
+Performance Jury Scheduling
+
+The jury scheduling module may need pianist assignments generated by the accompanist module.
+
+Do not require:
+
+export spreadsheet
+        ->
+reimport spreadsheet
+
+when both modules live inside the same project and can safely share structured data.
+
+Establish a clean mechanism for module outputs to be consumed by another module.
+
+Avoid direct module-to-module implementation dependencies where practical.
+
+Prefer something conceptually like:
+
+AccompanistModule
+      |
+published/finalized assignments
+      |
+Term Data / Module Result API
+      |
+JuryModule
+
+This allows modules to evolve independently.
+
+
+==================================================
+7. MODULE INTERFACE
+==================================================
+
+Create a lightweight architectural concept for scheduling modules.
+
+Do not over-engineer this into an elaborate plugin platform.
+
+A module should conceptually be able to define:
+
+- identity
+- display name
+- routes/navigation
+- input model
+- persisted data
+- validation
+- optimization operation
+- results
+- reports
+- dependencies on other module results
+
+The main application should not contain large amounts of module-specific conditional logic such as:
+
+if module == "accompanist"
+else if module == "jury"
+else if module == "clinical"
+
+Prefer module boundaries that allow functionality to remain self-contained.
+
+However, do not create an unnecessary dynamic plugin loader.
+
+These modules will initially be built into the application.
+
+
+==================================================
+8. OPTIMIZATION ARCHITECTURE
+==================================================
+
+Do NOT create one universal optimizer for all scheduling problems.
+
+Use separate optimization engines.
+
+Conceptually:
+
+scheduling/
+    common/
+    accompanist/
+    clinical/
+    jury/
+
+Common code may provide reusable primitives such as:
+
+- TimeRange
+- Availability
+- conflicts
+- Location
+- travel time
+- Assignment
+- constraint results
+- scoring helpers
+- solver utilities
+
+But:
+
+AccompanistOptimizer
+ClinicalPlacementOptimizer
+JuryOptimizer
+
+must be allowed to implement fundamentally different models and algorithms.
+
+The correct algorithm for one module must not be distorted merely to make it fit a generalized framework.
+
+
+==================================================
+9. ACCOMPANIST MODULE
+==================================================
+
+The existing application becomes the first production module.
+
+Preserve current functionality.
+
+The module should own concepts specific to accompanist assignment, such as:
+
+- lessons
+- pianist requirements
+- pianist availability
+- pianist load
+- assignment preferences
+- schedule blocks
+- overlapping lessons
+- merged working-time calculations
+- accompanist-specific objective weights
+
+Do not leak these concepts unnecessarily into the product-wide shared domain model.
+
+
+==================================================
+10. FUTURE CLINICAL PLACEMENT MODULE
+==================================================
+
+Do not implement this module during migration unless explicitly asked.
+
+Architectural requirements should support a future module that matches students to clinical placements based on factors including:
+
+- student availability
+- site availability
+- site capacity
+- population type
+- placement requirements
+- previous placements
+- student experience/history
+- travel requirements
+- travel time
+- access to a car
+- transportation feasibility
+- preferences
+- equity/fairness
+
+This is not a conventional time-slot scheduling problem and must not be forced into the accompanist algorithm.
+
+Conceptually:
+
+Students + Clinical Sites + Constraints
+                |
+        Clinical Optimizer
+                |
+         Student -> Site
+
+
+==================================================
+11. FUTURE JURY MODULE
+==================================================
+
+Do not reimplement the existing Python jury scheduler during the initial Tauri migration unless explicitly asked.
+
+Preserve awareness that a working Python jury scheduler already exists.
+
+Eventually:
+
+- inspect that program separately
+- identify its inputs
+- preserve its tested behavior
+- migrate/integrate it carefully
+- use accompanist module output directly where appropriate
+
+Conceptually:
+
+Students
++ Faculty
++ Pianist assignments
++ Jury availability
++ Rooms
++ Time slots
++ Jury constraints
+        |
+    Jury Optimizer
+        |
+Student -> Jury time
+
+
+==================================================
+12. FRONTEND ARCHITECTURE
+==================================================
+
+The frontend should support:
+
+Application Shell
+    |
+    +-- Dashboard
+    +-- Academic Term selector
+    +-- Modules
           |
-          v
-      React UI
-          |
-          v
-Shared application/domain layer
-          |
-          v
-Local scheduling engine
-          |
-          +-- Imported spreadsheets processed locally
-          +-- Projects stored locally
-          +-- Scheduling performed locally
-          +-- Exports generated locally
+          +-- Accompanists
+          +-- Clinical Placements
+          +-- Juries
 
-Student data should not have to pass through our server merely because the application is browser-hosted.
+Do not hard-code the overall application around accompanist terminology.
 
-Do NOT build the frontend so ordinary application logic directly depends throughout the codebase on Tauri APIs.
+Accompanist terminology belongs inside the accompanist module.
 
-Instead, create explicit abstractions/interfaces for platform-specific capabilities such as:
+The product shell should use general music-program terminology.
 
-- opening/importing files
-- saving/exporting files
-- persistent project storage
-- application preferences
-- native dialogs
-- platform information
-- logging
+
+==================================================
+13. FUTURE WEB / SAAS COMPATIBILITY
+==================================================
+
+The product may later be offered as a web/SaaS application.
+
+The architecture must allow the React frontend, domain model, scheduling modules, imports/exports, and application logic to be reused in:
+
+1. Tauri desktop
+2. browser-hosted web application
+
+The future web application must be capable of operating while student scheduling data stays on the user's device.
+
+A server may deliver:
+
+- frontend code
+- static assets
 - updates
-- licensing if eventually required
+- product information
+- documentation
+- licensing/account information
 
-Conceptually, the application might depend on interfaces/services such as:
+Core student scheduling data must not need to be uploaded.
+
+
+==================================================
+14. LOCAL-FIRST ARCHITECTURE
+==================================================
+
+Treat these as separate decisions:
+
+Desktop vs Web
+Local vs Cloud
+
+Do not assume SaaS means cloud-stored student data.
+
+Core scheduling should operate locally.
+
+Optional future services may include:
+
+- licensing
+- cloud sync
+- backup
+- collaboration
+- multi-device access
+
+These should be optional layers.
+
+The core scheduler should not depend on them.
+
+
+==================================================
+15. PLATFORM ABSTRACTION
+==================================================
+
+Do not scatter Tauri APIs throughout React components.
+
+Create explicit platform/service abstractions.
+
+Potential interfaces include:
 
 - FileService
 - ProjectStorage
 - SettingsService
 - PlatformService
 - UpdateService
+- LicensingService
 
-The Tauri desktop build can implement these using Tauri/Rust.
+Tauri implements these using native capabilities.
 
-A future browser build can implement the same interfaces using browser APIs such as:
+A future browser application can implement them using browser capabilities.
 
-- File System Access APIs where appropriate
-- file upload/download APIs
-- IndexedDB
-- browser-local persistent storage
-
-UI components should not normally call Tauri invoke(), Rust commands, Tauri filesystem APIs, or browser persistence APIs directly.
-
-They should communicate through the application's service/platform abstraction layer.
+React/domain code should normally depend on interfaces, not Tauri directly.
 
 
 ==================================================
-3. LOCAL-FIRST / CLOUD-OPTIONAL ARCHITECTURE
+16. SCHEDULING CORE AND WEBASSEMBLY
 ==================================================
 
-Treat these as SEPARATE architectural choices:
+If schedulers are implemented in Rust, keep optimization/domain crates independent of Tauri.
 
-- Desktop vs. Web
-- Local vs. Cloud
+Example:
 
-Do not assume:
+crates/
+    scheduling-common/
+    accompanist-solver/
+    clinical-solver/
+    jury-solver/
 
-Desktop = local forever
+These names are illustrative.
 
-or:
+A future browser version may potentially compile appropriate solver crates to WebAssembly.
 
-Web/SaaS = server-stored student data
+Do not implement WebAssembly now merely for architectural purity.
 
-Core scheduling should be able to run locally in either environment.
-
-Favor this model:
-
-                    Shared Application
-                           |
-                 Local scheduling engine
-                           |
-              Local scheduling/project data
-                    /              \
-                   /                \
-             Tauri/Desktop       Web/Browser
-
-
-Optional future services may eventually exist above this architecture:
-
-- licensing
-- application updates
-- optional cloud sync
-- optional cloud backup
-- optional multi-device access
-- optional collaboration
-
-But core scheduling must not depend on any of them.
-
-If future collaboration or cloud synchronization is added, it should be an optional feature rather than a requirement for using the scheduler.
-
-Do not make architectural decisions during this migration that unnecessarily couple:
-
-- React to Tauri
-- scheduling to Tauri
-- scheduling to HTTP
-- scheduling to a server
-- project storage to a server
-- student data to a cloud account
-- licensing to student data
-
-Licensing and payment systems, if eventually introduced, should be architecturally independent of student scheduling information.
+Maintain reasonable compatibility where practical.
 
 
 ==================================================
-4. SHARED SCHEDULING ENGINE
+17. PYTHON / UVICORN MIGRATION
 ==================================================
 
-Evaluate carefully where the scheduling/optimization engine should ultimately live.
+The existing prototype uses Python/FastAPI/uvicorn.
 
-If the scheduling engine is rewritten entirely as Rust code behind Tauri-specific commands, a future browser version could require:
+Inspect exactly what the backend does.
 
-- a duplicate implementation
-- WebAssembly
-- or server-side scheduling
+Separate:
 
-Because we specifically want the OPTION of keeping student data local in a future browser version, avoid architectural decisions that unnecessarily force scheduling data to a server.
+HTTP transport
+from
+domain/scheduling logic
 
-If Rust is ultimately the best implementation language for the scheduling engine, structure the scheduling code as a pure Rust library/crate that contains NO Tauri dependencies.
+Preferred final desktop architecture:
 
-Prefer conceptually:
+React
+   |
+Application Layer
+   |
+Module
+   |
+Scheduling Solver
+   |
+Local Data
 
-                scheduling_core
-                pure Rust library
-                   /       \
-                  /         \
-          Tauri Desktop    Future WASM
-              |                |
-           Desktop           Browser
+Eliminate the localhost HTTP server eventually where practical.
 
-over:
+Do NOT rewrite proven Python optimization code prematurely.
 
-Tauri command handlers
-        |
-scheduling logic embedded directly in handlers
+Migration strategy:
 
-Do NOT introduce WebAssembly now unless it provides an immediate practical benefit.
+1. inventory Python endpoints
+2. identify pure scheduling/domain logic
+3. migrate simple native operations to Rust
+4. preserve reliable complex Python logic temporarily if required
+5. use a bundled sidecar if necessary
+6. require no Python installation by users
+7. eliminate unnecessary HTTP
+8. create regression tests
+9. migrate solver functionality only when equivalent behavior can be verified
 
-The current goal is architectural separation so that compiling the scheduling core to WebAssembly remains a realistic future option.
-
-The domain/scheduling engine should ideally be:
-
-- independently testable
-- independent of UI
-- independent of Tauri
-- independent of HTTP
-- independent of persistence
-- reusable in future related scheduling products
-
-
-==================================================
-5. PYTHON / UVICORN MIGRATION
-==================================================
-
-The current prototype runs a Python backend using uvicorn.
-
-Inspect exactly what the Python backend does before deciding how to replace it.
-
-The preferred long-term desktop architecture is:
-
-React frontend
-       |
-shared application layer
-       |
-typed platform/scheduling interface
-       |
-Rust
-       |
-local files/data
-
-I would prefer to eliminate the localhost HTTP server in the production application.
-
-However:
-
-DO NOT rewrite working Python scheduling or optimization logic into Rust merely for architectural purity if doing so introduces substantial migration risk.
-
-Follow this process:
-
-1. Identify and document every API endpoint/function exposed by the existing Python/FastAPI backend.
-
-2. Separate scheduling/domain logic from HTTP/FastAPI/uvicorn-specific logic.
-
-3. Determine which functionality can safely move to Rust immediately.
-
-4. Prefer native Rust implementations for straightforward:
-   - filesystem operations
-   - configuration
-   - persistence
-   - validation
-   - native dialogs/system integration
-   - application management
-
-5. If the scheduling/optimization implementation is substantial and already reliable, preserve it temporarily as a bundled Tauri sidecar rather than rewriting it incorrectly.
-
-6. If Python temporarily remains as a sidecar, package it so the end user does NOT need Python installed.
-
-7. Do not expose a persistent unauthenticated localhost web service in the shipping application if it can reasonably be avoided.
-
-8. If a Python sidecar is used, prefer a narrowly defined IPC/stdin/stdout/native invocation interface rather than maintaining the current application architecture as a general localhost HTTP service, if practical.
-
-9. Ensure closing the application terminates all sidecar/helper processes.
-
-10. Document any remaining Python dependency and establish a clear future migration path.
-
-Eventually I would prefer production releases to have no Python runtime if the scheduling engine can be safely and correctly implemented in Rust.
-
-Correctness is more important than eliminating Python immediately.
+Never sacrifice correct scheduling for architectural purity.
 
 
 ==================================================
-6. PRIVACY AND SECURITY
+18. PRIVACY AND SECURITY
 ==================================================
 
-This application handles student scheduling information.
-
-Adopt a local-first, least-privilege architecture.
-
-The production desktop application should:
-
-- process student scheduling data locally
-- store project data locally
-- not upload student information
-- not require a cloud account
-- not send student data to analytics services
-- not send student data to telemetry services
-- not send student data to AI or LLM services
-- not send student data to advertising services
-- avoid unnecessary network access
-- avoid a network-accessible local server where practical
-- request only the minimum Tauri permissions/capabilities necessary
-- validate all arguments crossing the frontend/native boundary
-- avoid arbitrary shell command execution
-- never expose a generic "execute command" API to the frontend
-- restrict filesystem access appropriately
-- keep secrets/signing keys/certificates/passwords out of source control
-- make it possible to truthfully tell customers that scheduling data remains on their device
-
-Use Tauri 2's capability/permission model according to least-privilege principles.
-
-Do not broadly enable native functionality just because it is convenient.
-
-Do not add telemetry.
-
-Do not add analytics.
-
-Do not add network dependencies unless they provide a necessary and documented feature.
-
-Do not introduce generative AI into the scheduling/data-processing path.
-
-Use synthetic/anonymized data for repository test fixtures.
-
-
-==================================================
-7. ELECTRON REMOVAL
-==================================================
-
-Identify all Electron-specific functionality, including:
-
-- main process
-- preload scripts
-- IPC handlers
-- BrowserWindow configuration
-- Electron dialogs
-- Electron filesystem integration
-- menus
-- updater
-- shell integration
-- packaging
-- build scripts
-- Electron-specific security settings
-
-For each item, document its replacement in the Tauri architecture.
-
-Remove Electron dependencies and obsolete Electron configuration ONLY AFTER the equivalent Tauri functionality works.
-
-Do not leave dead Electron code in the completed migration.
-
-
-==================================================
-8. PLATFORM ABSTRACTION
-==================================================
-
-Keep platform-specific functionality isolated.
-
-Do not scatter code such as:
-
-invoke(...)
-Tauri-specific imports
-filesystem calls
-IndexedDB calls
-browser storage calls
-
-through ordinary React components.
-
-Create a clear platform/service layer.
-
-For example:
-
-src/
-    domain/
-    scheduling/
-    services/
-    platform/
-        interfaces/
-        tauri/
-        web/
-    components/
-    views/
-
-This is only an example. Adapt the structure intelligently to the existing project.
-
-The important requirement is:
-
-UI/domain code
-    |
-platform-independent interface
-    |
-implementation
-   / \
-Tauri Browser
-
-A future web version should be possible without rewriting the application's domain/UI architecture.
-
-
-==================================================
-9. FILE IMPORT / EXPORT
-==================================================
-
-Preserve all existing spreadsheet, CSV, and other file import/export behavior.
-
-Use native Tauri file dialogs where appropriate in the desktop application.
-
-Users should explicitly select files to import/open/save/export rather than granting unrestricted frontend filesystem access.
-
-Keep:
-
-- file selection
-- parsing
-- validation
-- scheduling model conversion
-- export generation
-
-as separate concerns.
-
-The parsing and validation layers must remain independently testable.
-
-Preserve existing file formats where practical so data created with the current prototype remains compatible.
-
-
-==================================================
-10. APPLICATION DATA
-==================================================
-
-Create clear separation among:
-
-1. imported source data
-2. internal scheduling/domain models
-3. application preferences
-4. saved projects
-5. generated/exported schedules
-
-For desktop:
-
-Use appropriate OS-specific application data/configuration locations rather than hard-coded paths.
-
-Do not write application state beside the executable.
-
-Never store user project data inside the installation directory.
-
-For future web:
-
-Preserve compatibility with client-side storage such as IndexedDB or similar browser-local storage.
-
-Do not make saved project formats dependent upon an operating-system-specific storage implementation.
-
-
-==================================================
-11. RUST ARCHITECTURE
-==================================================
-
-Keep Rust modules small and purpose-specific.
-
-A reasonable structure might resemble:
-
-src-tauri/src/
-    lib.rs
-    commands/
-    domain/
-    scheduling/
-    storage/
-    import/
-    export/
-    validation/
-    platform/
-
-Do not force this exact structure if the actual project suggests something better.
-
-Prefer an independent Rust workspace/crate for scheduling/domain logic if appropriate.
-
-Tauri commands should be thin adapters calling ordinary Rust functions.
-
-Do not put substantial scheduling/business logic directly in command handlers.
-
-Use serde-compatible typed request/response structures between TypeScript and Rust where practical.
-
-Avoid passing large amounts of unstructured/stringly-typed JSON when proper types would make the interface clearer and safer.
-
-
-==================================================
-12. ERROR HANDLING
-==================================================
-
-Do not use unwrap()/expect() for normal runtime situations involving:
-
-- user input
-- imported files
-- missing files
-- malformed spreadsheets
-- failed exports
-- validation errors
-- recoverable scheduling failures
-
-Return structured, understandable errors across platform boundaries.
-
-Do not expose stack traces, filesystem internals, secrets, or sensitive information to ordinary users.
-
-Application logs should be useful for debugging but must avoid personally identifiable student information wherever practical.
-
-If possible, structure diagnostic reporting so a user can provide debugging information without disclosing student names or other scheduling records.
-
-
-==================================================
-13. DESKTOP USER EXPERIENCE
-==================================================
-
-Preserve the current visual interface unless a change is necessary.
-
-The application should behave like a normal polished desktop application:
-
-- native open/save dialogs
-- sensible windows
-- keyboard shortcuts where appropriate
-- proper application name
-- proper application icon
-- clean startup/shutdown
-- no orphan processes
-- graceful errors
-- predictable project saving
-- appropriate unsaved-change warnings if relevant
-
-Closing the application must cleanly terminate any temporary Python sidecar or helper process.
-
-
-==================================================
-14. BUILD EXPERIENCE
-==================================================
-
-I can currently build the Electron application with a single npm command.
-
-Preserve similar simplicity.
-
-Create clear npm scripts, ideally along the lines of:
-
-npm run dev
-npm run tauri:dev
-npm run build
-npm run tauri:build
-npm test
-
-Use existing project conventions where appropriate rather than introducing unnecessary duplicate scripts.
-
-A clean checkout should have documented, reproducible prerequisites and build steps.
-
-Do NOT require signing credentials for ordinary development/debug builds.
-
-
-==================================================
-15. DISTRIBUTION ARCHITECTURE
-==================================================
-
-Design the project now so production signing/distribution can be added later without restructuring the application.
-
-Do NOT add real signing credentials now.
-
-Where configuration will eventually need:
-
-- publisher identity
-- package identifier
-- certificate identity
-- product URLs
-- signing configuration
-
-use clear placeholders and document them.
-
-Keep application/package identifiers stable once we approach public releases.
-
-
-==================================================
-16. WINDOWS DISTRIBUTION
-==================================================
-
-The eventual Windows version must be suitable for trusted commercial distribution and Microsoft Store submission.
-
-Keep compatibility with current Tauri 2 and Microsoft-supported Windows distribution practices.
-
-Do not prematurely lock the project into only one Windows packaging strategy.
-
-Preserve the ability to choose between:
-
-1. Microsoft Store distribution using an appropriate Store-compatible installer/package and Microsoft's current MSIX tooling if appropriate
-
-2. signed MSI/EXE distribution through the Microsoft Store if appropriate
-
-3. signed direct-download installer from our own website
-
-For Microsoft Store builds, prepare the architecture for requirements such as:
-
-- silent installation where required
-- appropriate WebView2 packaging/install configuration
-- package identity
-- deterministic versioning
-- proper icons/assets
-- Store-compatible packaging
-
-Keep Store-specific configuration separate from ordinary development/direct-distribution configuration where appropriate.
-
-Do not purchase certificates or configure production signing yet.
-
-
-==================================================
-17. MACOS DISTRIBUTION
-==================================================
-
-Prepare the application for eventual direct distribution outside the Mac App Store.
-
-Design for eventual use of:
-
-- Apple Developer ID Application signing
-- hardened runtime
-- Apple notarization
-- stapling/notarized distribution
-- Tauri-supported macOS packaging such as DMG
-
-Do not store:
-
-- Apple IDs
-- passwords
-- App Store Connect credentials
-- signing certificates
-- private keys
-- notarization credentials
-
-in source control.
-
-Signing identities and credentials should eventually be supplied through secure local environment configuration or CI secret storage.
-
-We may eventually evaluate Mac App Store distribution, so avoid unnecessary architectural choices that would make future App Store packaging difficult.
-
-
-==================================================
-18. PLATFORM ARCHITECTURES
-==================================================
-
-Plan for:
-
-- Windows x86_64 initially
-- Windows ARM64 in the future if practical
-- macOS Apple Silicon / arm64
-- macOS Intel / x86_64 if reasonably practical
-
-Do not assume helper executables work automatically across architectures.
-
-If Python or another sidecar remains, explicitly account for platform/architecture-specific sidecar binaries.
-
-
-==================================================
-19. CI/CD PREPARATION
-==================================================
-
-Do not configure real production signing yet.
-
-Prepare the repository so we can eventually create GitHub Actions release workflows.
-
-Future goals:
-
-- Windows release builds on Windows runners
-- macOS release builds on macOS runners
-- signing/notarization credentials stored only in GitHub Actions secrets or another secure secret store
-- reproducible release artifacts
-- automatic testing before releases
-- no private keys committed to git
-- no secrets embedded in application source
-
-Document the expected future release process.
-
-
-==================================================
-20. DEPENDENCIES
-==================================================
-
-Minimize dependencies.
-
-Before adding a Tauri plugin or Rust crate:
-
-- determine whether it is actually necessary
-- prefer official Tauri plugins for standard Tauri functionality
-- prefer mature/well-maintained dependencies
-- avoid obscure dependencies for trivial tasks
-- avoid packages introducing unnecessary network behavior
-
-Do not upgrade unrelated frontend dependencies merely because newer versions exist unless required for compatibility/security.
-
-Remove obsolete Electron dependencies when the migration is complete.
-
-
-==================================================
-21. TESTING
-==================================================
-
-Before migration, identify the existing tests.
-
-Preserve or add tests for scheduling/domain behavior.
-
-At minimum verify:
-
-- application launches
-- existing frontend renders correctly
-- current scheduling examples still work
-- imports work
-- exports work
-- saved projects/state reopen correctly if that feature exists
-- malformed imports fail gracefully
-- app closes without orphan processes
-- production build completes
-- paths/storage work appropriately
-
-WHEN MIGRATING SCHEDULING LOGIC FROM PYTHON TO RUST:
-
-Create equivalence/regression tests BEFORE removing the Python implementation.
-
-Use representative anonymized inputs and compare:
-
-OLD Python implementation
-
-versus
-
-NEW Rust implementation
-
-Verify equivalent:
-
-- hard constraint behavior
-- assignments
-- conflicts
-- workloads/hours
-- optimization objectives
-- edge cases
-
-Where the optimizer is nondeterministic, compare correctness and objective/constraint behavior rather than requiring byte-for-byte identical output.
-
-Do not delete the working Python implementation until the Rust replacement is demonstrated to be correct.
-
-
-==================================================
-22. DOCUMENTATION
-==================================================
-
-Create or update:
-
-README.md
-
-Also create:
-
-docs/ARCHITECTURE.md
-docs/BUILDING.md
-docs/DISTRIBUTION.md
-docs/PRIVACY-ARCHITECTURE.md
-docs/MIGRATION-ELECTRON-TO-TAURI.md
-
-ARCHITECTURE.md should explain:
-
-- frontend architecture
-- platform abstraction
-- Rust backend
-- scheduling engine
-- desktop/web separation
-- Python sidecar if one remains
-- future WebAssembly possibility
-- persistence model
-
-BUILDING.md should explain:
-
-- prerequisites
-- development setup
-- Tauri development
-- production builds
-- platform-specific requirements
-
-DISTRIBUTION.md should explain:
-
-- development builds
-- Windows builds
-- future Windows signing
-- Microsoft Store preparation
-- direct Windows distribution
-- macOS builds
-- future Apple Developer ID signing
-- notarization
-- credentials eventually needed
-- placeholders that must be replaced before release
-
-PRIVACY-ARCHITECTURE.md should clearly document:
-
-- what student/user data exists
-- where data is stored
-- whether data leaves the device
-- filesystem permissions
-- network behavior
-- logging policy
-- sidecars/helper processes
-- third-party components relevant to privacy
-- future local-data web architecture
-- optional future cloud functionality
-
-MIGRATION-ELECTRON-TO-TAURI.md should document:
-
-- original architecture
-- migration decisions
-- functionality replaced
-- Electron APIs removed
-- Python functionality migrated
-- remaining technical debt
-
-
-==================================================
-23. MIGRATION PROCESS
-==================================================
-
-Do the migration incrementally rather than as one giant edit.
-
-PHASE 1: ANALYSIS
-
-- inspect repository
-- document current architecture
-- identify Electron APIs
-- identify Python/uvicorn APIs
-- identify scheduling dependencies
-- identify persistence/import/export architecture
-- identify tests
-- write migration plan
-
-Before making substantial changes, show me the migration plan and any important architectural decisions.
-
-
-PHASE 2: TAURI SHELL
-
-- scaffold Tauri 2 around existing frontend
-- make existing UI launch under Tauri
-- preserve Electron temporarily if useful
-- establish basic build commands
-
-
-PHASE 3: PLATFORM ABSTRACTION
-
-- create service/platform interfaces
-- isolate Tauri-specific functionality
-- replace Electron main/preload/IPC functionality
-- establish typed frontend/Rust communication
-- migrate file dialogs/filesystem integration
-
-
-PHASE 4: PYTHON BACKEND
-
-- inventory FastAPI/uvicorn behavior
-- separate domain logic from HTTP
-- migrate straightforward functionality to Rust
-- eliminate unnecessary localhost HTTP architecture
-- safely preserve complex Python optimization as a bundled sidecar if necessary
-
-
-PHASE 5: SCHEDULING ENGINE
-
-- isolate scheduling domain model
-- create regression/equivalence tests
-- determine whether scheduling should remain temporarily Python or become pure Rust
-- if migrating, put scheduling logic in a Tauri-independent Rust crate
-- preserve future WebAssembly compatibility where practical
-
-
-PHASE 6: FEATURE PARITY
-
-- verify imports
-- verify exports
-- verify scheduling
-- verify manual scheduling changes
-- verify persistence
-- verify error handling
-- verify graceful shutdown
-- verify privacy/network behavior
-
-
-PHASE 7: ELECTRON REMOVAL
-
-Only after Tauri reaches feature parity:
-
-- remove Electron
-- remove preload/main process
-- remove Electron IPC
-- remove obsolete build tooling
-- remove obsolete dependencies
-- remove dead configuration
-
-
-PHASE 8: PRODUCTION PREPARATION
-
-- establish clean Tauri bundle configuration
-- establish stable application identifiers
-- prepare Windows bundle configuration
-- prepare macOS bundle configuration
-- ensure release builds complete
-- complete documentation
-
-
-==================================================
-24. IMPORTANT WORKING RULES
-==================================================
-
-Do not claim a phase is complete until it has actually been tested.
-
-Do not silently remove features.
-
-Do not rewrite the frontend unnecessarily.
-
-Do not replace reliable scheduling logic merely because Rust is available.
-
-Do not introduce a remote server dependency for functionality that can operate locally.
-
-Do not introduce cloud storage for convenience.
-
-Do not introduce WebAssembly yet merely to demonstrate that it works.
-
-Do not over-engineer future functionality that we do not currently need.
-
-Instead, maintain clean architectural boundaries so future capabilities remain possible.
-
-When encountering an architectural choice with significant long-term consequences:
-
-1. Explain the alternatives.
-2. Recommend one.
-3. Explain why.
-4. Identify implications for:
-   - desktop distribution
-   - future browser deployment
-   - privacy
-   - maintenance
-   - code signing
-   - testing
-5. Then make the change only if it is consistent with the stated goals.
-
-Prefer boring, maintainable solutions over clever ones.
-
-Never commit:
-
-- private keys
-- signing certificates
-- tokens
-- passwords
-- developer credentials
-- personally identifiable test/student data
-
-Use synthetic/anonymized fixtures.
-
-
-==================================================
-25. FINAL ARCHITECTURAL PRINCIPLES
-==================================================
-
-Keep these principles in mind throughout the migration:
-
-1. Core scheduling must work without Internet access.
-
-2. The vendor should not need possession of student scheduling data in order to provide the scheduling service.
-
-3. Desktop vs. web and local vs. cloud are independent choices.
-
-4. A future web edition should be capable of processing and storing student scheduling data entirely on the user's device.
-
-5. Cloud sync/collaboration, if ever implemented, should be optional.
-
-6. Licensing must not require access to student scheduling data.
-
-7. React should not be tightly coupled to Tauri.
-
-8. Scheduling logic should not be tightly coupled to Tauri.
-
-9. Scheduling logic should not depend on HTTP.
-
-10. Scheduling should not require server-side computation.
-
-11. If Rust becomes the long-term scheduling implementation, keep it sufficiently independent that future WebAssembly compilation remains possible.
-
-12. Use least privilege.
-
-13. Collect and transmit as little data as possible.
-
-14. Development convenience must not silently create long-term privacy/security obligations.
-
-15. Preserve correctness above architectural purity.
-
-
-==================================================
-26. COMPLETION REPORT
-==================================================
-
-At the conclusion of the migration work, provide me with:
-
-1. A concise description of the final architecture.
-
-2. A diagram of the important layers and data flow.
-
-3. A list of Electron code/dependencies removed.
-
-4. A list of Python functionality migrated to Rust.
-
-5. Any Python functionality still remaining and why.
-
-6. A description of the scheduling engine and whether it is suitable for future WebAssembly compilation.
-
-7. A description of the platform abstraction and how a future browser implementation could use it.
-
-8. Current development and production build commands.
-
-9. Known Windows-specific limitations.
-
-10. Known macOS-specific limitations.
-
-11. Work still required for Windows Store distribution.
-
-12. Work still required for Windows direct-download signing.
-
-13. Work still required for Apple Developer ID signing/notarization.
-
-14. Security/privacy issues I should review.
-
-15. Any remaining network communications made by the application.
-
-16. Any third-party services that could receive application/user/student information.
-
-17. Manual testing I should perform before considering this migration complete.
-
-18. Technical debt introduced during the migration.
-
-19. Recommended next steps.
-
-20. Confirmation that the production scheduling workflow can operate without Internet access and without transmitting student scheduling data off the user's device.
+The fundamental privacy principle is:
+
+"The application provider should not need possession of student scheduling data in order to provide the scheduling service."
+
+Therefore:
+
+- core scheduling works offline
+- project data remains local by default
+- no telemetry
+- no analytics
+- no advertising SDKs
+- no student data sent to AI/LLM services
+- no unnecessary network communication
+- least-privilege Tauri permissions
+- no arbitrary frontend shell execution
+- validate all frontend/native inputs
+- do not log personally identifiable student information when avoidable
+- use anonymized/synthetic test data
