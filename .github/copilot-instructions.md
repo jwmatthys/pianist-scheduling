@@ -1,64 +1,268 @@
-# Accompanist Scheduler Development Instructions
+# Music Program Scheduler - Copilot Instructions
 
-## Architecture
+## Product
 
-- This is a Tauri 2 + React + TypeScript + Rust application.
-- Keep UI/domain code independent of Tauri wherever practical.
-- Platform-specific capabilities must go through the platform/service abstraction layer.
-- Keep scheduling logic independent of Tauri, UI, persistence, and HTTP.
-- Prefer a pure Rust scheduling-core crate if scheduling logic is implemented in Rust.
-- Preserve the possibility of compiling the scheduling core to WebAssembly for a future browser version.
-- Do not introduce a server dependency for functionality that can run locally.
+This project is a modular scheduling application for university and conservatory music programs.
+
+The current production module schedules accompanists for student lessons.
+
+Planned future modules include:
+- Music Therapy Clinical Placements
+- Performance Jury Scheduling
+
+Other music-program scheduling modules may be added later.
+
+Do not treat this application internally as only an "Accompanist Scheduler."
+
+The accompanist scheduler is a module within the larger Music Program Scheduler product.
+
+
+## Core Architectural Principle
+
+GENERALIZE SHARED DOMAIN CONCEPTS AND INFRASTRUCTURE.
+
+DO NOT CREATE ONE UNIVERSAL OPTIMIZATION ALGORITHM.
+
+Different scheduling modules may have fundamentally different:
+- input data
+- constraints
+- objective functions
+- algorithms
+- workflows
+- outputs
+
+Shared concepts may include:
+- academic terms
+- people
+- students
+- faculty
+- staff
+- locations
+- rooms
+- sites
+- dates/times
+- availability
+- travel
+- assignments
+- imports/exports
+- validation
+
+Keep module-specific concepts inside their modules.
+
+
+## Application Structure
+
+Prefer conceptually:
+
+Music Program Scheduler
+    |
+    +-- Shared Domain
+    |
+    +-- Academic Terms
+    |
+    +-- Scheduling Modules
+    |     +-- Accompanists
+    |     +-- Clinical Placements
+    |     +-- Juries
+    |
+    +-- Shared Infrastructure
+    |
+    +-- Platform Abstraction
+          +-- Tauri
+          +-- Future Browser
+
+Major scheduling modules should be separate workflows/modules.
+
+Tabs may be used INSIDE modules.
+
+Do not model the major scheduling modules merely as tabs of one universal scheduler.
+
+
+## Shared vs Module-Specific Data
+
+Do not create giant universal Student, Person, Assignment, or Schedule types containing every field that any future module might need.
+
+Prefer:
+- small shared identities/concepts
+- module-specific data layered on top
+
+Only promote a concept into the shared domain when it is genuinely shared.
+
+
+## Optimization
+
+Each scheduling problem may have its own optimizer.
+
+Examples:
+- AccompanistOptimizer
+- ClinicalPlacementOptimizer
+- JuryOptimizer
+
+Reusable primitives/utilities are encouraged where genuinely useful.
+
+Do not distort one scheduling problem to make it fit another algorithm.
+
+Keep scheduling logic independent of:
+- UI
+- Tauri
+- HTTP
+- persistence
+- remote servers
+
+If implemented in Rust, prefer pure Tauri-independent solver/domain crates.
+
+
+## Cross-Module Data
+
+Modules may consume finalized results from other modules.
+
+Known example:
+
+Accompanist Assignments -> Performance Jury Scheduling
+
+Prefer structured internal result sharing over exporting and reimporting spreadsheets.
+
+Avoid tightly coupling one module's implementation directly to another module.
+
+
+## Academic Terms
+
+Academic terms are an important organizing concept.
+
+Examples:
+- Fall 2026
+- Spring 2027
+
+Module data and results should normally belong to an academic term.
+
+
+## Platform Architecture
+
+This is currently a Tauri 2 + React + TypeScript + Rust desktop application.
+
+Do not tightly couple React to Tauri.
+
+Platform-specific capabilities must go through clear service/platform abstractions where practical.
+
+Examples:
+- FileService
+- ProjectStorage
+- SettingsService
+- PlatformService
+- UpdateService
+
+UI components should not directly invoke native/platform functionality throughout the codebase.
+
+
+## Future Web Version
+
+The architecture must preserve a future browser/SaaS deployment.
+
+Treat these as independent choices:
+- Desktop vs Web
+- Local vs Cloud
+
+A future browser version should be capable of:
+- processing imports locally
+- running scheduling locally
+- storing projects locally
+- generating exports locally
+
+A web version must not require student scheduling data to be stored on our servers.
+
+Do not introduce a server requirement for functionality that can operate locally.
+
+If Rust scheduling engines are used, preserve reasonable separation so future WebAssembly compilation remains possible.
+
+Do not implement WebAssembly prematurely.
+
 
 ## Privacy
 
-This application handles student scheduling data.
+This application handles student scheduling information.
 
-The fundamental privacy principle is:
+Fundamental principle:
 
 > The application provider should not need possession of student scheduling data in order to provide the scheduling service.
 
 Therefore:
 
 - Core scheduling must work offline.
-- Student scheduling data must remain local by default.
-- Do not add telemetry or analytics.
+- Student scheduling data remains local by default.
+- Do not add telemetry.
+- Do not add analytics.
+- Do not add advertising SDKs.
 - Do not send student data to AI/LLM services.
-- Do not send student data to remote services.
+- Do not send student data to remote services without an explicitly requested feature.
 - Do not introduce cloud storage without explicit instruction.
-- Use least-privilege Tauri permissions.
-- Do not expose generic shell execution to the frontend.
 - Avoid logging personally identifiable student information.
-- Use only synthetic/anonymized student data in tests.
+- Use synthetic/anonymized data in tests.
 
-## Future Web Version
+Licensing must remain independent from student scheduling data.
 
-Treat these as independent decisions:
 
-- Desktop vs Web
-- Local vs Cloud
+## Tauri Security
 
-A future browser/SaaS version must be capable of running the scheduling engine and storing scheduling data locally in the browser.
+Use least privilege.
 
-Do not tightly couple:
-- React to Tauri
-- scheduling to Tauri
-- scheduling to HTTP
-- scheduling to a server
-- project storage to a server
-- licensing to student scheduling data
+Do not broadly enable Tauri capabilities.
+
+Do not expose generic shell execution to the frontend.
+
+Validate data crossing the frontend/native boundary.
+
+Prefer narrow, typed native commands.
+
+Do not commit:
+- passwords
+- tokens
+- API keys
+- signing keys
+- signing certificates
+- notarization credentials
+- developer-account credentials
+
+
+## Python Migration
+
+Existing working Python scheduling code must not be rewritten merely for architectural purity.
+
+Before replacing a working optimizer:
+1. create regression/equivalence tests
+2. verify hard constraints
+3. verify relevant objective behavior
+4. verify calculations
+5. test edge cases
+
+Temporary bundled Python sidecars are acceptable if necessary.
+
+End users must not need Python installed.
+
+Prefer eliminating persistent localhost HTTP/uvicorn architecture from production where practical.
+
 
 ## Development Practices
 
 - Preserve existing functionality unless explicitly changing it.
 - Prefer incremental changes over repository-wide rewrites.
-- Add regression tests before replacing working scheduling logic.
-- Prefer boring, maintainable solutions over clever ones.
-- Do not commit credentials, signing keys, certificates, passwords, tokens, or personally identifiable student data.
+- Do not silently remove features.
+- Keep UI changes separate from solver changes where practical.
 - Keep Tauri command handlers thin.
-- Use structured types rather than unstructured JSON where practical.
+- Prefer typed models over stringly-typed/unstructured data.
 - Return structured errors for recoverable failures.
-- Do not use unwrap()/expect() for normal user-input or file-processing errors.
+- Avoid unwrap()/expect() for normal user input/file-processing failures.
+- Prefer boring, maintainable solutions over clever ones.
+- Do not build speculative future modules before they are needed.
+
+
+## Imports and Exports
+
+Share parsing, validation, and export infrastructure where useful.
+
+Allow modules to have different input schemas.
+
+Do not create one giant universal spreadsheet format merely to make modules look alike.
+
 
 ## Distribution
 
@@ -66,9 +270,39 @@ The application will eventually be commercially distributed on Windows and macOS
 
 Maintain compatibility with:
 - Windows Microsoft Store distribution
-- appropriately signed Windows direct distribution
+- signed Windows direct distribution
 - Apple Developer ID signing
 - Apple notarization
-- Prioritize Apple Silicon, but support Intel macOS where practical
+- Apple Silicon
+- Intel macOS where reasonably practical
 
-Do not add actual production signing credentials to the repository.
+Do not add real production signing credentials to the repository.
+
+Development builds must not require signing credentials.
+
+
+## Repository Documentation
+
+Important architectural documentation lives in:
+
+- docs/ARCHITECTURE.md
+- docs/MODULE-ARCHITECTURE.md
+- docs/PRIVACY-ARCHITECTURE.md
+- docs/DISTRIBUTION.md
+- docs/BUILDING.md
+
+During the Electron-to-Tauri migration also follow:
+
+- docs/TAURI-MIGRATION-PLAN.md
+- docs/MIGRATION-ELECTRON-TO-TAURI.md
+
+Keep documentation synchronized with significant architectural changes.
+
+
+## Decision Rule
+
+When uncertain whether something belongs in shared infrastructure or a module, default to keeping it inside the module until there is demonstrated reuse.
+
+It is easier to generalize two proven implementations later than to undo a premature abstraction.
+
+Preserve correctness above architectural purity.
