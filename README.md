@@ -2,7 +2,7 @@
 
 A pair of Python scripts that automate two distinct scheduling problems for music programs:
 
-1. **`generate_pianist_schedule.py`** — Assigns piano accompanists to student lessons based on availability, workload caps, preference, overlap rules, and travel-aware block scheduling.
+1. **`generate_pianist_schedule.py`** — Assigns piano accompanists to student lessons based on availability, workload caps, preference, compatible overlap rules, and schedule consolidation.
 2. **`generate_jury_schedule.py`** — Generates a jury day schedule by sequencing students across rooms, resolving pianist conflicts across concurrent areas, and inserting breaks.
 
 Both scripts read from a shared Excel workbook and write timestamped `.xlsx` output files.
@@ -291,21 +291,21 @@ For each lesson, the algorithm applies the following decision tree:
 
 3. **Overlap fit:** If no accompanist achieves `Near` fit or better, the algorithm checks whether the lesson can share an accompanist with a recently assigned lesson that overlaps by ≤30 minutes, provided the accompanist covers the combined window.
 
-4. **Conflict fallback:** If no fit exists, the least-loaded accompanist is assigned and the lesson is flagged as a conflict.
+4. **No valid candidate:** If no standard fit or permitted overlap is available, an ordinary lesson remains unassigned with an explanatory reason. Required-pianist assignments remain assigned and are flagged if infeasible.
 
-#### 4. Travel-Aware Schedule Penalty
+#### 4. Schedule Consolidation Penalty
 
-To reduce pianist travel to and from campus, each candidate is scored by the schedule they would have *after* receiving the lesson. Tie-breaking prefers, in order:
+Each candidate is scored by the schedule they would have *after* receiving the lesson. Tie-breaking prefers, in order:
 
 1. **Fewer active campus days**
 2. **Fewer separate blocks across the week**
 3. **Less same-day gap time**
 
-This means a pianist keeping two students on the same day with a longer break between them is intentionally preferred over splitting those students across additional days.
+This favors fewer active days, fewer separate blocks, and shorter same-day gaps. The current algorithm does not use room/site distance or calculate travel time.
 
 #### 5. Workload Balancing
 
-Each accompanist has an optional maximum weekly hours cap. Assignments that would exceed the cap are still made (to avoid leaving lessons unassigned) but are flagged with `⚠ OVER CAP`.
+Each accompanist has an optional maximum weekly hours cap. Ordinary candidates within cap are preferred; required or manually imposed assignments may exceed the cap. Over-cap warnings are recalculated from merged weekly assignment time.
 
 ---
 

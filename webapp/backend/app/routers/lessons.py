@@ -34,7 +34,7 @@ def update_lesson(lesson_id: int, payload: schemas.LessonUpdate, db: Session = D
         lesson.assigned_pianist_id = None
     if "assigned_pianist_id" in data or clear:
         lesson.manually_edited = True
-        lesson.fit_quality = lesson.fit_quality or "Manual"
+        lesson.fit_quality = "Manual"
     db.commit()
     db.refresh(lesson)
     return lesson

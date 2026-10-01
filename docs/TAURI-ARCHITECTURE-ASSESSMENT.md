@@ -1,6 +1,6 @@
 # Phase 1: Architecture Assessment and Proposed Migration Plan
 
-**Status:** Assessment only. No application code has been changed.
+**Status:** Phase 1 assessment snapshot. Phase 2.5 policy corrections and current behavior are documented in [ACCOMPANIST-BEHAVIOR-CHARACTERIZATION.md](ACCOMPANIST-BEHAVIOR-CHARACTERIZATION.md).
 
 ## Executive Assessment
 
@@ -72,7 +72,7 @@ sequenceDiagram
 ### Scheduling and scripts
 
 - `backend/app/services/scheduling.py` is a Python in-memory accompanist assignment engine adapted from `generate_pianist_schedule.py`. It accepts lightweight engine records and computes fit tiers, availability, conflicts, workload caps, schedule penalties, and derived hours; the router translates between ORM and engine records.
-- `generate_pianist_schedule.py` remains a separate Excel-oriented implementation. Its published behavior includes required-pianist matching, fit tiers, overlap handling, conflict fallback, workload balancing, cap repair, block/travel-aware tie-breaking, and multi-sheet Excel output. The README describes this CLI behavior as established functionality.
+- `generate_pianist_schedule.py` remains a separate Excel-oriented implementation. Its behavior includes required-pianist matching, fit tiers, compatible overlap handling, explanatory unassignment for ordinary infeasible lessons, workload balancing, cap repair, schedule-consolidation tie-breaking, and multi-sheet Excel output.
 - `generate_jury_schedule.py` is a separate jury-day solver. It schedules fixed-length jury slots by area and room, respects fixed pianist commitments/unavailability, inserts breaks, reduces gaps, and writes summary, area, and pianist sheets. It is not an endpoint in the desktop API.
 - `generate_lesson_markdown.py` creates reports from a separate master-workbook schema. `generate_lesson_schedule.py` creates a room-oriented Excel schedule. `generate_test_data.py` produces synthetic Excel inputs, but is not an automated test suite.
 
@@ -168,4 +168,4 @@ The following steps are proposed after Phase 1. They are deliberately gated so s
 - [x] Produce the architecture assessment and proposed follow-on plan.
 - [x] Make no application-code changes.
 
-**Phase 1 deliverable:** this assessment. The next actionable gate is Phase 2's behavior characterization and regression tests, before any solver or persistence rewrite.
+**Phase 1 deliverable:** this assessment. Phase 2's characterization findings and regression results are documented in [ACCOMPANIST-BEHAVIOR-CHARACTERIZATION.md](ACCOMPANIST-BEHAVIOR-CHARACTERIZATION.md).

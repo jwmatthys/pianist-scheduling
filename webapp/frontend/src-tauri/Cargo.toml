@@ -1,0 +1,19 @@
+[package]
+name = "music-program-scheduler"
+version = "0.0.0"
+description = "Music Program Scheduler desktop shell"
+authors = ["Music Program Scheduler"]
+edition = "2021"
+
+[lib]
+name = "music_program_scheduler_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

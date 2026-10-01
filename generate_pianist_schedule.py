@@ -30,7 +30,7 @@ Fit levels (highest to lowest):
     OVERLAP  - lesson overlaps ≤30 min with another lesson already assigned to this
                accompanist, and the accompanist covers the full combined window;
                only used when neither lesson has a required accompanist
-    NONE     - no fit at all; best partial match assigned and flagged
+    NONE     - no valid fit; ordinary lessons remain unassigned with a reason
 
 Required accompanist:
     If "Required Accompanist" column is populated, only that accompanist may be
@@ -263,14 +263,18 @@ def assigned_minutes(assignments):
 
     total = 0
     for windows in by_day.values():
-        merged = []
-        for start, end in sorted(windows):
-            if merged and start <= merged[-1][1]:
-                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
-            else:
-                merged.append((start, end))
-        total += sum(end - start for start, end in merged)
+        total += sum(end - start for start, end in merge_intervals(windows))
     return total
+
+
+def merge_intervals(windows):
+    merged = []
+    for start, end in sorted(windows):
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
 
 
 def projected_hours(assignments, lesson):
@@ -288,8 +292,8 @@ def schedule_penalty(assignments):
       2. total_blocks
       3. total_gap_minutes
 
-    This makes fewer campus days the highest-priority travel optimization,
-    while still preferring fewer separate blocks and shorter same-day gaps.
+    This favors schedule consolidation: fewer active days, fewer blocks, and
+    shorter same-day gaps. It does not calculate location-based travel.
     """
     if not assignments:
         return 0, 0, 0
@@ -301,14 +305,12 @@ def schedule_penalty(assignments):
     total_blocks = 0
     total_gap_min = 0
     for slots in by_day.values():
-        slots.sort()
-        day_blocks = 1
-        for i in range(1, len(slots)):
-            gap = slots[i][0] - slots[i - 1][1]
-            if gap > 0:
-                day_blocks += 1
-                total_gap_min += gap
-        total_blocks += day_blocks
+        merged = merge_intervals(slots)
+        total_blocks += len(merged)
+        total_gap_min += sum(
+            merged[index][0] - merged[index - 1][1]
+            for index in range(1, len(merged))
+        )
 
     return len(by_day), total_blocks, total_gap_min
 
@@ -351,8 +353,8 @@ def assign_lessons(lessons_df, accompanists):
         Assignment priority per lesson:
             1. Required accompanist (hard constraint, processed first)
       2. Best standard fit (Full > Partial > Near)
-      3. Overlap fit (only when neither lesson has a required accompanist)
-    4. Conflict (no fit — best partial match, with a warning)
+        3. Compatible overlap fit (only when neither lesson has a required accompanist)
+    4. Leave unassigned when no valid candidate exists
 
     Ordinary lessons prefer an available under-cap pianist before comparing fit
     quality. Within that group: prefer Full > Partial > Near, then non-tentative,
@@ -428,6 +430,24 @@ def assign_lessons(lessons_df, accompanists):
                 assigned_name = required
                 if has_conflict(current_assigns[required], day, s_min, e_min):
                     flags.append(f"⚠ REQUIRED PIANIST '{required}' has a CONFLICTING lesson at this time")
+                    for previous in results:
+                        if (
+                            previous["Assigned Accompanist"] == required
+                            and previous["Lesson Day"] == day
+                            and overlap_minutes(
+                                s_min,
+                                e_min,
+                                to_min(parse_time(previous["Lesson Start Time"])),
+                                to_min(parse_time(previous["Lesson End Time"])),
+                            ) > 0
+                        ):
+                            previous_note = (
+                                f"⚠ REQUIRED PIANIST CONFLICT: overlaps "
+                                f"{lesson.get('Student Name', '')}"
+                            )
+                            previous["Notes"] = " | ".join(
+                                note for note in (previous["Notes"], previous_note) if note
+                            )
                 if fit_score == FIT_NONE:
                     flags.append(f"⚠ REQUIRED PIANIST '{required}' is UNAVAILABLE for this time")
                 elif fit_score == FIT_NEAR:
@@ -492,6 +512,8 @@ def assign_lessons(lessons_df, accompanists):
                         continue
                     if prev.get("_required"):      # skip if that lesson had a required acc
                         continue
+                    if prev["Assigned Accompanist"] == "UNASSIGNED":
+                        continue
                     prev_s = to_min(parse_time(prev["Lesson Start Time"]))
                     prev_e = to_min(parse_time(prev["Lesson End Time"]))
                     ov = overlap_minutes(s_min, e_min, prev_s, prev_e)
@@ -532,17 +554,18 @@ def assign_lessons(lessons_df, accompanists):
                     overlap_pair["Fit Quality"] = FIT_LABELS[FIT_OVERLAP]
 
                 else:
-                    # ── Conflict: assign best partial match ───────────────────
-                    # Prefer candidates who aren't already double-booked at this time
-                    candidates.sort(key=lambda c: (c["conflict"], c["over_cap"], c["schedule_penalty"], c["workload"]))
-                    chosen        = candidates[0]
-                    assigned_name = chosen["name"]
-                    fit_score     = FIT_NONE
-                    flags.append("⚠ CONFLICT: No available accompanist — best match assigned")
-                    if chosen["conflict"]:
-                        flags.append(f"⚠ DOUBLE-BOOKED: '{assigned_name}' already has an overlapping lesson at this time")
-                    if chosen["over_cap"]:
-                        flags.append(f"⚠ OVER CAP: Exceeds {chosen['max_hours']}h weekly limit")
+                    if not candidates:
+                        flags.append("No pianists are available; lesson left unassigned.")
+                    elif all(candidate["conflict"] for candidate in candidates):
+                        flags.append(
+                            "All pianists are already assigned during this lesson; "
+                            "no permitted overlap fit was found. Lesson left unassigned."
+                        )
+                    else:
+                        flags.append(
+                            "No pianist has sufficient availability and no permitted "
+                            "overlap fit was found. Lesson left unassigned."
+                        )
 
             # Standard-fit flags
             if fit_score == FIT_NEAR:
@@ -655,6 +678,17 @@ def assign_lessons(lessons_df, accompanists):
             sum(result["Hours"] for result in results
                 if result["Assigned Accompanist"] == name), 2
         )
+
+    for result in results:
+        assigned = result["Assigned Accompanist"]
+        notes = [note for note in result["Notes"].split(" | ") if note and "OVER CAP" not in note]
+        if assigned == "UNASSIGNED":
+            result["Notes"] = " | ".join(notes)
+            continue
+        cap = max_hours_map.get(assigned)
+        if cap and current_hours[assigned] > cap:
+            notes.append(f"⚠ OVER CAP: Exceeds {cap}h weekly limit")
+        result["Notes"] = " | ".join(notes)
 
     return results, current_hours
 

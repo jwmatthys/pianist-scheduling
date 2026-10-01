@@ -26,6 +26,12 @@ body {
   font-size: 1.4rem;
 }
 
+.app-module-label {
+  margin: -0.25rem 0 0.5rem;
+  font-size: 0.9rem;
+  opacity: 0.85;
+}
+
 .tab-nav {
   display: flex;
   gap: 0.5rem;

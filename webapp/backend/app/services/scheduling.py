@@ -84,8 +84,33 @@ def get_fit(day: str, start_min: int, end_min: int, avail: dict) -> tuple[int, b
     return FIT_NONE, False
 
 
+def get_fit_for_window(day: str, start_min: int, end_min: int, avail: dict) -> int:
+    day_avail = avail.get(day, {})
+    covered = [
+        status for slot_min, status in day_avail.items()
+        if slot_min < end_min and slot_min + 30 > start_min
+    ]
+    if not covered:
+        return FIT_NONE
+    if all(status == "Available" for status in covered):
+        return FIT_FULL
+    if all(status in ("Available", "Tentative") for status in covered):
+        return FIT_PARTIAL
+    return FIT_NONE
+
+
 def overlap_minutes(a_start, a_end, b_start, b_end) -> int:
     return max(0, min(a_end, b_end) - max(a_start, b_start))
+
+
+def merge_intervals(windows: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(windows):
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
 
 
 def has_conflict(existing_assigns, day, s_min, e_min) -> bool:
@@ -103,13 +128,7 @@ def assigned_minutes(assignments) -> int:
 
     total = 0
     for windows in by_day.values():
-        merged: list[tuple[int, int]] = []
-        for start, end in sorted(windows):
-            if merged and start <= merged[-1][1]:
-                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
-            else:
-                merged.append((start, end))
-        total += sum(end - start for start, end in merged)
+        total += sum(end - start for start, end in merge_intervals(windows))
     return total
 
 
@@ -128,14 +147,12 @@ def schedule_penalty(assignments):
     total_blocks = 0
     total_gap_min = 0
     for slots in by_day.values():
-        slots.sort()
-        day_blocks = 1
-        for i in range(1, len(slots)):
-            gap = slots[i][0] - slots[i - 1][1]
-            if gap > 0:
-                day_blocks += 1
-                total_gap_min += gap
-        total_blocks += day_blocks
+        merged = merge_intervals(slots)
+        total_blocks += len(merged)
+        total_gap_min += sum(
+            merged[index][0] - merged[index - 1][1]
+            for index in range(1, len(merged))
+        )
 
     return len(by_day), total_blocks, total_gap_min
 
@@ -187,6 +204,7 @@ def assign_lessons(
 
     pianist_names = [p.name for p in pianists]
     pianist_by_name = {p.name: p for p in pianists}
+    pianist_by_id = {p.id: p for p in pianists}
     current_assigns: dict[int, list[tuple[str, int, int]]] = {p.id: [] for p in pianists}
     results_so_far: list[EngineLesson] = []
 
@@ -219,7 +237,7 @@ def assign_lessons(
             else:
                 p = pianist_by_name[required]
                 fit_score, has_tentative = get_fit(day, start, end, p.avail)
-                assigned = p if not has_conflict(current_assigns[p.id], day, start, end) else None
+                assigned = p
                 if has_conflict(current_assigns[p.id], day, start, end):
                     flags.append(f"\u26a0 REQUIRED PIANIST '{required}' has a CONFLICTING lesson at this time")
                 if fit_score == FIT_NONE:
@@ -265,7 +283,58 @@ def assign_lessons(
                 fit_score = chosen["fit"]
                 has_tentative = chosen["tentative"]
             else:
-                flags.append("No pianist available.")
+                overlap_candidate = None
+                for previous in results_so_far:
+                    if previous.id in locked_ids or previous.required_pianist_name.strip():
+                        continue
+                    if previous.assigned_pianist_id is None or previous.day != day:
+                        continue
+                    overlap = overlap_minutes(start, end, previous.start_min, previous.end_min)
+                    if overlap <= 0 or overlap > OVERLAP_MAX_MINUTES:
+                        continue
+                    pianist = pianist_by_id.get(previous.assigned_pianist_id)
+                    if pianist is None:
+                        continue
+                    combined_start = min(start, previous.start_min)
+                    combined_end = max(end, previous.end_min)
+                    combined_fit = get_fit_for_window(
+                        day, combined_start, combined_end, pianist.avail
+                    )
+                    if combined_fit < FIT_PARTIAL:
+                        continue
+                    projected = projected_hours(
+                        current_assigns[pianist.id], (day, start, end)
+                    )
+                    over_cap = bool(pianist.max_hours and projected > pianist.max_hours)
+                    overlap_candidate = (pianist, previous, over_cap)
+                    break
+
+                if overlap_candidate is not None:
+                    assigned, previous, over_cap = overlap_candidate
+                    fit_score = FIT_OVERLAP
+                    flags.append(
+                        f"\u2139 OVERLAP FIT: shares accompanist with lesson #{previous.id}"
+                    )
+                    previous.fit_quality = FIT_LABELS[FIT_OVERLAP]
+                    previous_note = (
+                        f"\u2139 OVERLAP FIT: shares accompanist with lesson #{lesson.id}"
+                    )
+                    if previous_note not in previous.notes:
+                        previous.notes = f"{previous.notes} | {previous_note}".strip(" |")
+                    if over_cap:
+                        flags.append("\u26a0 OVER CAP: pianist exceeds weekly limit")
+                elif not candidates:
+                    flags.append("No pianists are available; lesson left unassigned.")
+                elif all(candidate["conflict"] for candidate in candidates):
+                    flags.append(
+                        "All pianists are already assigned during this lesson; "
+                        "no permitted overlap fit was found. Lesson left unassigned."
+                    )
+                else:
+                    flags.append(
+                        "No pianist has sufficient availability and no permitted "
+                        "overlap fit was found. Lesson left unassigned."
+                    )
 
         if assigned is not None:
             lesson.assigned_pianist_id = assigned.id
@@ -273,7 +342,8 @@ def assign_lessons(
             lesson.fit_quality = FIT_LABELS[fit_score]
         else:
             lesson.fit_quality = "None"
-            flags = ["No pianist available."]
+            if not flags:
+                flags = ["No valid pianist candidate; lesson left unassigned."]
 
         lesson.notes = " | ".join(f for f in flags if f)
         results_so_far.append(lesson)
@@ -297,6 +367,10 @@ def recompute_hours_and_conflicts(lessons: list["EngineLesson"], pianists: list[
     for lesson in lessons:
         if lesson.assigned_pianist_id is None:
             lesson.hours = 0.0
+            lesson.notes = " | ".join(
+                note for note in lesson.notes.split(" | ")
+                if note and "OVER CAP" not in note
+            )
             continue
         by_pianist_lessons.setdefault(lesson.assigned_pianist_id, []).append(lesson)
 
@@ -316,6 +390,7 @@ def recompute_hours_and_conflicts(lessons: list["EngineLesson"], pianists: list[
 
     # Conflict detection across ALL lessons currently assigned (covers manual edits too).
     conflicts: list[str] = []
+    conflict_notes: dict[int, list[str]] = {}
     for pid, plessons in by_pianist_lessons.items():
         plessons_sorted = sorted(plessons, key=lambda l: (day_index(l.day), l.start_min))
         for i in range(len(plessons_sorted)):
@@ -323,11 +398,33 @@ def recompute_hours_and_conflicts(lessons: list["EngineLesson"], pianists: list[
                 a, b = plessons_sorted[i], plessons_sorted[j]
                 if a.day != b.day:
                     continue
-                if overlap_minutes(a.start_min, a.end_min, b.start_min, b.end_min) > 0:
+                overlap = overlap_minutes(a.start_min, a.end_min, b.start_min, b.end_min)
+                allowed_overlap = (
+                    overlap <= OVERLAP_MAX_MINUTES
+                    and a.fit_quality == FIT_LABELS[FIT_OVERLAP]
+                    and b.fit_quality == FIT_LABELS[FIT_OVERLAP]
+                    and not a.required_pianist_name.strip()
+                    and not b.required_pianist_name.strip()
+                )
+                if overlap > 0 and not allowed_overlap:
                     conflicts.append(
                         f"\u26a0 {name_by_id.get(pid, pid)} is double-booked on {a.day}: "
                         f"lessons #{a.id} and #{b.id} overlap"
                     )
+                    conflict_notes.setdefault(a.id, []).append(
+                        f"\u26a0 CONFLICT: overlaps lesson #{b.id} on {a.day}"
+                    )
+                    conflict_notes.setdefault(b.id, []).append(
+                        f"\u26a0 CONFLICT: overlaps lesson #{a.id} on {b.day}"
+                    )
+
+    for lesson in lessons:
+        base_notes = [
+            note for note in lesson.notes.split(" | ")
+            if note and "CONFLICT" not in note
+        ]
+        base_notes.extend(conflict_notes.get(lesson.id, []))
+        lesson.notes = " | ".join(base_notes)
 
     # Update over-cap notes.
     for pid, plessons in by_pianist_lessons.items():
@@ -335,7 +432,7 @@ def recompute_hours_and_conflicts(lessons: list["EngineLesson"], pianists: list[
         total = hours_by_pianist_id.get(pid, 0.0)
         for lesson in plessons:
             base_notes = [n for n in lesson.notes.split(" | ") if n and "OVER CAP" not in n]
-            if mh and total > mh and "OVER CAP" not in lesson.notes:
+            if mh and total > mh:
                 base_notes.append(f"\u26a0 OVER CAP: {name_by_id.get(pid)} at {total}h / {mh}h cap")
             lesson.notes = " | ".join(base_notes)
 

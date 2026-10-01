@@ -5,7 +5,7 @@
 
 This project is evolving from a single-purpose accompanist scheduling application into a modular suite of scheduling tools designed specifically for university and conservatory music programs.
 
-The existing application schedules pianists to student lessons according to pianist availability, lesson times, travel, workload, and schedule-block optimization.
+The existing application schedules pianists to student lessons according to pianist availability, lesson times, workload, and schedule-block consolidation. The current accompanist optimizer does not model actual room/site distance or travel time.
 
 This will become the first scheduling module in a larger product.
 

@@ -28,7 +28,8 @@ function App() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <h1>🎹 Pianist Scheduling</h1>
+        <h1>Music Program Scheduler</h1>
+        <div className="app-module-label">Accompanist Scheduling</div>
         <nav className="tab-nav">
           {TABS.map((t) => (
             <button

@@ -2,7 +2,7 @@
   "name": "frontend",
   "private": true,
   "version": "0.0.0",
-  "description": "Desktop scheduling application for piano accompanists",
+  "description": "Desktop scheduling application for university music programs",
   "homepage": "https://github.com/jwmatthys/pianist-scheduling",
   "desktopName": "pianist-scheduling",
   "author": {
@@ -13,8 +13,13 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
+    "electron:dev": "npm run build:api && electron .",
     "build": "tsc -b && vite build",
     "build:api": "node scripts/build-api.cjs",
+    "build:tauri-api": "node scripts/build-api.cjs --tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "test": "node scripts/test-python.cjs",
     "dist": "npm run build && npm run build:api && electron-builder",
     "dist:linux": "npm run dist -- --linux",
     "dist:linux:portable": "npm run dist -- --linux tar.gz",
@@ -24,12 +29,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.12.1",
     "jspdf": "^4.2.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-markdown": "^10.1.0"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.12.1",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",

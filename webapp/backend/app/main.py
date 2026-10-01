@@ -4,14 +4,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from .database import init_db
 from .routers import assignments, imports, lessons, pianists, reports
 
-app = FastAPI(title="Pianist Scheduling API")
+app = FastAPI(title="Music Program Scheduler API")
+
+LOCAL_ORIGINS = [
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
+    "tauri://localhost",
+    "http://tauri.localhost",
+    "null",
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # local MVP; tighten when deployed multi-tenant
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=LOCAL_ORIGINS,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type"],
 )
 
 

@@ -1,8 +1,10 @@
-# Pianist Scheduling Desktop App
+# Music Program Scheduler Desktop App
 
-A cross-platform desktop application version of the pianist scheduling tools in
-this repo, with a graphical UI. The application bundles the React interface,
-local scheduling service, and SQLite database; no server deployment is needed.
+A local-first desktop application for university music-program scheduling.
+Accompanist Scheduling is the first module. The current React workflow,
+FastAPI/SQLite service, and scheduling behavior are retained while Tauri 2
+replaces Electron as the primary desktop shell. Electron remains available for
+side-by-side validation; the two desktop shells use separate local databases.
 
 1. **Import** lesson data from a CSV/XLSX file with a column-mapping wizard
    (or add lessons manually in the schedule grid).
@@ -23,8 +25,10 @@ local scheduling service, and SQLite database; no server deployment is needed.
 
 ## Architecture
 
-- `backend/` — FastAPI + SQLAlchemy + SQLite bundled as a local executable.
-   The database is stored in the operating system's per-user app-data folder.
+- `backend/` — FastAPI + SQLAlchemy + SQLite. Tauri launches the existing
+   Python service as a loopback-only child process and bundles it as a local
+   executable for production. SQLite is stored in the OS per-user app-data
+   folder; Electron keeps its own user-data path.
    The scheduling algorithm is
   ported from `generate_pianist_schedule.py` into
   `backend/app/services/scheduling.py`, operating on database rows instead
@@ -32,37 +36,22 @@ local scheduling service, and SQLite database; no server deployment is needed.
   hangs off an `Organization`) so real multi-tenant accounts/auth can be
   layered on later without a schema rewrite; the MVP only ever uses one
   default organization.
-- `frontend/` — Vite + React + TypeScript single-page app, packaged by Electron
-   as native installers for Windows, macOS, and Linux.
+- `frontend/` — Vite + React + TypeScript single-page app, packaged by Tauri
+   for Windows, macOS, and Linux. Electron remains a comparison build.
 
 ## Build Desktop Installers
 
-Build on each target operating system to produce its native installer:
+Install frontend and backend dependencies as described in
+[`docs/BUILDING.md`](../docs/BUILDING.md). From `webapp/frontend`, use
+`npm run tauri:build` for the Tauri installer. Electron remains available with
+`npm run dist:linux`, `npm run dist:mac`, or `npm run dist:win` while parity is
+being validated. Build native installers on their target operating systems;
+signing credentials are not required for development builds.
 
-```bash
-cd webapp/backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-cd ../frontend
-npm install
-npm run dist:linux  # AppImage and .deb on Linux
-# npm run dist:mac  # .dmg on macOS
-# npm run dist:win  # NSIS installer on Windows
-```
-
-The generated installers are placed in `webapp/frontend/dist/`. The first
-build downloads Electron and PyInstaller bundles the local API for the current
-platform, so releases should be built natively or in an appropriate CI runner.
-The Linux AppImage uses Electron Builder's static runtime, avoiding the
-`libfuse2` dynamic-library dependency, but AppImage still requires kernel FUSE
-support to mount its filesystem. Use the `.deb` installer on Debian-based
-systems, or extract the `tar.gz` release and run its executable directly for a
-portable distribution that does not use FUSE.
-If the backend virtual environment already existed before this project added
-desktop packaging, rerun `pip install -r requirements.txt` so it includes
-PyInstaller.
+Tauri development uses `npm run tauri:dev`; it starts the local Python service
+itself. `npm run dev` remains available for browser-based frontend work, with
+the backend started separately. `npm run electron:dev` starts the retained
+Electron shell.
 
 ## Running locally
 
