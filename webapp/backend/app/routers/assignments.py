@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import get_db
 from ..services import scheduling
+from ..services.module_lifecycle import bump_accompanist_revision
 
 router = APIRouter(prefix="/api/assignments", tags=["assignments"])
 
@@ -41,12 +42,18 @@ def _build_engine_state(db: Session):
 
 def _persist_and_respond(db: Session, lessons, engine_lessons, hours_by_name, conflicts):
     by_id = {l.id: l for l in engine_lessons}
+    assignments_changed = any(
+        lesson.assigned_pianist_id != by_id[lesson.id].assigned_pianist_id
+        for lesson in lessons
+    )
     for lesson in lessons:
         el = by_id[lesson.id]
         lesson.assigned_pianist_id = el.assigned_pianist_id
         lesson.fit_quality = el.fit_quality
         lesson.notes = el.notes
         lesson.hours = el.hours
+    if assignments_changed:
+        bump_accompanist_revision(db)
     db.commit()
     for lesson in lessons:
         db.refresh(lesson)
@@ -77,12 +84,16 @@ def run_assignment(db: Session = Depends(get_db)):
 @router.delete("")
 def clear_assignments(db: Session = Depends(get_db)):
     """Clear all assignment-derived state while retaining the lessons themselves."""
-    for lesson in db.query(models.Lesson).all():
+    lessons = db.query(models.Lesson).all()
+    assignments_changed = any(lesson.assigned_pianist_id is not None for lesson in lessons)
+    for lesson in lessons:
         lesson.assigned_pianist_id = None
         lesson.fit_quality = ""
         lesson.notes = ""
         lesson.hours = 0.0
         lesson.manually_edited = False
+    if assignments_changed:
+        bump_accompanist_revision(db)
     db.commit()
     return {"ok": True}
 

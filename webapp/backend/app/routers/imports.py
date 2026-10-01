@@ -3,9 +3,13 @@ import json
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
+from .. import models, module_models, schemas
 from ..database import get_db
 from ..services import importer
+from ..services.module_lifecycle import (
+    bump_accompanist_revision,
+    synchronize_lesson_identity,
+)
 
 router = APIRouter(prefix="/api/import", tags=["import"])
 
@@ -32,9 +36,18 @@ def commit(payload: schemas.ImportCommit, db: Session = Depends(get_db)):
     except KeyError as exc:
         raise HTTPException(400, str(exc)) from exc
 
+    existing_ids = [lesson.id for lesson in db.query(models.Lesson.id).all()]
+    if existing_ids:
+        db.query(module_models.AccompanistLessonIdentity).filter(
+            module_models.AccompanistLessonIdentity.lesson_id.in_(existing_ids)
+        ).delete(synchronize_session="fetch")
     db.query(models.Lesson).delete()
+    db.expire_all()
     for d in lesson_dicts:
-        db.add(models.Lesson(**d))
+        lesson = models.Lesson(**d)
+        db.add(lesson)
+        db.flush()
+        synchronize_lesson_identity(db, lesson, identity_fields_changed=True)
 
     if payload.save_profile_name:
         existing = (
@@ -48,6 +61,7 @@ def commit(payload: schemas.ImportCommit, db: Session = Depends(get_db)):
         else:
             db.add(models.ImportProfile(name=payload.save_profile_name, mapping_json=mapping_json))
 
+    bump_accompanist_revision(db)
     db.commit()
     return schemas.ImportCommitResult(created=len(lesson_dicts), skipped=len(warnings), warnings=warnings)
 

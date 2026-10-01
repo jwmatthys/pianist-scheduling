@@ -86,11 +86,17 @@ def _column_names(connection: Connection, table_name: str) -> set[str]:
 
 def _expected_columns() -> dict[str, set[str]]:
     from . import models  # noqa: F401
+    from . import module_models  # noqa: F401
 
-    return {
+    expected = {
         table_name: set(table.columns.keys())
         for table_name, table in Base.metadata.tables.items()
     }
+    expected.update({
+        table_name: set(table.columns.keys())
+        for table_name, table in module_models.ModuleBase.metadata.tables.items()
+    })
+    return expected
 
 
 def _validate_schema_shape(
@@ -212,6 +218,159 @@ def _upgrade_to_v3(connection: Connection) -> None:
     models.PianistAvailabilityState.__table__.create(bind=connection)
 
 
+def _create_module_tables(connection: Connection, table_names: set[str]) -> None:
+    from . import module_models
+
+    tables = [
+        table for table in module_models.ModuleBase.metadata.sorted_tables
+        if table.name in table_names
+    ]
+    for table in tables:
+        table.create(bind=connection)
+
+
+def _upgrade_to_v4(connection: Connection) -> None:
+    """Add UUID identities, Accompanist source mappings, and source revision state."""
+    from . import module_models
+
+    _create_module_tables(connection, {
+        "person_identities",
+        "accompanist_student_profiles",
+        "accompanist_pianist_identities",
+        "accompanist_lesson_identities",
+        "module_revisions",
+    })
+    session_rows = connection.exec_driver_sql(
+        "SELECT session_uuid FROM scheduling_sessions"
+    ).all()
+    if len(session_rows) != 1:
+        raise DatabaseMigrationError(
+            "INVALID_SESSION_METADATA",
+            "Identity migration requires exactly one active Scheduling Session.",
+        )
+    session_uuid = session_rows[0][0]
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    for row in connection.exec_driver_sql("SELECT id, name FROM pianists ORDER BY id").all():
+        person_uuid = str(uuid4())
+        connection.execute(module_models.PersonIdentity.__table__.insert().values(
+            person_uuid=person_uuid,
+            display_name=row[1] or "",
+            created_at=now,
+        ))
+        connection.execute(module_models.AccompanistPianistIdentity.__table__.insert().values(
+            pianist_id=row[0],
+            person_uuid=person_uuid,
+        ))
+
+    lesson_rows = connection.exec_driver_sql(
+        "SELECT id, student_id, student FROM lessons ORDER BY id"
+    ).all()
+    grouped_lessons: dict[str, list[tuple[int, str | None, str | None]]] = {}
+    for lesson_id, raw_student_id, student_name in lesson_rows:
+        normalized_id = module_models.normalize_student_id(raw_student_id)
+        if normalized_id:
+            grouped_lessons.setdefault(normalized_id, []).append(
+                (lesson_id, raw_student_id, student_name)
+            )
+
+    identities_by_student_id: dict[str, str] = {}
+    for student_id, rows in grouped_lessons.items():
+        normalized_names = {
+            module_models.normalize_student_name(row[2])
+            for row in rows
+            if module_models.normalize_student_name(row[2])
+        }
+        person_uuid = str(uuid4())
+        display_name = next(
+            (row[2] or "" for row in rows if (row[2] or "").strip()),
+            "",
+        )
+        connection.execute(module_models.PersonIdentity.__table__.insert().values(
+            person_uuid=person_uuid,
+            display_name=display_name,
+            created_at=now,
+        ))
+        connection.execute(module_models.AccompanistStudentProfile.__table__.insert().values(
+            person_uuid=person_uuid,
+            session_uuid=session_uuid,
+            student_id=student_id,
+            normalized_student_id=student_id,
+            seen_names_json=module_models.normalized_names_json(normalized_names),
+            identity_conflict=len(normalized_names) > 1,
+        ))
+        identities_by_student_id[student_id] = person_uuid
+
+    for lesson_id, raw_student_id, student_name in lesson_rows:
+        student_id = module_models.normalize_student_id(raw_student_id)
+        if student_id:
+            person_uuid = identities_by_student_id[student_id]
+        else:
+            person_uuid = str(uuid4())
+            normalized_name = module_models.normalize_student_name(student_name)
+            connection.execute(module_models.PersonIdentity.__table__.insert().values(
+                person_uuid=person_uuid,
+                display_name=student_name or "",
+                created_at=now,
+            ))
+            connection.execute(module_models.AccompanistStudentProfile.__table__.insert().values(
+                person_uuid=person_uuid,
+                session_uuid=session_uuid,
+                student_id=None,
+                normalized_student_id=None,
+                seen_names_json=module_models.normalized_names_json(
+                    {normalized_name} if normalized_name else set()
+                ),
+                identity_conflict=False,
+            ))
+        connection.execute(module_models.AccompanistLessonIdentity.__table__.insert().values(
+            lesson_id=lesson_id,
+            lesson_uuid=str(uuid4()),
+            student_person_uuid=person_uuid,
+        ))
+
+    connection.execute(module_models.ModuleRevision.__table__.insert().values(
+        session_uuid=session_uuid,
+        module_id="accompanists",
+        source_revision=0,
+        current_result_uuid=None,
+        modified_at=now,
+    ))
+
+
+def _upgrade_to_v5(connection: Connection) -> None:
+    """Add typed result envelopes and dependency provenance."""
+    _create_module_tables(connection, {
+        "module_results",
+        "module_result_dependencies",
+    })
+
+
+def _upgrade_to_v6(connection: Connection) -> None:
+    """Add Jury configuration, lesson entries, panels, and date-scoped availability."""
+    from . import module_models
+
+    _create_module_tables(connection, {
+        "jury_configurations",
+        "jury_panels",
+        "jury_lesson_entries",
+        "jury_pianist_availability_declarations",
+        "jury_pianist_available_windows",
+    })
+    sessions = connection.exec_driver_sql(
+        "SELECT session_uuid FROM scheduling_sessions"
+    ).all()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    for (session_uuid,) in sessions:
+        connection.execute(module_models.JuryConfiguration.__table__.insert().values(
+            session_uuid=session_uuid,
+            jury_date=None,
+            input_revision=0,
+            roster_source_result_uuid=None,
+            modified_at=now,
+        ))
+
+
 MIGRATIONS = (
     SchemaMigration(
         version=1,
@@ -227,6 +386,21 @@ MIGRATIONS = (
         version=3,
         name="add_pianist_availability_completeness_state",
         upgrade=_upgrade_to_v3,
+    ),
+    SchemaMigration(
+        version=4,
+        name="add_shared_identities_and_accompanist_source_revision",
+        upgrade=_upgrade_to_v4,
+    ),
+    SchemaMigration(
+        version=5,
+        name="add_typed_module_results_and_dependencies",
+        upgrade=_upgrade_to_v5,
+    ),
+    SchemaMigration(
+        version=6,
+        name="add_jury_configuration_and_inputs",
+        upgrade=_upgrade_to_v6,
     ),
 )
 LATEST_SCHEMA_VERSION = MIGRATIONS[-1].version

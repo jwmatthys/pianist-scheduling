@@ -29,7 +29,7 @@ Each module owns its inputs, persistence records/profiles, constraints, validati
 
 - **Accompanist Scheduling:** lessons, pianist-specific profiles/availability, workload, fit/scoring, overlap and manual-assignment policy, assignments, and accompanist reports.
 - **Clinical Placements:** placement requirements/history, clinical sites and capacity, transportation, placement validation/scoring, and placement reports. Its optimizer must not be designed until detailed constraints and policies are gathered from the actual Music Therapy workflow owner.
-- **Performance Juries:** jury roster, areas/panels, rooms, duration/slot rules, breaks, availability, jury-specific validation/optimizer, and reports. Characterize and test the existing standalone Python jury scheduler before integrating or rewriting it.
+- **Performance Juries:** lesson-based entries/roster, manually assigned Panels, Jury Date, duration/break/meal configuration, date-scoped pianist availability, readiness validation, and eventual Jury-specific optimizer/reports. Jury Required and Panel selection belong to each source lesson entry, not globally to a student. The standalone scheduler is characterized in [JURY-SCHEDULER-CHARACTERIZATION.md](JURY-SCHEDULER-CHARACTERIZATION.md); its optimizer is not integrated.
 
 Never create a universal optimizer, universal assignment/schedule type, giant universal Person/Student record, or one universal spreadsheet schema.
 
@@ -49,7 +49,7 @@ Modules retain their own status meaning, scoring, owner associations, validation
 
 Modules exchange structured, versioned results through a session-level result registry rather than importing another module's optimizer or passing spreadsheets. The envelope identifies session, module, result contract/version, state (`draft`, `finalized`, `superseded`), and provenance/revisions; its payload remains module-specific.
 
-Jury may consume a finalized Accompanist assignment result using stable internal Person IDs. Do not use display-name joins as the permanent contract. When a consumed finalized result changes, mark dependent results as potentially stale and surface that state to the user using simple terminology.
+Jury consumes the typed, versioned `accompanist.assignment-result` contract v1 using stable Person and Lesson UUIDs. Each source lesson retains its own requirement and assigned pianist; Jury owns its independent Jury Required flag and manual Panel assignment per source lesson. A Jury-required lesson that requires a pianist but lacks a finalized assignment is a blocking readiness problem. Jury never substitutes a pianist. Jury-Day availability is a Jury-owned, one-day, binary, closed-world input, separate from Accompanist Tentative semantics. When a consumed finalized result changes, retain dependency/version provenance and detect potentially stale downstream state; exact stale wording and refresh UX are deferred.
 
 ## Reporting
 
@@ -63,4 +63,4 @@ The application must work offline and keep student data on-device. Desktop-vs-br
 
 ## Implementation Order
 
-Follow the approved order in [PRODUCT-MODULE-ARCHITECTURE.md](PRODUCT-MODULE-ARCHITECTURE.md): versioned migrations and legacy fixture; session metadata and `.mpsession` new/export/open/restore with recovery snapshots; shared availability using Accompanist first; shared reports adapted from existing Accompanist output; useful product dashboard; independent Jury characterization; Jury integration through finalized results; Clinical data workflow; Clinical optimizer only after owner requirements are gathered.
+Follow the approved order in [PRODUCT-MODULE-ARCHITECTURE.md](PRODUCT-MODULE-ARCHITECTURE.md): versioned migrations and session archives; shared availability and reporting; product dashboard; Jury characterization (complete) and Jury data integration through finalized Accompanist results/readiness (complete); later Jury optimizer and UI milestones; Clinical data workflow; Clinical optimizer only after owner requirements are gathered.

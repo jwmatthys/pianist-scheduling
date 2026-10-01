@@ -85,12 +85,23 @@ def _metadata_input(values: dict) -> schemas.SessionMetadataIn:
 
 
 def _replace_metadata(target_engine: Engine, values: schemas.SessionMetadataIn, session_uuid: str | None = None) -> None:
+    from .. import module_models
+
     with Session(target_engine) as db:
         rows = db.query(models.SchedulingSession).all()
         if len(rows) != 1:
             raise SessionFileError("INVALID_SESSION_METADATA", "The staged database must contain exactly one session.")
         row = rows[0]
+        previous_uuid = row.session_uuid
         row.session_uuid = session_uuid or str(uuid4())
+        if row.session_uuid != previous_uuid:
+            for table in module_models.ModuleBase.metadata.tables.values():
+                if "session_uuid" in table.c:
+                    db.execute(
+                        table.update()
+                        .where(table.c.session_uuid == previous_uuid)
+                        .values(session_uuid=row.session_uuid)
+                    )
         row.institution_name = values.institution_name.strip()
         row.program_name = values.program_name.strip()
         row.term_label = values.term_label.strip()

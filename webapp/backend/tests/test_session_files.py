@@ -13,8 +13,18 @@ from unittest.mock import patch
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app import models, schemas
+from app import models, module_models, schemas
 from app.database import LATEST_SCHEMA_VERSION, MIGRATIONS, migrate_database
+from app.jury_schemas import JuryAvailabilityIn, JuryPanelFields
+from app.services.accompanist_results import finalize_accompanist_result
+from app.services.jury import (
+    create_panel,
+    save_availability,
+    sync_roster_from_current_result,
+    update_configuration,
+    update_lesson_entry,
+)
+from app.services.module_lifecycle import ensure_pianist_identity, synchronize_lesson_identity
 from app.services.session_files import (
     DATABASE_ENTRY,
     RECOVERY_RETENTION,
@@ -67,7 +77,7 @@ class SessionFileTests(unittest.TestCase):
         with zipfile.ZipFile(BytesIO(archive_bytes)) as archive:
             return {item.filename: archive.read(item.filename) for item in archive.infolist()}
 
-    def make_archive(self, database_bytes, schema_version=3, manifest_overrides=None, filenames=None):
+    def make_archive(self, database_bytes, schema_version=LATEST_SCHEMA_VERSION, manifest_overrides=None, filenames=None):
         manifest = {
             "format": "music-program-scheduler-session",
             "formatVersion": 1,
@@ -110,6 +120,14 @@ class SessionFileTests(unittest.TestCase):
             self.assertEqual(db.query(models.Pianist).count(), 0)
             self.assertEqual(db.query(models.Lesson).count(), 0)
             self.assertEqual(db.query(models.SchedulingSession).count(), 1)
+            self.assertIsNotNone(db.get(
+                module_models.ModuleRevision,
+                (str(created.session_uuid), "accompanists"),
+            ))
+            self.assertIsNotNone(db.get(
+                module_models.JuryConfiguration,
+                str(created.session_uuid),
+            ))
         self.assertEqual(len(list(self.recovery_directory.glob("*.mpsession"))), 1)
 
     def test_optional_metadata_is_persisted_as_null(self):
@@ -207,6 +225,78 @@ class SessionFileTests(unittest.TestCase):
             self.assertEqual([row.name for row in db.query(models.Pianist)], ["Synthetic Pianist"])
             self.assertEqual(db.query(models.Lesson).one().student, "Synthetic Student")
         self.assertGreaterEqual(len(list(self.recovery_directory.glob("*.mpsession"))), 2)
+
+    def test_module_identities_results_and_jury_inputs_round_trip(self):
+        jury_date = date(2027, 5, 1)
+        with Session(self.engine) as db:
+            pianist = models.Pianist(name="Synthetic Jury Pianist")
+            db.add(pianist)
+            db.flush()
+            pianist_uuid = ensure_pianist_identity(db, pianist)
+            lesson = models.Lesson(
+                teacher="Synthetic Jury Teacher",
+                student="Synthetic Jury Student",
+                student_id="SYN-JURY-1",
+                instrument="Voice",
+                need_pianist=True,
+                assigned_pianist_id=pianist.id,
+                day="Wednesday",
+                start_minute=600,
+                end_minute=650,
+            )
+            db.add(lesson)
+            db.flush()
+            student_uuid = synchronize_lesson_identity(db, lesson, identity_fields_changed=True)
+            result = finalize_accompanist_result(db, expected_source_revision=0)
+            sync_roster_from_current_result(db)
+            configuration = update_configuration(db, jury_date)
+            panel = create_panel(db, JuryPanelFields(
+                panel_name="Synthetic Panel",
+                room="Room A",
+                earliest_start_minute=540,
+                jury_length_minutes=30,
+            ))
+            source_lesson_uuid = str(result.payload.entries[0].source_lesson_uuid)
+            update_lesson_entry(
+                db,
+                source_lesson_uuid,
+                jury_required=True,
+                panel_uuid=str(panel.panel_uuid),
+            )
+            save_availability(
+                db,
+                pianist_uuid,
+                jury_date,
+                JuryAvailabilityIn(is_complete=True, windows=[{"start_minute": 540, "end_minute": 720}]),
+            )
+            db.commit()
+            result_uuid = str(result.result_uuid)
+            session_uuid = str(configuration.session_uuid)
+
+        exported = export_session_archive(self.engine)
+        create_new_session(self.engine, self.metadata("Replacement", "Music", "Spring 2027"), self.recovery_directory)
+        restored = restore_session(self.engine, exported, self.recovery_directory)
+
+        self.assertEqual(str(restored.session_uuid), session_uuid)
+        with Session(self.engine) as db:
+            self.assertEqual(
+                db.query(module_models.AccompanistPianistIdentity).one().person_uuid,
+                pianist_uuid,
+            )
+            lesson_identity = db.query(module_models.AccompanistLessonIdentity).one()
+            self.assertEqual(lesson_identity.student_person_uuid, student_uuid)
+            result_row = db.get(module_models.ModuleResult, result_uuid)
+            self.assertEqual(result_row.state, "finalized")
+            entry = db.query(module_models.JuryLessonEntry).one()
+            self.assertEqual(entry.source_lesson_uuid, source_lesson_uuid)
+            self.assertTrue(entry.jury_required)
+            self.assertIsNotNone(entry.panel_uuid)
+            self.assertEqual(db.query(module_models.JuryPanel).one().panel_name, "Synthetic Panel")
+            config = db.get(module_models.JuryConfiguration, session_uuid)
+            self.assertEqual(config.jury_date, jury_date)
+            declaration = db.query(module_models.JuryPianistAvailabilityDeclaration).one()
+            self.assertTrue(declaration.is_complete)
+            self.assertEqual(db.query(module_models.JuryPianistAvailableWindow).count(), 1)
 
     def test_schema_one_archive_migrates_only_in_staging(self):
         schema_one_path = self.directory / "schema-one.sqlite3"

@@ -10,6 +10,8 @@ from app import database, models
 from app.database import (
     DatabaseMigrationError,
     DatabaseState,
+    LATEST_SCHEMA_VERSION,
+    MIGRATIONS,
     SchemaMigration,
     migrate_database,
 )
@@ -32,16 +34,18 @@ class DatabaseMigrationTests(unittest.TestCase):
 
         self.assertEqual(report.initial_state, DatabaseState.FRESH)
         self.assertEqual(report.initial_version, 0)
-        self.assertEqual(report.current_version, 3)
-        self.assertEqual(len(report.applied_migrations), 3)
+        self.assertEqual(report.current_version, 6)
+        self.assertEqual(len(report.applied_migrations), 6)
         with self.engine.connect() as connection:
-            self.assertEqual(connection.exec_driver_sql("PRAGMA user_version").scalar_one(), 3)
+            self.assertEqual(connection.exec_driver_sql("PRAGMA user_version").scalar_one(), 6)
+            from app.module_models import ModuleBase
+
             self.assertEqual(
                 set(connection.execute(text(
                     "SELECT name FROM sqlite_master WHERE type='table' "
                     "AND name NOT LIKE 'sqlite_%'"
                 )).scalars()),
-                set(models.Base.metadata.tables),
+                set(models.Base.metadata.tables) | set(ModuleBase.metadata.tables),
             )
             self.assertEqual(
                 connection.execute(text("SELECT name FROM organizations WHERE id = 1")).scalar_one(),
@@ -72,8 +76,8 @@ class DatabaseMigrationTests(unittest.TestCase):
         after = self.database_path.read_bytes()
 
         self.assertEqual(report.initial_state, DatabaseState.CURRENT)
-        self.assertEqual(report.initial_version, 3)
-        self.assertEqual(report.current_version, 3)
+        self.assertEqual(report.initial_version, 6)
+        self.assertEqual(report.current_version, 6)
         self.assertEqual(report.applied_migrations, ())
         self.assertEqual(after, before)
 
@@ -87,7 +91,7 @@ class DatabaseMigrationTests(unittest.TestCase):
 
         self.assertEqual(report.initial_state, DatabaseState.LEGACY)
         self.assertEqual(report.initial_version, 0)
-        self.assertEqual(report.current_version, 3)
+        self.assertEqual(report.current_version, 6)
         with Session(self.engine) as db:
             organization = db.get(models.Organization, 1)
             pianist = db.get(models.Pianist, 7)
@@ -130,15 +134,19 @@ class DatabaseMigrationTests(unittest.TestCase):
         report = migrate_database(self.engine)
 
         self.assertEqual(report.initial_state, DatabaseState.LEGACY)
-        self.assertEqual(report.current_version, 3)
+        self.assertEqual(report.current_version, 6)
         with Session(self.engine) as db:
             lesson = db.query(models.Lesson).one()
             self.assertEqual(lesson.teacher_email, "teacher@example.invalid")
             self.assertEqual(lesson.student_id, "SYN-01")
             self.assertEqual(lesson.student, "Synthetic Student")
 
-    def test_v2_to_v3_adds_completeness_state_without_changing_existing_data(self):
-        migrate_database(self.engine)
+    def test_v2_database_migrates_through_v6_without_changing_existing_data(self):
+        with self.engine.begin() as connection:
+            database._upgrade_to_v1(connection)
+            connection.exec_driver_sql("PRAGMA user_version = 1")
+            database._upgrade_to_v2(connection)
+            connection.exec_driver_sql("PRAGMA user_version = 2")
         with Session(self.engine) as db:
             pianist = models.Pianist(name="Synthetic v2 Pianist", email="v2@example.invalid")
             db.add(pianist)
@@ -160,17 +168,11 @@ class DatabaseMigrationTests(unittest.TestCase):
             pianist_id = pianist.id
             session_uuid = db.query(models.SchedulingSession).one().session_uuid
 
-        with self.engine.begin() as connection:
-            connection.exec_driver_sql("DROP TABLE pianist_availability_states")
-            connection.exec_driver_sql("PRAGMA user_version = 2")
-        self.engine.dispose()
-        self.engine = create_engine(f"sqlite:///{self.database_path}")
-
         report = migrate_database(self.engine)
 
         self.assertEqual(report.initial_version, 2)
-        self.assertEqual(report.current_version, 3)
-        self.assertEqual(report.applied_migrations, ("add_pianist_availability_completeness_state",))
+        self.assertEqual(report.current_version, 6)
+        self.assertEqual(report.applied_migrations, tuple(migration.name for migration in MIGRATIONS[2:]))
         with Session(self.engine) as db:
             pianist = db.get(models.Pianist, pianist_id)
             self.assertEqual(pianist.name, "Synthetic v2 Pianist")
@@ -179,6 +181,62 @@ class DatabaseMigrationTests(unittest.TestCase):
             self.assertEqual(db.query(models.Lesson).one().student, "Synthetic v2 Student")
             self.assertEqual(db.query(models.SchedulingSession).one().session_uuid, session_uuid)
             self.assertEqual(db.query(models.PianistAvailabilityState).count(), 0)
+
+    def test_v3_identity_backfill_groups_ids_but_not_blank_names(self):
+        with self.engine.begin() as connection:
+            database._upgrade_to_v1(connection)
+            connection.exec_driver_sql("PRAGMA user_version = 1")
+            database._upgrade_to_v2(connection)
+            connection.exec_driver_sql("PRAGMA user_version = 2")
+            database._upgrade_to_v3(connection)
+            connection.exec_driver_sql("PRAGMA user_version = 3")
+        with Session(self.engine) as db:
+            db.add(models.Pianist(id=91, name="Synthetic Pianist"))
+            db.add_all([
+                models.Lesson(id=101, student="Alex Student", student_id="S-1", day="Monday", start_minute=540, end_minute=590),
+                models.Lesson(id=102, student="  ALEX   STUDENT ", student_id=" S-1 ", day="Tuesday", start_minute=540, end_minute=590),
+                models.Lesson(id=103, student="Other Student", student_id="S-2", day="Wednesday", start_minute=540, end_minute=590),
+                models.Lesson(id=104, student="Different Student", student_id="S-2", day="Thursday", start_minute=540, end_minute=590),
+                models.Lesson(id=105, student="Same Blank", student_id="", day="Friday", start_minute=540, end_minute=590),
+                models.Lesson(id=106, student="Same Blank", student_id="   ", day="Saturday", start_minute=540, end_minute=590),
+            ])
+            db.commit()
+
+        report = migrate_database(self.engine)
+
+        self.assertEqual(report.initial_version, 3)
+        self.assertEqual(report.current_version, 6)
+        from app import module_models
+        with Session(self.engine) as db:
+            lesson_identities = {
+                row.lesson_id: row
+                for row in db.query(module_models.AccompanistLessonIdentity).all()
+            }
+            self.assertEqual(
+                lesson_identities[101].student_person_uuid,
+                lesson_identities[102].student_person_uuid,
+            )
+            self.assertNotEqual(
+                lesson_identities[105].student_person_uuid,
+                lesson_identities[106].student_person_uuid,
+            )
+            profile_s1 = db.get(
+                module_models.AccompanistStudentProfile,
+                lesson_identities[101].student_person_uuid,
+            )
+            profile_s2 = db.get(
+                module_models.AccompanistStudentProfile,
+                lesson_identities[103].student_person_uuid,
+            )
+            self.assertFalse(profile_s1.identity_conflict)
+            self.assertTrue(profile_s2.identity_conflict)
+            self.assertEqual(len({row.lesson_uuid for row in lesson_identities.values()}), 6)
+            pianist_identity = db.get(module_models.AccompanistPianistIdentity, 91)
+            self.assertIsNotNone(pianist_identity)
+            self.assertEqual(
+                db.get(module_models.PersonIdentity, pianist_identity.person_uuid).display_name,
+                "Synthetic Pianist",
+            )
 
     def test_failed_migration_rolls_back_ddl_and_keeps_version_unadvanced(self):
         def fail_after_ddl(connection):
@@ -204,14 +262,17 @@ class DatabaseMigrationTests(unittest.TestCase):
     def test_newer_schema_version_is_rejected_without_downgrade(self):
         migrate_database(self.engine)
         with self.engine.begin() as connection:
-            connection.exec_driver_sql("PRAGMA user_version = 4")
+            connection.exec_driver_sql(f"PRAGMA user_version = {LATEST_SCHEMA_VERSION + 1}")
 
         with self.assertRaises(DatabaseMigrationError) as raised:
             migrate_database(self.engine)
 
         self.assertEqual(raised.exception.code, "UNSUPPORTED_SCHEMA_VERSION")
         with self.engine.connect() as connection:
-            self.assertEqual(connection.exec_driver_sql("PRAGMA user_version").scalar_one(), 4)
+            self.assertEqual(
+                connection.exec_driver_sql("PRAGMA user_version").scalar_one(),
+                LATEST_SCHEMA_VERSION + 1,
+            )
             self.assertEqual(
                 connection.execute(text("SELECT name FROM organizations WHERE id = 1")).scalar_one(),
                 "Default Organization",

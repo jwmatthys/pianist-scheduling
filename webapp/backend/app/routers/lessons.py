@@ -3,6 +3,12 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
+from ..services.module_lifecycle import (
+    bump_accompanist_revision,
+    refresh_student_identity_state,
+    synchronize_lesson_identity,
+)
+from .. import module_models
 
 router = APIRouter(prefix="/api/lessons", tags=["lessons"])
 
@@ -16,6 +22,9 @@ def list_lessons(db: Session = Depends(get_db)):
 def create_lesson(payload: schemas.LessonCreate, db: Session = Depends(get_db)):
     lesson = models.Lesson(**payload.model_dump())
     db.add(lesson)
+    db.flush()
+    synchronize_lesson_identity(db, lesson, identity_fields_changed=True)
+    bump_accompanist_revision(db)
     db.commit()
     db.refresh(lesson)
     return lesson
@@ -28,6 +37,9 @@ def update_lesson(lesson_id: int, payload: schemas.LessonUpdate, db: Session = D
         raise HTTPException(404, "Lesson not found")
     data = payload.model_dump(exclude_unset=True)
     clear = data.pop("clear_assigned_pianist", False)
+    changed = any(getattr(lesson, key) != value for key, value in data.items())
+    if clear and lesson.assigned_pianist_id is not None:
+        changed = True
     for key, value in data.items():
         setattr(lesson, key, value)
     if clear:
@@ -35,6 +47,12 @@ def update_lesson(lesson_id: int, payload: schemas.LessonUpdate, db: Session = D
     if "assigned_pianist_id" in data or clear:
         lesson.manually_edited = True
         lesson.fit_quality = "Manual"
+    identity_changed = any(key in data for key in ("student", "student_id"))
+    if identity_changed:
+        db.flush()
+        synchronize_lesson_identity(db, lesson, identity_fields_changed=True)
+    if changed:
+        bump_accompanist_revision(db)
     db.commit()
     db.refresh(lesson)
     return lesson
@@ -45,13 +63,28 @@ def delete_lesson(lesson_id: int, db: Session = Depends(get_db)):
     lesson = db.get(models.Lesson, lesson_id)
     if not lesson:
         raise HTTPException(404, "Lesson not found")
+    identity = db.get(module_models.AccompanistLessonIdentity, lesson.id)
+    student_person_uuid = identity.student_person_uuid if identity is not None else None
+    if identity is not None:
+        db.delete(identity)
     db.delete(lesson)
+    db.flush()
+    if student_person_uuid:
+        refresh_student_identity_state(db, student_person_uuid)
+    bump_accompanist_revision(db)
     db.commit()
     return {"ok": True}
 
 
 @router.delete("")
 def delete_all_lessons(db: Session = Depends(get_db)):
+    lesson_ids = [lesson.id for lesson in db.query(models.Lesson.id).all()]
+    if lesson_ids:
+        db.query(module_models.AccompanistLessonIdentity).filter(
+            module_models.AccompanistLessonIdentity.lesson_id.in_(lesson_ids)
+        ).delete(synchronize_session=False)
     db.query(models.Lesson).delete()
+    if lesson_ids:
+        bump_accompanist_revision(db)
     db.commit()
     return {"ok": True}

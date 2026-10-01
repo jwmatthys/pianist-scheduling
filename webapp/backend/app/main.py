@@ -2,7 +2,17 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .database import init_db
-from .routers import assignments, availability_imports, imports, lessons, pianists, reports, session
+from .routers import (
+    accompanist_results,
+    assignments,
+    availability_imports,
+    imports,
+    jury,
+    lessons,
+    pianists,
+    reports,
+    session,
+)
 
 app = FastAPI(title="Music Program Scheduler API")
 
@@ -34,6 +44,8 @@ app.include_router(assignments.router)
 app.include_router(reports.router)
 app.include_router(session.router)
 app.include_router(availability_imports.router)
+app.include_router(accompanist_results.router)
+app.include_router(jury.router)
 
 
 @app.get("/api/health")

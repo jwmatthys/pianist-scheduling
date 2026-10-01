@@ -1,8 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
+from .. import models, module_models, schemas
 from ..database import get_db
+from ..services.module_lifecycle import (
+    bump_accompanist_revision,
+    ensure_pianist_identity,
+    remove_pianist_identity_mapping,
+)
 
 router = APIRouter(prefix="/api/pianists", tags=["pianists"])
 
@@ -16,6 +21,8 @@ def list_pianists(db: Session = Depends(get_db)):
 def create_pianist(payload: schemas.PianistCreate, db: Session = Depends(get_db)):
     pianist = models.Pianist(**payload.model_dump())
     db.add(pianist)
+    db.flush()
+    ensure_pianist_identity(db, pianist)
     db.commit()
     db.refresh(pianist)
     return pianist
@@ -26,8 +33,16 @@ def update_pianist(pianist_id: int, payload: schemas.PianistUpdate, db: Session 
     pianist = db.get(models.Pianist, pianist_id)
     if not pianist:
         raise HTTPException(404, "Pianist not found")
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    name_changed = "name" in data and pianist.name != data["name"]
+    for key, value in data.items():
         setattr(pianist, key, value)
+    ensure_pianist_identity(db, pianist)
+    assigned = name_changed and db.query(models.Lesson.id).filter(
+        models.Lesson.assigned_pianist_id == pianist_id
+    ).first() is not None
+    if assigned:
+        bump_accompanist_revision(db)
     db.commit()
     db.refresh(pianist)
     return pianist
@@ -38,7 +53,13 @@ def delete_pianist(pianist_id: int, db: Session = Depends(get_db)):
     pianist = db.get(models.Pianist, pianist_id)
     if not pianist:
         raise HTTPException(404, "Pianist not found")
+    assigned = db.query(models.Lesson.id).filter(
+        models.Lesson.assigned_pianist_id == pianist_id
+    ).first() is not None
+    remove_pianist_identity_mapping(db, pianist_id)
     db.delete(pianist)
+    if assigned:
+        bump_accompanist_revision(db)
     db.commit()
     return {"ok": True}
 

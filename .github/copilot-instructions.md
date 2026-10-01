@@ -326,3 +326,64 @@ When uncertain whether something belongs in shared infrastructure or a module, d
 It is easier to generalize two proven implementations later than to undo a premature abstraction.
 
 Preserve correctness above architectural purity.
+
+## Accompanist -> Jury Dependency
+
+Performance Jury Scheduling is downstream of Accompanist Scheduling.
+
+Where applicable, Jury Scheduling should consume authoritative student,
+lesson, and finalized pianist-assignment information produced by the
+Accompanist module rather than requiring users to enter or import the same
+information again.
+
+Accompanist Scheduling owns accompanist assignments.
+
+Jury Scheduling must not maintain an independent editable copy of
+Accompanist-owned assignment data.
+
+The eventual Jury optimizer will combine:
+
+1. typed finalized results from Accompanist Scheduling
+2. shared session/person information where appropriate
+3. additional Jury-specific inputs
+
+to produce Jury-specific scheduling results.
+
+Do not tightly couple Jury to Accompanist database tables, UI state, or
+internal solver objects. Use the approved typed finalized-result boundary.
+
+If a finalized Accompanist result changes after a Jury result has consumed
+it, the dependent Jury result must be detectable as stale or superseded
+and the user must be warned.
+
+Jury Scheduling must still support participants for whom no Accompanist
+assignment exists.
+
+Do not determine the exact Accompanist-to-Jury result schema until the
+existing standalone Jury scheduler has been behavior-characterized and
+its actual input requirements documented.
+
+Jury Required is Jury-specific and independent from Accompanist-owned
+Pianist Required. Never infer Jury Required from accompaniment need or an
+assignment. Every Jury-required participant is manually assigned to a
+defined Jury Panel; do not infer panels from instrument, teacher, lesson
+area, or program.
+
+If Jury Required and Pianist Required are both true but no finalized
+Accompanist pianist assignment exists, treat that participant as a
+blocking Jury-readiness problem. Do not schedule them as though a pianist
+were not required, and do not substitute another pianist for a finalized
+assignment.
+
+Jury-day pianist availability is Jury-specific, one-day, binary
+Available/Unavailable, and closed-world for a complete submission.
+Tentative is not part of the Jury availability UI or solver semantics.
+Available windows are hard legal intervals; all other times in a valid
+complete schedule are unavailable. Incomplete or invalid submissions must
+not be interpreted as a complete unavailable schedule.
+
+The future Jury result must retain enough source-result/session revision
+provenance to detect when its consumed finalized Accompanist result has
+changed and mark the Jury result stale/superseded. Do not define the final
+typed result contract until the standalone Jury requirements have been
+characterized and documented.

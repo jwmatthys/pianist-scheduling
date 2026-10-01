@@ -89,10 +89,8 @@ class PersistenceCharacterizationTests(unittest.TestCase):
             connect_args={"check_same_thread": False},
             poolclass=StaticPool,
         )
-        Base.metadata.create_all(self.engine)
+        database.migrate_database(self.engine)
         self.db = Session(self.engine)
-        self.db.add(models.Organization(id=1, name="Synthetic Test Program"))
-        self.db.commit()
 
     def tearDown(self):
         importer._UPLOAD_CACHE.clear()
