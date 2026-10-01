@@ -253,6 +253,8 @@ Prefer eliminating persistent localhost HTTP/uvicorn architecture from productio
 
 Characterize and test the standalone Python Jury scheduler before integration or rewrite. Do not design the Clinical Placement optimizer until detailed constraints and policies have been gathered from the actual Music Therapy workflow owner.
 
+SQLite schema changes must use the application-owned ordered, forward-only migration registry in `webapp/backend/app/database.py`. The schema version is `PRAGMA user_version`; do not add ad hoc startup column checks or silently run `create_all` against a current database. Migrations must be transactional where SQLite permits, reject newer unsupported schemas, support the recognized legacy Accompanist database, and be covered by synthetic tests. The migration API must accept a staged database engine for future session restore. Never use or commit real student databases as fixtures.
+
 
 ## Development Practices
 

@@ -29,7 +29,7 @@ From `webapp/frontend`:
 - `npm run electron:dev` builds the packaged Python API executable and starts the retained Electron shell.
 - `npm run tauri:dev` starts the Tauri shell plus Vite development server; Rust launches `backend/.venv`'s `desktop_server.py` directly (or the configured Python interpreter if the virtualenv is absent).
 - `npm run build` typechecks and builds the React frontend.
-- `npm test` runs the Python `unittest` characterization suite. The script selects `webapp/backend/.venv` when available or uses `PYTHON`/the platform's Python command.
+- `npm test` runs the Python `unittest` characterization and database migration suites. The script selects `webapp/backend/.venv` when available or uses `PYTHON`/the platform's Python command.
 
 Tauri starts its development or packaged API process itself on an ephemeral loopback port; do not start Uvicorn separately for `npm run tauri:dev`.
 
@@ -48,3 +48,7 @@ The Tauri identifier is currently the placeholder `com.example.musicprogramsched
 ## Local Data and Network
 
 Tauri stores `pianist_scheduling.db` under its per-user application-data directory. Electron continues to use Electron's `userData` directory, so test data and database changes are not shared between the two shells. The temporary backend binds only to `127.0.0.1`; its selected endpoint is passed to React through a Rust command. No external services are configured.
+
+## Schema Migration Tests
+
+Run `npm test` before and after persistence/schema changes. The suite includes synthetic fixtures for the unversioned Accompanist schema, fresh/current database initialization, data-preserving forward migration, rollback on failure, and unsupported or invalid schemas. Do not use local production databases as test fixtures. The schema version and procedure for registering the next migration are documented in [ARCHITECTURE.md](ARCHITECTURE.md#sqlite-schema-migrations).

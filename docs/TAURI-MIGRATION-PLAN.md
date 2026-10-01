@@ -15,7 +15,7 @@ Known future modules include:
    - Assign pianists to student lessons.
    - Respect pianist availability.
    - Avoid conflicts.
-   - Minimize travel.
+   - Minimize schedule fragmentation and, when location-aware scheduling is implemented, unnecessary travel.
    - Prefer contiguous blocks.
    - Balance workload.
    - Track overlapping assignments correctly.
@@ -768,7 +768,7 @@ Portable `.mpsession` archives are unencrypted in v1 and may contain student edu
 
 After the current Tauri shell validation milestone, proceed in this order:
 
-1. Establish versioned SQLite migrations and a legacy database fixture.
+1. Establish an application-owned, forward-only SQLite migration registry and synthetic legacy fixture. Store the version in `PRAGMA user_version`; recognize an empty v0 database and the supported unversioned Accompanist schema as v0, migrate sequentially to the latest version, and reject unknown/newer schemas safely. Run schema DDL and version updates transactionally where SQLite permits. See [ARCHITECTURE.md](ARCHITECTURE.md#sqlite-schema-migrations).
 2. Implement session metadata, New Session, `.mpsession` export, and Open/Restore with staged validation/migration and an automatic local recovery snapshot before confirmed replacement. Keep one active session/database; do not add a history library.
 3. Introduce shared availability value/import infrastructure with Accompanist Scheduling as the first consumer. Preserve the current manual pianist editor and solver semantics; distinguish missing availability from Unavailable and flag conflicting-status overlaps.
 4. Introduce shared report infrastructure by adapting existing Accompanist reports without changing their established semantics. Do not create an arbitrary query designer.
