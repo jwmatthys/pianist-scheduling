@@ -30,12 +30,11 @@ side-by-side validation; the two desktop shells use separate local databases.
    executable for production. SQLite is stored in the OS per-user app-data
    folder; Electron keeps its own user-data path.
    The scheduling algorithm is
-  ported from `generate_pianist_schedule.py` into
-  `backend/app/services/scheduling.py`, operating on database rows instead
-  of an Excel workbook. The data model is organization-scoped (every table
-  hangs off an `Organization`) so real multi-tenant accounts/auth can be
-  layered on later without a schema rewrite; the MVP only ever uses one
-  default organization.
+   ported from `generate_pianist_schedule.py` into
+   `backend/app/services/scheduling.py`, operating on database rows instead
+   of an Excel workbook. The existing `Organization` row is a legacy
+   Accompanist persistence placeholder. Each active database represents one
+   Scheduling Session; this does not introduce account or multi-tenant storage.
 - `frontend/` — Vite + React + TypeScript single-page app, packaged by Tauri
    for Windows, macOS, and Linux. Electron remains a comparison build.
 
@@ -94,3 +93,13 @@ lesson in the UI marks it as "manually edited"; re-running the algorithm
 leaves manually edited lessons untouched but still accounts for them when
 assigning everyone else (so it won't double-book a pianist you've already
 placed by hand).
+
+## Scheduling Sessions
+
+The active session identifies one institution/program and academic term. Its
+metadata and Accompanist data are saved automatically in the local database.
+Use **Export Session** to create a portable `.mpsession` copy or **Open Session**
+to validate and restore one. Replacing the active session requires confirmation
+and first creates a local recovery archive; the application retains the three
+most recent recovery archives under its application-data directory. Session
+archives are unencrypted and may contain student educational information.

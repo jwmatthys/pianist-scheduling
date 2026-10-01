@@ -193,6 +193,8 @@ fn get_api_base(backend: State<'_, BackendProcess>) -> String {
 
 pub fn run() -> Result<(), Box<dyn Error>> {
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             app.manage(BackendProcess::start(&app.handle())?);
             Ok(())

@@ -32,10 +32,10 @@ class DatabaseMigrationTests(unittest.TestCase):
 
         self.assertEqual(report.initial_state, DatabaseState.FRESH)
         self.assertEqual(report.initial_version, 0)
-        self.assertEqual(report.current_version, 1)
-        self.assertEqual(len(report.applied_migrations), 1)
+        self.assertEqual(report.current_version, 2)
+        self.assertEqual(len(report.applied_migrations), 2)
         with self.engine.connect() as connection:
-            self.assertEqual(connection.exec_driver_sql("PRAGMA user_version").scalar_one(), 1)
+            self.assertEqual(connection.exec_driver_sql("PRAGMA user_version").scalar_one(), 2)
             self.assertEqual(
                 set(connection.execute(text(
                     "SELECT name FROM sqlite_master WHERE type='table' "
@@ -47,6 +47,8 @@ class DatabaseMigrationTests(unittest.TestCase):
                 connection.execute(text("SELECT name FROM organizations WHERE id = 1")).scalar_one(),
                 "Default Organization",
             )
+            session = connection.execute(text("SELECT * FROM scheduling_sessions")).mappings().one()
+            self.assertEqual(session["term_label"], "Term not set")
 
     def test_current_database_reopens_without_changing_file_or_domain_data(self):
         migrate_database(self.engine)
@@ -70,8 +72,8 @@ class DatabaseMigrationTests(unittest.TestCase):
         after = self.database_path.read_bytes()
 
         self.assertEqual(report.initial_state, DatabaseState.CURRENT)
-        self.assertEqual(report.initial_version, 1)
-        self.assertEqual(report.current_version, 1)
+        self.assertEqual(report.initial_version, 2)
+        self.assertEqual(report.current_version, 2)
         self.assertEqual(report.applied_migrations, ())
         self.assertEqual(after, before)
 
@@ -85,7 +87,7 @@ class DatabaseMigrationTests(unittest.TestCase):
 
         self.assertEqual(report.initial_state, DatabaseState.LEGACY)
         self.assertEqual(report.initial_version, 0)
-        self.assertEqual(report.current_version, 1)
+        self.assertEqual(report.current_version, 2)
         with Session(self.engine) as db:
             organization = db.get(models.Organization, 1)
             pianist = db.get(models.Pianist, 7)
@@ -106,7 +108,11 @@ class DatabaseMigrationTests(unittest.TestCase):
 
     def test_unversioned_current_shape_is_recognized_as_legacy(self):
         Base = models.Base
-        Base.metadata.create_all(self.engine)
+        baseline_tables = [
+            table for table in Base.metadata.sorted_tables
+            if table.name != "scheduling_sessions"
+        ]
+        Base.metadata.create_all(self.engine, tables=baseline_tables)
         with Session(self.engine) as db:
             db.add(models.Organization(id=1, name="Synthetic Existing Program"))
             db.add(models.Lesson(
@@ -124,7 +130,7 @@ class DatabaseMigrationTests(unittest.TestCase):
         report = migrate_database(self.engine)
 
         self.assertEqual(report.initial_state, DatabaseState.LEGACY)
-        self.assertEqual(report.current_version, 1)
+        self.assertEqual(report.current_version, 2)
         with Session(self.engine) as db:
             lesson = db.query(models.Lesson).one()
             self.assertEqual(lesson.teacher_email, "teacher@example.invalid")
@@ -155,14 +161,14 @@ class DatabaseMigrationTests(unittest.TestCase):
     def test_newer_schema_version_is_rejected_without_downgrade(self):
         migrate_database(self.engine)
         with self.engine.begin() as connection:
-            connection.exec_driver_sql("PRAGMA user_version = 2")
+            connection.exec_driver_sql("PRAGMA user_version = 3")
 
         with self.assertRaises(DatabaseMigrationError) as raised:
             migrate_database(self.engine)
 
         self.assertEqual(raised.exception.code, "UNSUPPORTED_SCHEMA_VERSION")
         with self.engine.connect() as connection:
-            self.assertEqual(connection.exec_driver_sql("PRAGMA user_version").scalar_one(), 2)
+            self.assertEqual(connection.exec_driver_sql("PRAGMA user_version").scalar_one(), 3)
             self.assertEqual(
                 connection.execute(text("SELECT name FROM organizations WHERE id = 1")).scalar_one(),
                 "Default Organization",

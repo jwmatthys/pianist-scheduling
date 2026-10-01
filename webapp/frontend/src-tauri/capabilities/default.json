@@ -3,5 +3,10 @@
   "identifier": "main-window",
   "description": "Minimal capability set for the Music Program Scheduler window.",
   "windows": ["main"],
-  "permissions": []
+  "permissions": [
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "fs:allow-read-file",
+    "fs:allow-write-file"
+  ]
 }

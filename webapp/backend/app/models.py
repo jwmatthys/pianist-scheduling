@@ -1,11 +1,6 @@
-"""SQLAlchemy ORM models for the pianist scheduling webapp.
+"""SQLAlchemy models for session metadata and the Accompanist module."""
 
-Every top-level table carries an ``organization_id`` even though the MVP
-only ever has one organization. This keeps the schema ready for real
-multi-tenant auth later without any migration surgery.
-"""
-
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     Boolean,
@@ -34,6 +29,21 @@ class Organization(Base):
     pianists: Mapped[list["Pianist"]] = relationship(back_populates="organization")
     lessons: Mapped[list["Lesson"]] = relationship(back_populates="organization")
     import_profiles: Mapped[list["ImportProfile"]] = relationship(back_populates="organization")
+
+
+class SchedulingSession(Base):
+    __tablename__ = "scheduling_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_uuid: Mapped[str] = mapped_column(String(36), unique=True, nullable=False)
+    institution_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    program_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    term_label: Mapped[str] = mapped_column(String(100), nullable=False)
+    year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    start_date: Mapped[date | None] = mapped_column(nullable=True)
+    end_date: Mapped[date | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    modified_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
 
 class Pianist(Base):

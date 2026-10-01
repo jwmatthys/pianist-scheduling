@@ -1,17 +1,13 @@
-"""Database engine/session setup.
-
-Uses SQLite for the local/MVP deployment. The schema is deliberately
-multi-tenant-friendly (every top-level table hangs off an Organization)
-so a future move to a shared server with per-customer accounts does not
-require a data-model rewrite -- only adding real auth and scoping requests
-by the authenticated organization.
-"""
+"""Database engine and migration setup for the active local Scheduling Session."""
 
 import os
+from threading import RLock
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Callable
+from uuid import uuid4
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Connection, Engine
@@ -25,6 +21,7 @@ DATABASE_URL = f"sqlite:///{DB_PATH}"
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+DATABASE_LOCK = RLock()
 
 
 class Base(DeclarativeBase):
@@ -32,11 +29,12 @@ class Base(DeclarativeBase):
 
 
 def get_db():
-    db: Session = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    with DATABASE_LOCK:
+        db: Session = SessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
 
 
 def init_db():
@@ -157,7 +155,11 @@ def _upgrade_to_v1(connection: Connection) -> None:
     """Create the current Accompanist schema and absorb the supported v0 columns."""
     from . import models
 
-    Base.metadata.create_all(bind=connection)
+    baseline_tables = [
+        table for table in Base.metadata.sorted_tables
+        if table.name != "scheduling_sessions"
+    ]
+    Base.metadata.create_all(bind=connection, tables=baseline_tables)
 
     lesson_columns = _column_names(connection, "lessons")
     legacy_columns = {
@@ -182,11 +184,37 @@ def _upgrade_to_v1(connection: Connection) -> None:
         )
 
 
+def _upgrade_to_v2(connection: Connection) -> None:
+    """Add session metadata without changing the released Accompanist baseline."""
+    from . import models
+
+    models.SchedulingSession.__table__.create(bind=connection)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    connection.execute(
+        models.SchedulingSession.__table__.insert().values(
+            session_uuid=str(uuid4()),
+            institution_name="Legacy Session",
+            program_name="Music Program",
+            term_label="Term not set",
+            year=None,
+            start_date=None,
+            end_date=None,
+            created_at=now,
+            modified_at=now,
+        )
+    )
+
+
 MIGRATIONS = (
     SchemaMigration(
         version=1,
         name="create_current_schema_and_upgrade_legacy_lesson_columns",
         upgrade=_upgrade_to_v1,
+    ),
+    SchemaMigration(
+        version=2,
+        name="add_scheduling_session_metadata",
+        upgrade=_upgrade_to_v2,
     ),
 )
 LATEST_SCHEMA_VERSION = MIGRATIONS[-1].version

@@ -47,8 +47,10 @@ The Tauri identifier is currently the placeholder `com.example.musicprogramsched
 
 ## Local Data and Network
 
-Tauri stores `pianist_scheduling.db` under its per-user application-data directory. Electron continues to use Electron's `userData` directory, so test data and database changes are not shared between the two shells. The temporary backend binds only to `127.0.0.1`; its selected endpoint is passed to React through a Rust command. No external services are configured.
+Tauri stores `pianist_scheduling.db` under its per-user application-data directory. Electron continues to use Electron's `userData` directory, so test data and database changes are not shared between the two shells. Recovery archives live in the database directory's `recovery/` subdirectory; only the latest three are retained. The temporary backend binds only to `127.0.0.1`; its selected endpoint is passed to React through a Rust command. Tauri's official dialog and filesystem plugins are limited to open/save dialogs and file operations on dialog-selected paths. No external services are configured.
+
+`.mpsession` archives are unencrypted and can include student educational information. Exported archives should be stored and transferred according to institutional policy. Export creates a portable copy; normal application edits are persisted automatically to the active local SQLite database.
 
 ## Schema Migration Tests
 
-Run `npm test` before and after persistence/schema changes. The suite includes synthetic fixtures for the unversioned Accompanist schema, fresh/current database initialization, data-preserving forward migration, rollback on failure, and unsupported or invalid schemas. Do not use local production databases as test fixtures. The schema version and procedure for registering the next migration are documented in [ARCHITECTURE.md](ARCHITECTURE.md#sqlite-schema-migrations).
+Run `npm test` before and after persistence/schema changes. The suite includes synthetic fixtures for the unversioned Accompanist schema, fresh/current database initialization, session metadata migration, `.mpsession` round trips, WAL snapshots, staged migrations, recovery behavior, and hostile/invalid archives. Do not use local production databases as test fixtures. The schema version and procedure for registering the next migration are documented in [ARCHITECTURE.md](ARCHITECTURE.md#sqlite-schema-migrations).

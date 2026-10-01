@@ -482,3 +482,160 @@ button {
   border-radius: 3px;
   padding: 0.1rem 0.25rem;
 }
+
+.product-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.session-header-actions {
+  display: grid;
+  justify-items: end;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.session-identity {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.session-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.header-action {
+  min-height: 34px;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  cursor: pointer;
+}
+
+.header-action:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.header-action:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.session-error {
+  margin-bottom: 1rem;
+}
+
+.session-dialog {
+  width: min(540px, calc(100vw - 32px));
+  max-height: min(90vh, 760px);
+  padding: 1.4rem;
+  border: 1px solid #b9c4ce;
+  border-radius: 6px;
+  color: #1f2933;
+  background: #fff;
+  box-shadow: 0 18px 60px rgba(13, 35, 52, 0.28);
+}
+
+.session-dialog::backdrop {
+  background: rgba(15, 29, 39, 0.56);
+}
+
+.session-dialog form {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.dialog-heading,
+.dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.dialog-heading h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.session-dialog label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.session-dialog label span {
+  color: #667582;
+  font-weight: 400;
+}
+
+.session-dialog input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid #aeb9c3;
+  border-radius: 4px;
+  background: white;
+  color: #1f2933;
+  font: inherit;
+}
+
+.session-date-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.dialog-note {
+  margin: 0;
+  color: #536471;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.dialog-close {
+  border: 0;
+  background: transparent;
+  color: #234b65;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.dialog-actions {
+  justify-content: flex-end;
+}
+
+@media (max-width: 760px) {
+  .product-header-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  .session-header-actions {
+    width: 100%;
+    justify-items: start;
+  }
+
+  .session-action-buttons {
+    justify-content: flex-start;
+  }
+
+  .tab-nav {
+    flex-wrap: wrap;
+  }
+
+  .session-date-fields {
+    grid-template-columns: 1fr;
+  }
+}
