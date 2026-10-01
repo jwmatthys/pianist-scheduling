@@ -54,6 +54,8 @@ Do NOT implement speculative future modules now.
 
 Architect the application so new scheduling modules can be added cleanly without restructuring the entire product.
 
+The approved post-shell product/session architecture is detailed in [PRODUCT-MODULE-ARCHITECTURE.md](PRODUCT-MODULE-ARCHITECTURE.md), with concise module ownership rules in [MODULE-ARCHITECTURE.md](MODULE-ARCHITECTURE.md). Follow those documents for session metadata, availability, reports, and cross-module results.
+
 
 ## FUNDAMENTAL ARCHITECTURAL PRINCIPLE
 
@@ -124,19 +126,20 @@ Conceptually:
 
 Do not model major scheduling modules as simple tabs in one giant scheduler.
 
-Use a product-level dashboard and module-based workflow.
+Use a product-level dashboard and module-based workflow. One Scheduling Session represents one institution/program and one academic term; “Project” is only a user-facing synonym. The initial product has one active session/database at a time, not an in-app session history library.
 
 Conceptually:
 
 Music Program Scheduler
-        |
-        +-- Academic Terms
-               |
-               +-- Fall 2026
-                      |
-                      +-- Accompanist Scheduling
-                      +-- Clinical Placements
-                      +-- Performance Juries
+         |
+         +-- Open/Restore or New Session
+                 |
+                 +-- Institution / Program / Academic Term
+                         |
+                         +-- Session Dashboard
+                                 +-- Accompanist Scheduling
+                                 +-- Clinical Placements (when implemented)
+                                 +-- Performance Juries (when implemented)
 
 Each module may have its own internal tabs/views.
 
@@ -310,9 +313,10 @@ module-specific records
 For example:
 
 Student
-- id
+- internal application-generated UUID
 - name
-- shared/basic properties
+- optional institutional identifier/email
+- shared/basic identity properties
 
 AccompanistStudentData
 - lesson
@@ -350,7 +354,7 @@ Fall 2026
 Spring 2027
 Summer 2027
 
-Scheduling modules should normally operate within a term.
+Each Scheduling Session represents one institution/program and one academic term; “Project” is a user-facing synonym only. Session metadata is an internal UUID, institution display name, program display name, term display label, optional year/start/end dates, and created/modified timestamps. Exact dates and timezone are not required initially. Keep one active session/database at a time; do not add an in-app historical session library.
 
 Conceptually:
 
@@ -386,7 +390,7 @@ reimport spreadsheet
 
 when both modules live inside the same project and can safely share structured data.
 
-Establish a clean mechanism for module outputs to be consumed by another module.
+Establish a clean mechanism for module outputs to be consumed by another module. Use a session-level versioned result envelope with draft/finalized/superseded states. If a consumed finalized result changes, mark dependent results as potentially stale and surface that condition to the user. Never merge people solely because their display names match.
 
 Avoid direct module-to-module implementation dependencies where practical.
 
@@ -465,6 +469,8 @@ Common code may provide reusable primitives such as:
 - scoring helpers
 - solver utilities
 
+Availability is a demonstrated shared concept. Use a normalized `AvailabilityWindow` with Available/Tentative/Unavailable vocabulary while keeping owner associations, status meaning/scoring, validation, and UI module-specific. Missing availability is distinct from explicit Unavailable. Same-status overlaps may be merged; conflicting-status overlaps require review. Import Microsoft Forms exports locally as CSV/XLS/XLSX; do not integrate Forms/Graph APIs.
+
 But:
 
 AccompanistOptimizer
@@ -503,7 +509,7 @@ Do not leak these concepts unnecessarily into the product-wide shared domain mod
 10. FUTURE CLINICAL PLACEMENT MODULE
 ==================================================
 
-Do not implement this module during migration unless explicitly asked.
+Do not implement this module during the Tauri shell migration. Afterward, build its data-entry/import/manual-edit workflow only from requirements gathered from the actual Music Therapy workflow owner. Do not design or implement its optimizer until those constraints and policies are understood.
 
 Architectural requirements should support a future module that matches students to clinical placements based on factors including:
 
@@ -536,7 +542,7 @@ Students + Clinical Sites + Constraints
 11. FUTURE JURY MODULE
 ==================================================
 
-Do not reimplement the existing Python jury scheduler during the initial Tauri migration unless explicitly asked.
+Do not integrate or rewrite the existing Python jury scheduler during the Tauri shell migration. Independently characterize and test its behavior before integration or rewriting it.
 
 Preserve awareness that a working Python jury scheduler already exists.
 
@@ -572,7 +578,8 @@ The frontend should support:
 Application Shell
     |
     +-- Dashboard
-    +-- Academic Term selector
+        +-- Open/Restore or New Scheduling Session
+        +-- Session Dashboard (institution/program and academic term)
     +-- Modules
           |
           +-- Accompanists
@@ -648,7 +655,7 @@ Create explicit platform/service abstractions.
 Potential interfaces include:
 
 - FileService
-- ProjectStorage
+- SessionStorage
 - SettingsService
 - PlatformService
 - UpdateService
@@ -751,3 +758,24 @@ Therefore:
 - validate all frontend/native inputs
 - do not log personally identifiable student information when avoidable
 - use anonymized/synthetic test data
+
+Portable `.mpsession` archives are unencrypted in v1 and may contain student educational information. Keep them local or share them only through institution-approved channels. Before Open/Restore replaces the active session, create a local recovery snapshot and ask for user confirmation.
+
+
+==================================================
+19. APPROVED POST-SHELL IMPLEMENTATION ORDER
+==================================================
+
+After the current Tauri shell validation milestone, proceed in this order:
+
+1. Establish versioned SQLite migrations and a legacy database fixture.
+2. Implement session metadata, New Session, `.mpsession` export, and Open/Restore with staged validation/migration and an automatic local recovery snapshot before confirmed replacement. Keep one active session/database; do not add a history library.
+3. Introduce shared availability value/import infrastructure with Accompanist Scheduling as the first consumer. Preserve the current manual pianist editor and solver semantics; distinguish missing availability from Unavailable and flag conflicting-status overlaps.
+4. Introduce shared report infrastructure by adapting existing Accompanist reports without changing their established semantics. Do not create an arbitrary query designer.
+5. Introduce the product module registry/dashboard once the session and shared infrastructure are useful. Do not add placeholder module workflows.
+6. Independently characterize and test the standalone Jury scheduler during this work; do not integrate or rewrite it before that gate.
+7. Integrate Jury after its behavior, identities, and dependency on finalized Accompanist assignments are understood. Mark downstream results potentially stale when a consumed finalized result changes.
+8. Build the Clinical Placement data-entry/import/manual-edit workflow.
+9. Design the Clinical Placement optimizer only after requirements and policies are gathered from the Music Therapy workflow owner.
+
+The detailed approved design is in `docs/PRODUCT-MODULE-ARCHITECTURE.md`; module ownership rules are in `docs/MODULE-ARCHITECTURE.md`.

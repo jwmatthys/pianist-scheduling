@@ -16,6 +16,8 @@ Do not treat this application internally as only an "Accompanist Scheduler."
 
 The accompanist scheduler is a module within the larger Music Program Scheduler product.
 
+One Scheduling Session represents exactly one institution/program and one academic term. “Project” is a user-facing synonym, not a separate persisted entity. Initially, only one session/database is active at a time; do not build an in-app session history library.
+
 
 ## Core Architectural Principle
 
@@ -58,7 +60,9 @@ Music Program Scheduler
     |
     +-- Shared Domain
     |
-    +-- Academic Terms
+    +-- Scheduling Session
+    |     +-- Institution / Program Context
+    |     +-- Academic Term
     |
     +-- Scheduling Modules
     |     +-- Accompanists
@@ -87,6 +91,8 @@ Prefer:
 - module-specific data layered on top
 
 Only promote a concept into the shared domain when it is genuinely shared.
+
+Use an application-generated UUID as the authoritative internal Person identity. Institutional identifiers and email are optional. Never automatically merge people solely because display names match. Keep Accompanist, Clinical, and Jury profiles/data module-specific around shared identity.
 
 
 ## Optimization
@@ -124,16 +130,18 @@ Prefer structured internal result sharing over exporting and reimporting spreads
 
 Avoid tightly coupling one module's implementation directly to another module.
 
+Represent result lifecycle internally as draft/finalized/superseded while keeping user-facing labels simple. If a finalized result consumed by another module changes, mark dependent results potentially stale and surface that state. Use structured, versioned result contracts rather than spreadsheet handoffs.
 
-## Academic Terms
 
-Academic terms are an important organizing concept.
+## Sessions and Academic Terms
+
+Each Scheduling Session is scoped to one academic term and one institution/program display context. Session metadata includes an internal UUID, institution display name, program display name, term display label, optional year/start/end dates, and created/modified timestamps. Exact term dates and timezone are not required initially.
 
 Examples:
 - Fall 2026
 - Spring 2027
 
-Module data and results should normally belong to an academic term.
+Module data and results belong to the active session/term. Do not infer terms from lesson dates or filenames. The portable extension is `.mpsession`; its versioned archive/manifest is the contract, not internal SQLite tables. Open/Restore replaces the active session after confirmation and an automatic local recovery snapshot. Selective historical import is separate future work. V1 archives are unencrypted and may contain student educational information; handle them appropriately.
 
 
 ## Platform Architecture
@@ -146,7 +154,7 @@ Platform-specific capabilities must go through clear service/platform abstractio
 
 Examples:
 - FileService
-- ProjectStorage
+- SessionStorage
 - SettingsService
 - PlatformService
 - UpdateService
@@ -176,6 +184,8 @@ If Rust scheduling engines are used, preserve reasonable separation so future We
 
 Do not implement WebAssembly prematurely.
 
+Future browser support must use local file import/export, local session storage, and local execution; it must not require a vendor server or upload student scheduling data.
+
 
 ## Privacy
 
@@ -189,6 +199,7 @@ Therefore:
 
 - Core scheduling must work offline.
 - Student scheduling data remains local by default.
+- `.mpsession` exports may contain student educational information; keep them local or share them only through institution-approved channels.
 - Do not add telemetry.
 - Do not add analytics.
 - Do not add advertising SDKs.
@@ -240,6 +251,8 @@ End users must not need Python installed.
 
 Prefer eliminating persistent localhost HTTP/uvicorn architecture from production where practical.
 
+Characterize and test the standalone Python Jury scheduler before integration or rewrite. Do not design the Clinical Placement optimizer until detailed constraints and policies have been gathered from the actual Music Therapy workflow owner.
+
 
 ## Development Practices
 
@@ -262,6 +275,10 @@ Share parsing, validation, and export infrastructure where useful.
 Allow modules to have different input schemas.
 
 Do not create one giant universal spreadsheet format merely to make modules look alike.
+
+Availability is a demonstrated shared concept. A shared `AvailabilityWindow` may represent recurring weekday or dated windows with Available/Tentative/Unavailable status and import provenance, but status meaning/scoring, owner associations, validation policy, and entry UI remain module-specific. Missing availability is not equivalent to Unavailable. Same-status imported overlaps may be merged; conflicting-status overlaps must be surfaced for review. Import Microsoft Forms exports locally from CSV/XLS/XLSX; do not add Forms/Graph API integration. Imported availability is normal editable data, and manual graphical editing must remain available.
+
+Share report rendering/export infrastructure, but modules own report definitions, fields, filters, and row semantics. Do not create a universal report designer or permit arbitrary SQL.
 
 
 ## Distribution
@@ -295,6 +312,7 @@ During the Electron-to-Tauri migration also follow:
 
 - docs/TAURI-MIGRATION-PLAN.md
 - docs/MIGRATION-ELECTRON-TO-TAURI.md
+- docs/PRODUCT-MODULE-ARCHITECTURE.md
 
 Keep documentation synchronized with significant architectural changes.
 
