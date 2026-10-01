@@ -8,19 +8,18 @@ The product is **Music Program Scheduler**. A **Scheduling Session** is the one 
 
 Only one session/database is active at a time initially. `.mpsession` is the versioned portable archive contract; the internal SQLite schema is not the public file-format contract. Open/Restore replaces the active session after confirmation and creation of a local recovery snapshot. Selective historical import is a separate future feature. Session archives are unencrypted in v1 and may contain student educational information; handle them appropriately.
 
-The initial product shell is:
+The initial product shell starts on the active-session dashboard. Session operations are owned by the product level, not repeated inside module toolbars:
 
 ```text
 Music Program Scheduler
-  -> Open/Restore or New Session
-  -> Session Dashboard
+  -> Active-session dashboard (session identity + Edit/New/Open/Export)
   -> Implemented Scheduling Modules
        -> Accompanist Scheduling
-       -> Clinical Placements (when implemented)
-       -> Performance Juries (when implemented)
+       -> Clinical Placements (module shell)
+       -> Performance Juries (module shell)
 ```
 
-The current Accompanist workflow stays inside its module. Do not display empty placeholder workflows to imply functionality that does not exist.
+The Accompanist module has its own header, return-to-dashboard control, and internal Import Lessons, Pianists & Availability, Schedule, and Reports navigation. Session actions do not remain in that module header. Clinical Placements and Performance Juries appear in the built-in module registry and open minimal honest shells; do not display fake workflow state, statistics, or placeholder workflows that imply functionality that does not exist. Replacing/restoring a session returns the user to the dashboard. Export does not change navigation state.
 
 ## Module Ownership
 

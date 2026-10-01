@@ -2,7 +2,7 @@
 
 ## Product and Module Boundaries
 
-The product is **Music Program Scheduler**. Accompanist Scheduling is its first module. The current import, pianist availability, assignment, and report views remain inside that module; no future module workflows are introduced here.
+The product is **Music Program Scheduler**. Startup opens the product-level dashboard for the active Scheduling Session; session actions live there. A built-in module registry routes into each module's own shell and navigation. Accompanist Scheduling is the first functional module. Its import, pianist availability, assignment, and report views remain inside that module. Clinical and Jury have lightweight module boundaries only; their workflows and algorithms remain out of scope.
 
 Academic terms, small people identities, time primitives, locations, and useful file/import infrastructure may be shared when actual reuse is demonstrated. Lesson requirements, pianist availability and workload, accompanist assignment scoring, jury rules, and clinical placement constraints remain module-owned. The accompanist optimizer is not a universal scheduling engine.
 

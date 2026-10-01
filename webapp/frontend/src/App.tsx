@@ -4,28 +4,19 @@ import "./App.css";
 import { api } from "./lib/api";
 import { chooseSessionArchive, saveSessionArchive } from "./lib/platform";
 import type { SchedulingSession, SchedulingSessionInput } from "./lib/types";
-import { ImportPage } from "./pages/ImportPage";
-import { PianistsPage, type PianistsPageHandle } from "./pages/PianistsPage";
-import { SchedulePage } from "./pages/SchedulePage";
-import { ReportsPage } from "./pages/ReportsPage";
-
-type Tab = "import" | "pianists" | "schedule" | "reports";
-
-const TABS: { id: Tab; label: string }[] = [
-  { id: "import", label: "1. Import Lessons" },
-  { id: "pianists", label: "2. Pianists & Availability" },
-  { id: "schedule", label: "3. Schedule" },
-  { id: "reports", label: "4. Reports" },
-];
+import { SCHEDULING_MODULES, type ModuleKey } from "./moduleRegistry";
+import { ModuleShell } from "./components/ModuleShell";
+import { AccompanistModule, type AccompanistModuleHandle } from "./pages/AccompanistModule";
+import { DashboardPage } from "./pages/DashboardPage";
 
 function App() {
-  const [tab, setTab] = useState<Tab>("import");
+  const [activeModule, setActiveModule] = useState<ModuleKey | null>(null);
   const [session, setSession] = useState<SchedulingSession | null>(null);
   const [editingSession, setEditingSession] = useState(false);
   const [sessionFormKey, setSessionFormKey] = useState(0);
   const [busy, setBusy] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
-  const pianistsPageRef = useRef<PianistsPageHandle>(null);
+  const accompanistModuleRef = useRef<AccompanistModuleHandle>(null);
   const newSessionDialogRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -34,11 +25,9 @@ function App() {
     });
   }, []);
 
-  async function changeTab(nextTab: Tab) {
-    if (tab === "pianists" && nextTab !== "pianists") {
-      await pianistsPageRef.current?.saveAvailabilityBeforeLeaving();
-    }
-    setTab(nextTab);
+  async function returnToDashboard() {
+    await accompanistModuleRef.current?.saveAvailabilityBeforeLeaving();
+    setActiveModule(null);
   }
 
   async function handleNewSession(event: FormEvent<HTMLFormElement>) {
@@ -57,12 +46,11 @@ function App() {
     setBusy(true);
     setSessionError(null);
     try {
-      if (tab === "pianists") await pianistsPageRef.current?.saveAvailabilityBeforeLeaving();
       const nextSession = editingSession
         ? await api.updateSession(data)
         : await api.createSession(data);
       setSession(nextSession);
-      setTab("import");
+      setActiveModule(null);
       newSessionDialogRef.current?.close();
     } catch (error) {
       setSessionError(error instanceof Error ? error.message : "Could not create the new session.");
@@ -75,7 +63,6 @@ function App() {
     setBusy(true);
     setSessionError(null);
     try {
-      if (tab === "pianists") await pianistsPageRef.current?.saveAvailabilityBeforeLeaving();
       await saveSessionArchive(await api.exportSession());
     } catch (error) {
       setSessionError(error instanceof Error ? error.message : "Could not export the session.");
@@ -91,10 +78,9 @@ function App() {
       if (!archive) return;
       if (!window.confirm("Replace the active session with this archive? A local recovery snapshot will be created before replacement.")) return;
       setBusy(true);
-      if (tab === "pianists") await pianistsPageRef.current?.saveAvailabilityBeforeLeaving();
       const nextSession = await api.restoreSession(archive);
       setSession(nextSession);
-      setTab("import");
+      setActiveModule(null);
     } catch (error) {
       setSessionError(error instanceof Error ? error.message : "Could not open the session archive.");
     } finally {
@@ -102,63 +88,43 @@ function App() {
     }
   }
 
+  const selectedModule = SCHEDULING_MODULES.find((module) => module.key === activeModule) ?? null;
+
   return (
     <div className="app-shell">
-      <header className="app-header">
-        <div className="product-header-row">
-          <div>
-            <h1>Music Program Scheduler</h1>
-            <div className="app-module-label">Accompanist Scheduling</div>
-          </div>
-          <div className="session-header-actions">
-            <div className="session-identity" aria-live="polite">
-              {session
-                ? `${session.institution_name} | ${session.program_name} | ${session.term_label}`
-                : "Loading active session"}
-            </div>
-            <div className="session-action-buttons">
-                <button className="header-action" disabled={busy || !session} onClick={() => {
-                  setEditingSession(true);
-                  setSessionFormKey((key) => key + 1);
-                  newSessionDialogRef.current?.showModal();
-                }}>
-                  Edit Session
-                </button>
-                <button className="header-action" disabled={busy} onClick={() => {
-                  setEditingSession(false);
-                  setSessionFormKey((key) => key + 1);
-                  newSessionDialogRef.current?.showModal();
-                }}>
-                New Session
-              </button>
-              <button className="header-action" disabled={busy} onClick={() => void handleExportSession()}>
-                Export Session
-              </button>
-              <button className="header-action" disabled={busy} onClick={() => void handleOpenSession()}>
-                Open Session
-              </button>
-            </div>
-          </div>
-        </div>
-        <nav className="tab-nav">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              className={`tab-button ${tab === t.id ? "active" : ""}`}
-              onClick={() => changeTab(t.id)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </nav>
-      </header>
-      <main className="app-main">
-        {sessionError && <div className="error-banner session-error" role="alert">{sessionError}</div>}
-        {tab === "import" && <ImportPage key={session?.session_uuid} onImported={() => {}} />}
-        {tab === "pianists" && <PianistsPage key={session?.session_uuid} ref={pianistsPageRef} />}
-        {tab === "schedule" && <SchedulePage key={session?.session_uuid} />}
-        {tab === "reports" && <ReportsPage key={session?.session_uuid} />}
-      </main>
+      {sessionError && <div className="error-banner session-error" role="alert">{sessionError}</div>}
+      {!selectedModule && (
+        <DashboardPage
+          session={session}
+          busy={busy}
+          onEditSession={() => {
+            setEditingSession(true);
+            setSessionFormKey((key) => key + 1);
+            newSessionDialogRef.current?.showModal();
+          }}
+          onNewSession={() => {
+            setEditingSession(false);
+            setSessionFormKey((key) => key + 1);
+            newSessionDialogRef.current?.showModal();
+          }}
+          onOpenSession={() => void handleOpenSession()}
+          onExportSession={() => void handleExportSession()}
+          onOpenModule={setActiveModule}
+        />
+      )}
+      {selectedModule && (
+        <ModuleShell module={selectedModule} session={session} onBack={() => void returnToDashboard()}>
+          {selectedModule.key === "accompanist" ? (
+            <AccompanistModule key={session?.session_uuid} ref={accompanistModuleRef} />
+          ) : (
+            <section className="module-landing" aria-labelledby="module-landing-heading">
+              <h2 id="module-landing-heading">{selectedModule.name}</h2>
+              <p>{selectedModule.description}</p>
+              <p className="muted">This module shell is in place; its workflow is outside the current release.</p>
+            </section>
+          )}
+        </ModuleShell>
+      )}
       <dialog className="session-dialog" ref={newSessionDialogRef}>
         <form key={sessionFormKey} onSubmit={(event) => void handleNewSession(event)}>
           <div className="dialog-heading">
