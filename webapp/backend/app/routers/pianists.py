@@ -63,6 +63,12 @@ def set_availability(pianist_id: int, payload: schemas.AvailabilityBulkIn, db: S
         models.AvailabilitySlot.pianist_id == pianist_id
     ).delete()
 
+    availability_state = db.get(models.PianistAvailabilityState, pianist_id)
+    if availability_state is None:
+        db.add(models.PianistAvailabilityState(pianist_id=pianist_id, is_complete=True))
+    else:
+        availability_state.is_complete = True
+
     slots = [
         models.AvailabilitySlot(
             pianist_id=pianist_id,

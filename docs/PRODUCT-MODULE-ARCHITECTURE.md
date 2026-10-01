@@ -115,7 +115,7 @@ AvailabilityWindow
   import provenance: optional batch/row reference
 ```
 
-The model must permit multiple windows on one day and must not assume 30-minute granularity. No session timezone is required now; add timezone semantics only when a demonstrated date-specific workflow needs them. Missing/unlisted availability is not the same as explicit Unavailable.
+The model must permit multiple windows on one day and must not assume 30-minute granularity. No session timezone is required now; add timezone semantics only when a demonstrated date-specific workflow needs them. Submission completeness is separate from status: absent windows are unknown for an incomplete horizon and derive Unavailable for a valid complete horizon. Do not add “Not supplied” to the shared status vocabulary.
 
 Share parsing, canonicalization, interval validation, status vocabulary, provenance, and test utilities. Same-status overlapping windows may be normalized/merged. Conflicting-status overlaps must produce a validation/review issue and must not be silently merged. Keep status interpretation, recurrence/exception rules, owner, scoring, and validation policy module-specific. Tentative may be a soft preference for accompanist assignment but treated as unavailable by the existing jury input; the common type must not erase that difference.
 
@@ -134,7 +134,7 @@ Use a shared import pipeline, not a universal spreadsheet schema:
 5. Commit valid windows transactionally to the selected module's availability set. The imported rows become ordinary editable application records.
 6. Existing manual editing remains available. A user edit changes the normal window record and retains its origin/import provenance; it is not a separate temporary overlay.
 
-Profiles should be keyed by module/data kind and user/program context, not shared blindly between lesson and availability spreadsheets. Re-import replacement semantics must be explicit and limited to the selected set/module; they must never replace the full Scheduling Session. The current Accompanist lesson importer is a reference for preview/mapping, not a schema to generalize.
+Profiles should be keyed by module/data kind and user/program context, not shared blindly between lesson and availability spreadsheets. Re-import replacement semantics must be explicit and limited to the selected set/module; they must never replace the full Scheduling Session. For the initial Accompanist workflow, every accepted submission is complete for each matched pianist's weekly horizon and replaces that pianist's prior week; pianists absent from the file remain unchanged. A valid wide Forms row with all mapped windows blank is a complete zero-availability response, while malformed rows or incomplete mappings block the entire import. The current Accompanist lesson importer is a reference for preview/mapping, not a schema to generalize.
 
 Each module may compose shared primitives differently: a weekly grid for accompanist availability, a student/site form or calendar for placements, and date-specific faculty/resource windows for juries. No Forms API, cloud sync, or external import service is proposed.
 

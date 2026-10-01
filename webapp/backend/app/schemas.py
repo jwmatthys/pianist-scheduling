@@ -95,6 +95,7 @@ class PianistOut(BaseModel):
     name: str
     email: str
     max_hours_per_week: float | None = None
+    availability_complete: bool = False
 
 
 class AvailabilitySlotIn(BaseModel):
@@ -112,6 +113,91 @@ class AvailabilitySlotOut(BaseModel):
     day: str
     slot_start_minute: int
     status: str
+
+
+class AvailabilityWindowColumns(BaseModel):
+    start_column: str | None = None
+    end_column: str | None = None
+
+
+class AvailabilityImportMapping(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    layout: Literal["normalized", "wide"]
+    person_name_column: str | None = None
+    day_column: str | None = None
+    start_column: str | None = None
+    end_column: str | None = None
+    status_column: str | None = None
+    wide_status: Literal["Available", "Tentative", "Unavailable"] = "Available"
+    wide_windows: dict[str, list[AvailabilityWindowColumns]] = Field(default_factory=dict)
+
+
+class AvailabilityImportInspection(BaseModel):
+    upload_token: str
+    sheets: list[str]
+    selected_sheet: str | None = None
+    columns: list[str]
+    sample_rows: list[dict[str, str]]
+    suggested_normalized: dict[str, str | None]
+    suggested_wide_windows: dict[str, list[AvailabilityWindowColumns]]
+
+
+class AvailabilityImportIssueOut(BaseModel):
+    severity: Literal["error", "warning"]
+    code: str
+    message: str
+    row_number: int | None = None
+
+
+class AvailabilityImportWindowOut(BaseModel):
+    pianist_id: int
+    pianist_name: str
+    day: str
+    start_minute: int
+    end_minute: int
+    status: Literal["Available", "Tentative", "Unavailable"]
+
+
+class AvailabilityImportPianistOut(BaseModel):
+    pianist_id: int
+    pianist_name: str
+    days: list[str]
+
+
+class AvailabilityImportPreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    upload_token: str
+    sheet_name: str | None = None
+    mapping: AvailabilityImportMapping
+
+
+class AvailabilityImportPreviewOut(BaseModel):
+    preview_token: str
+    sheet_name: str | None = None
+    rows_processed: int
+    matched_pianist_count: int
+    absent_pianist_count: int
+    valid_window_count: int
+    existing_slots_in_scope: int
+    pianists: list[AvailabilityImportPianistOut]
+    windows: list[AvailabilityImportWindowOut]
+    errors: list[AvailabilityImportIssueOut]
+    warnings: list[AvailabilityImportIssueOut]
+    can_apply: bool
+
+
+class AvailabilityImportApplyRequest(BaseModel):
+    preview_token: str
+    confirmed: bool = False
+
+
+class AvailabilityImportApplyResult(BaseModel):
+    pianists_updated: int
+    slots_replaced: int
+    slots_created: int
+    days_replaced: int
 
 
 class LessonCreate(BaseModel):

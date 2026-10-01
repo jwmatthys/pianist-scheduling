@@ -67,7 +67,7 @@ class SessionFileTests(unittest.TestCase):
         with zipfile.ZipFile(BytesIO(archive_bytes)) as archive:
             return {item.filename: archive.read(item.filename) for item in archive.infolist()}
 
-    def make_archive(self, database_bytes, schema_version=2, manifest_overrides=None, filenames=None):
+    def make_archive(self, database_bytes, schema_version=3, manifest_overrides=None, filenames=None):
         manifest = {
             "format": "music-program-scheduler-session",
             "formatVersion": 1,

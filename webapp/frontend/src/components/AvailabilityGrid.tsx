@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
-import type { AvailabilityStatus, Pianist } from "../lib/types";
+import type { AvailabilitySlot, AvailabilityStatus, Pianist } from "../lib/types";
 import { formatMinutes } from "../lib/time";
 
 const DAYS: string[] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -22,6 +22,8 @@ function slotKey(day: string, slot: number) {
 
 export type AvailabilityGridHandle = {
   saveBeforeLeaving: () => Promise<void>;
+  prepareForImport: () => Promise<boolean>;
+  reloadFromServer: () => Promise<void>;
 };
 
 export const AvailabilityGrid = forwardRef<AvailabilityGridHandle, { pianist: Pianist }>(function AvailabilityGrid(
@@ -29,6 +31,7 @@ export const AvailabilityGrid = forwardRef<AvailabilityGridHandle, { pianist: Pi
   ref
 ) {
   const [grid, setGrid] = useState<Map<string, AvailabilityStatus>>(new Map());
+  const [availabilityComplete, setAvailabilityComplete] = useState(pianist.availability_complete);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -43,17 +46,22 @@ export const AvailabilityGrid = forwardRef<AvailabilityGridHandle, { pianist: Pi
     return result;
   }, []);
 
+  function installAvailability(data: AvailabilitySlot[], complete: boolean) {
+    const next = new Map<string, AvailabilityStatus>();
+    for (const slot of data) next.set(slotKey(slot.day, slot.slot_start_minute), slot.status);
+    gridRef.current = next;
+    setAvailabilityComplete(complete);
+    setGrid(next);
+    setDirty(false);
+    dirtyRef.current = false;
+  }
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     api.getAvailability(pianist.id).then((data) => {
       if (cancelled) return;
-      const next = new Map<string, AvailabilityStatus>();
-      for (const slot of data) next.set(slotKey(slot.day, slot.slot_start_minute), slot.status);
-      gridRef.current = next;
-      setGrid(next);
-      setDirty(false);
-      dirtyRef.current = false;
+      installAvailability(data, pianist.availability_complete);
       setLoading(false);
     });
     return () => {
@@ -76,7 +84,7 @@ export const AvailabilityGrid = forwardRef<AvailabilityGridHandle, { pianist: Pi
 
   function setUnavailable(day: string, slot: number) {
     const key = slotKey(day, slot);
-    if ((gridRef.current.get(key) ?? "Unavailable") === "Unavailable") return;
+    if (gridRef.current.get(key) === "Unavailable") return;
     const updated = new Map(gridRef.current);
     updated.set(key, "Unavailable");
     gridRef.current = updated;
@@ -92,9 +100,19 @@ export const AvailabilityGrid = forwardRef<AvailabilityGridHandle, { pianist: Pi
       return { day, slot_start_minute: Number(slot), status };
     });
     await api.setAvailability(pianist.id, payload);
+    setAvailabilityComplete(true);
     setDirty(false);
     dirtyRef.current = false;
     setSaving(false);
+  }
+
+  async function reloadFromServer() {
+    setLoading(true);
+    try {
+      installAvailability(await api.getAvailability(pianist.id), true);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useImperativeHandle(ref, () => ({
@@ -102,7 +120,14 @@ export const AvailabilityGrid = forwardRef<AvailabilityGridHandle, { pianist: Pi
       if (!dirtyRef.current) return;
       if (confirm("Save availability changes before leaving this section?")) await save();
     },
-  }), []);
+    async prepareForImport() {
+      if (!dirtyRef.current) return true;
+      if (!confirm("Save manual availability changes before reviewing an import?")) return false;
+      await save();
+      return true;
+    },
+    reloadFromServer,
+  }), [pianist.id]);
 
   function beginDrag(day: string, slot: number) {
     dragActiveRef.current = true;
@@ -136,7 +161,12 @@ export const AvailabilityGrid = forwardRef<AvailabilityGridHandle, { pianist: Pi
         <span className="legend-chip slot-available">Available</span>
         <span className="legend-chip slot-tentative">Tentative</span>
         <span className="legend-chip slot-unavailable">Unavailable</span>
-        <span className="legend-hint">Click or drag to cycle statuses. Right-click to set Unavailable.</span>
+        {!availabilityComplete && <span className="legend-chip slot-unset">Not supplied</span>}
+        <span className="legend-hint">
+          {availabilityComplete
+            ? "Complete week: times without an Available or Tentative window are Unavailable."
+            : "Not supplied is missing information. Click or drag to cycle; right-click to set Unavailable."}
+        </span>
       </div>
       <div className="availability-grid" style={{ gridTemplateColumns: `90px repeat(${DAYS.length}, 1fr)` }}>
         <div className="avail-header avail-corner" />
@@ -149,12 +179,13 @@ export const AvailabilityGrid = forwardRef<AvailabilityGridHandle, { pianist: Pi
           <div className="avail-row-contents" key={slot} style={{ display: "contents" }}>
             <div className="avail-time-label">{formatMinutes(slot)}</div>
             {DAYS.map((day) => {
-              const status = grid.get(slotKey(day, slot)) ?? "Unavailable";
+              const storedStatus = grid.get(slotKey(day, slot));
+              const status = storedStatus ?? (availabilityComplete ? "Unavailable" : null);
               return (
                 <button
                   key={day + slot}
                   type="button"
-                  className={`avail-cell ${STATUS_CLASS[status]}`}
+                  className={`avail-cell ${status ? STATUS_CLASS[status] : "slot-unset"}`}
                   onPointerDown={(event) => {
                     if (event.button === 0) beginDrag(day, slot);
                   }}
@@ -165,7 +196,7 @@ export const AvailabilityGrid = forwardRef<AvailabilityGridHandle, { pianist: Pi
                     event.preventDefault();
                     setUnavailable(day, slot);
                   }}
-                  title={`${day} ${formatMinutes(slot)}: ${status}`}
+                  title={`${day} ${formatMinutes(slot)}: ${status ?? "Not supplied"}`}
                 />
               );
             })}

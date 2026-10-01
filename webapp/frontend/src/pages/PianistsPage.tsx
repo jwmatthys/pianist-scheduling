@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import { api } from "../lib/api";
 import type { Pianist } from "../lib/types";
 import { AvailabilityGrid, type AvailabilityGridHandle } from "../components/AvailabilityGrid";
+import { AvailabilityImportDialog } from "../components/AvailabilityImportDialog";
 
 export type PianistsPageHandle = {
   saveAvailabilityBeforeLeaving: () => Promise<void>;
@@ -63,6 +64,15 @@ export const PianistsPage = forwardRef<PianistsPageHandle>(function PianistsPage
 
   const selected = pianists.find((p) => p.id === selectedId) ?? null;
 
+  async function prepareAvailabilityImport() {
+    return await availabilityGridRef.current?.prepareForImport() ?? true;
+  }
+
+  async function refreshAvailabilityAfterImport() {
+    await availabilityGridRef.current?.reloadFromServer();
+    refresh();
+  }
+
   return (
     <div className="page pianists-page">
       <div className="pianists-sidebar">
@@ -107,17 +117,25 @@ export const PianistsPage = forwardRef<PianistsPageHandle>(function PianistsPage
         </ul>
       </div>
       <div className="pianists-detail">
+        <div className="availability-heading-row">
         {selected ? (
           <>
             <h3>
               {selected.name}'s weekly availability
               {selected.max_hours_per_week ? ` \u2014 ${selected.max_hours_per_week}h cap` : ""}
             </h3>
-            <AvailabilityGrid ref={availabilityGridRef} pianist={selected} />
           </>
         ) : (
-          <p className="muted">Select a pianist to edit their availability.</p>
+          <h3>Pianist availability</h3>
         )}
+          <AvailabilityImportDialog
+            onBeforeApply={prepareAvailabilityImport}
+            onApplied={refreshAvailabilityAfterImport}
+          />
+        </div>
+        {selected
+          ? <AvailabilityGrid ref={availabilityGridRef} pianist={selected} />
+          : <p className="muted">Select a pianist to edit availability manually.</p>}
       </div>
     </div>
   );

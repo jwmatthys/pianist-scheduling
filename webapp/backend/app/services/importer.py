@@ -8,12 +8,12 @@ multi-worker deployment would swap this for a short-lived DB/blob cache.
 
 from __future__ import annotations
 
-import io
 import uuid
 
 import pandas as pd
 
 from ..models import DAYS_ORDER
+from . import tabular
 
 # Fields the app understands; the user maps their spreadsheet's columns to these.
 TARGET_FIELDS = [
@@ -44,9 +44,7 @@ _UPLOAD_CACHE: dict[str, pd.DataFrame] = {}
 
 
 def _read_any(filename: str, content: bytes) -> pd.DataFrame:
-    if filename.lower().endswith((".xlsx", ".xls")):
-        return pd.read_excel(io.BytesIO(content))
-    return pd.read_csv(io.BytesIO(content))
+    return tabular.read_table(filename, content)
 
 
 def stage_upload(filename: str, content: bytes) -> tuple[str, list[str], list[dict]]:

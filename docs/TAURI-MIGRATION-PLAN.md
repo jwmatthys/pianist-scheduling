@@ -469,7 +469,7 @@ Common code may provide reusable primitives such as:
 - scoring helpers
 - solver utilities
 
-Availability is a demonstrated shared concept. Use a normalized `AvailabilityWindow` with Available/Tentative/Unavailable vocabulary while keeping owner associations, status meaning/scoring, validation, and UI module-specific. Missing availability is distinct from explicit Unavailable. Same-status overlaps may be merged; conflicting-status overlaps require review. Import Microsoft Forms exports locally as CSV/XLS/XLSX; do not integrate Forms/Graph APIs.
+Availability is a demonstrated shared concept. Use a normalized `AvailabilityWindow` with Available/Tentative/Unavailable vocabulary while keeping owner associations, status meaning/scoring, validation, and UI module-specific. Track submission completeness separately from status: absent windows are unknown for an incomplete horizon and derive Unavailable for a valid complete horizon. Same-status overlaps may be merged; conflicting-status overlaps require review. Import Microsoft Forms exports locally as CSV/XLS/XLSX; do not integrate Forms/Graph APIs.
 
 But:
 
@@ -770,7 +770,7 @@ After the current Tauri shell validation milestone, proceed in this order:
 
 1. Establish an application-owned, forward-only SQLite migration registry and synthetic legacy fixture. Store the version in `PRAGMA user_version`; recognize an empty v0 database and the supported unversioned Accompanist schema as v0, migrate sequentially to the latest version, and reject unknown/newer schemas safely. Run schema DDL and version updates transactionally where SQLite permits. See [ARCHITECTURE.md](ARCHITECTURE.md#sqlite-schema-migrations).
 2. Implement session metadata, New Session, `.mpsession` export, and Open/Restore with staged validation/migration and an automatic local recovery snapshot before confirmed replacement. Keep one active session/database; do not add a history library.
-3. Introduce shared availability value/import infrastructure with Accompanist Scheduling as the first consumer. Preserve the current manual pianist editor and solver semantics; distinguish missing availability from Unavailable and flag conflicting-status overlaps.
+3. Introduce shared availability value/import infrastructure with Accompanist Scheduling as the first consumer. Preserve the current manual pianist editor and solver semantics; track complete-submission state separately, treat valid blank periods as Unavailable only within a complete submission, reject malformed imports without mutation, and flag conflicting-status overlaps.
 4. Introduce shared report infrastructure by adapting existing Accompanist reports without changing their established semantics. Do not create an arbitrary query designer.
 5. Introduce the product module registry/dashboard once the session and shared infrastructure are useful. Do not add placeholder module workflows.
 6. Independently characterize and test the standalone Jury scheduler during this work; do not integrate or rewrite it before that gate.

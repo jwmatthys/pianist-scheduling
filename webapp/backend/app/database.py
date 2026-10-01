@@ -157,7 +157,7 @@ def _upgrade_to_v1(connection: Connection) -> None:
 
     baseline_tables = [
         table for table in Base.metadata.sorted_tables
-        if table.name != "scheduling_sessions"
+        if table.name not in {"scheduling_sessions", "pianist_availability_states"}
     ]
     Base.metadata.create_all(bind=connection, tables=baseline_tables)
 
@@ -205,6 +205,13 @@ def _upgrade_to_v2(connection: Connection) -> None:
     )
 
 
+def _upgrade_to_v3(connection: Connection) -> None:
+    """Track Accompanist weekly completeness separately from availability status."""
+    from . import models
+
+    models.PianistAvailabilityState.__table__.create(bind=connection)
+
+
 MIGRATIONS = (
     SchemaMigration(
         version=1,
@@ -215,6 +222,11 @@ MIGRATIONS = (
         version=2,
         name="add_scheduling_session_metadata",
         upgrade=_upgrade_to_v2,
+    ),
+    SchemaMigration(
+        version=3,
+        name="add_pianist_availability_completeness_state",
+        upgrade=_upgrade_to_v3,
     ),
 )
 LATEST_SCHEMA_VERSION = MIGRATIONS[-1].version

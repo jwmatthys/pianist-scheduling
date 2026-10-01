@@ -175,6 +175,7 @@ class PersistenceCharacterizationTests(unittest.TestCase):
         self.assertEqual(len(slots), 1)
         self.assertEqual((slots[0].day, slots[0].slot_start_minute, slots[0].status),
                          ("Tuesday", 600, "Available"))
+        self.assertTrue(self.db.query(models.Pianist).filter_by(name="Bea Lin").one().availability_complete)
 
     def test_database_startup_adds_legacy_columns_without_losing_rows(self):
         legacy_engine = create_engine(

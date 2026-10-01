@@ -639,3 +639,221 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+.availability-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.availability-heading-row h3 {
+  margin: 0;
+}
+
+.availability-import-dialog {
+  width: min(900px, calc(100vw - 32px));
+  max-height: 90vh;
+  padding: 1.25rem;
+  overflow-y: auto;
+  border: 1px solid #b9c4ce;
+  border-radius: 6px;
+  color: #1f2933;
+  background: #fff;
+  box-shadow: 0 18px 60px rgba(13, 35, 52, 0.28);
+}
+
+.availability-import-dialog::backdrop {
+  background: rgba(15, 29, 39, 0.56);
+}
+
+.availability-import-content {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.availability-import-heading,
+.availability-import-file-row,
+.availability-import-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.availability-import-heading h2,
+.availability-import-heading p {
+  margin: 0;
+}
+
+.availability-import-heading h2,
+.availability-import-review h3,
+.availability-mapping-section h3 {
+  font-size: 1.1rem;
+}
+
+.availability-import-file-row a {
+  color: #1f4e79;
+  font-size: 0.9rem;
+}
+
+.availability-map-field {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.availability-map-field select {
+  min-width: 0;
+  min-height: 38px;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #aeb9c3;
+  border-radius: 4px;
+  background: #fff;
+  color: #1f2933;
+  font: inherit;
+}
+
+.availability-sheet-select,
+.availability-layout-select {
+  max-width: 440px;
+}
+
+.availability-mapping-section {
+  display: grid;
+  gap: 0.7rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #d7dee4;
+}
+
+.availability-mapping-section h3 {
+  margin: 0;
+}
+
+.availability-normalized-mapping {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.wide-day-mappings details {
+  padding: 0.45rem 0;
+  border-bottom: 1px solid #e0e5e9;
+}
+
+.wide-day-mappings summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.wide-window-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.55rem;
+  padding: 0.55rem 0;
+}
+
+.small-button {
+  margin-top: 0.45rem;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.84rem;
+}
+
+.availability-source-preview summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.availability-replacement-scope {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.75rem;
+  border: 1px solid #c6cdd5;
+  border-radius: 4px;
+}
+
+.availability-replacement-scope legend {
+  padding: 0 0.25rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.availability-replacement-scope label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.87rem;
+  line-height: 1.4;
+}
+
+.availability-import-review h3,
+.availability-import-summary {
+  margin: 0;
+}
+
+.availability-import-review {
+  display: grid;
+  gap: 0.7rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid #d7dee4;
+}
+
+.availability-import-summary {
+  font-weight: 600;
+}
+
+.availability-issue-list {
+  padding: 0.65rem 0.8rem;
+  border-radius: 4px;
+  font-size: 0.86rem;
+}
+
+.availability-issue-list ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.availability-issue-list li + li {
+  margin-top: 0.25rem;
+}
+
+.availability-errors {
+  color: #842f1c;
+  background: #fce4d6;
+  border: 1px solid #e2b8a1;
+}
+
+.availability-warnings {
+  color: #65520b;
+  background: #fff2cc;
+  border: 1px solid #dfce86;
+}
+
+.availability-windows-table-wrap {
+  max-height: 250px;
+}
+
+.availability-success {
+  padding: 0.55rem 0.75rem;
+  color: #1f5b38;
+  background: #e2f1e6;
+  border: 1px solid #a9ceb4;
+  border-radius: 4px;
+}
+
+@media (max-width: 760px) {
+  .availability-heading-row,
+  .availability-import-file-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .availability-normalized-mapping,
+  .wide-window-pair {
+    grid-template-columns: 1fr;
+  }
+}

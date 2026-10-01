@@ -10,7 +10,9 @@ side-by-side validation; the two desktop shells use separate local databases.
    (or add lessons manually in the schedule grid).
 2. **Pianists & Availability** — add pianists with a weekly hour cap, and
    click cells on a Monday–Friday calendar to cycle each half-hour from its
-   default Unavailable state through Available and Tentative.
+   default Unavailable state through Available and Tentative. Import pianist
+   availability from CSV, XLSX, or XLS, review mapped ranges and validation,
+   then continue editing the same persisted slots in the grid.
 3. **Schedule** — run the same best-fit assignment algorithm as
    `generate_pianist_schedule.py` (fit tiers, required-pianist handling,
    conflict prevention, workload caps, tie-breaks), then manually adjust the
@@ -103,3 +105,32 @@ to validate and restore one. Replacing the active session requires confirmation
 and first creates a local recovery archive; the application retains the three
 most recent recovery archives under its application-data directory. Session
 archives are unencrypted and may contain student educational information.
+
+## Import Pianist Availability
+
+Use **Import Availability** beside the existing pianist grid. The importer
+accepts CSV, XLSX, and XLS, supports normalized one-window-per-row files and
+wide respondent rows with configurable weekday start/end columns, and lets
+you choose a workbook sheet and correct suggested column mappings. A normalized
+example is available at
+[`frontend/public/availability-template.csv`](frontend/public/availability-template.csv).
+
+For a Microsoft Forms workflow, ask respondents for their name and one or more
+weekday availability ranges (start and end time). Export responses to Excel,
+select the workbook locally, map the respondent name and time columns, review
+matches/warnings/errors, then apply the ranges and correct them in the normal
+availability grid. Do not send the workbook to a Forms integration; no Forms
+or Graph API is used.
+
+Pianists match by exact case-insensitive name. Unknown names and duplicate
+matches block apply; the importer does not create or merge pianist records.
+Every accepted submission completely replaces availability for each matched
+pianist; absent pianists remain unchanged. In a valid complete submission,
+blank days/times mean no availability. Incomplete mappings or malformed rows
+block the entire import rather than clearing a person's week. A wide Forms
+workbook must map every weekday's start/end columns; a respondent with all
+mapped windows blank is a valid zero-availability response. Existing manual
+edits for matched pianists are replaced, with confirmation. The app stores
+Available/Tentative windows sparsely and records weekly completeness separately;
+absent slots in a complete week are Unavailable to the Accompanist solver.
+Imported ranges must align to the existing 30-minute grid and are not rounded.

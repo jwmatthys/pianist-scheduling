@@ -1,10 +1,11 @@
 # Privacy Architecture
 
-Scheduling data remains on the user's device. The desktop application has no
+Scheduling data and imported workbooks remain on the user's device. The desktop application has no
 telemetry, analytics, cloud storage, advertising, AI service, or external
 network integration. React communicates with the local Python service only
-over its ephemeral `127.0.0.1` listener; that listener is not exposed to the
-LAN.
+over its ephemeral `127.0.0.1` listener; selected workbooks are parsed there
+and that listener is not exposed to the LAN. No workbook or availability data
+is sent to the application provider or another remote service.
 
 `.mpsession` archives are unencrypted and contain the session database, which
 may include student educational information. Users should store and transfer

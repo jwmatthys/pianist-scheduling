@@ -59,7 +59,14 @@ class Pianist(Base):
     availability: Mapped[list["AvailabilitySlot"]] = relationship(
         back_populates="pianist", cascade="all, delete-orphan"
     )
+    availability_state: Mapped["PianistAvailabilityState | None"] = relationship(
+        back_populates="pianist", cascade="all, delete-orphan", uselist=False
+    )
     lessons: Mapped[list["Lesson"]] = relationship(back_populates="assigned_pianist")
+
+    @property
+    def availability_complete(self) -> bool:
+        return bool(self.availability_state and self.availability_state.is_complete)
 
 
 class AvailabilitySlot(Base):
@@ -77,6 +84,14 @@ class AvailabilitySlot(Base):
     status: Mapped[str] = mapped_column(String(20))  # Available | Tentative | Unavailable
 
     pianist: Mapped["Pianist"] = relationship(back_populates="availability")
+
+
+class PianistAvailabilityState(Base):
+    __tablename__ = "pianist_availability_states"
+
+    pianist_id: Mapped[int] = mapped_column(ForeignKey("pianists.id"), primary_key=True)
+    is_complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    pianist: Mapped["Pianist"] = relationship(back_populates="availability_state")
 
 
 class Lesson(Base):

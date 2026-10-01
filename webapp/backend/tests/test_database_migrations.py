@@ -32,10 +32,10 @@ class DatabaseMigrationTests(unittest.TestCase):
 
         self.assertEqual(report.initial_state, DatabaseState.FRESH)
         self.assertEqual(report.initial_version, 0)
-        self.assertEqual(report.current_version, 2)
-        self.assertEqual(len(report.applied_migrations), 2)
+        self.assertEqual(report.current_version, 3)
+        self.assertEqual(len(report.applied_migrations), 3)
         with self.engine.connect() as connection:
-            self.assertEqual(connection.exec_driver_sql("PRAGMA user_version").scalar_one(), 2)
+            self.assertEqual(connection.exec_driver_sql("PRAGMA user_version").scalar_one(), 3)
             self.assertEqual(
                 set(connection.execute(text(
                     "SELECT name FROM sqlite_master WHERE type='table' "
@@ -72,8 +72,8 @@ class DatabaseMigrationTests(unittest.TestCase):
         after = self.database_path.read_bytes()
 
         self.assertEqual(report.initial_state, DatabaseState.CURRENT)
-        self.assertEqual(report.initial_version, 2)
-        self.assertEqual(report.current_version, 2)
+        self.assertEqual(report.initial_version, 3)
+        self.assertEqual(report.current_version, 3)
         self.assertEqual(report.applied_migrations, ())
         self.assertEqual(after, before)
 
@@ -87,7 +87,7 @@ class DatabaseMigrationTests(unittest.TestCase):
 
         self.assertEqual(report.initial_state, DatabaseState.LEGACY)
         self.assertEqual(report.initial_version, 0)
-        self.assertEqual(report.current_version, 2)
+        self.assertEqual(report.current_version, 3)
         with Session(self.engine) as db:
             organization = db.get(models.Organization, 1)
             pianist = db.get(models.Pianist, 7)
@@ -110,7 +110,7 @@ class DatabaseMigrationTests(unittest.TestCase):
         Base = models.Base
         baseline_tables = [
             table for table in Base.metadata.sorted_tables
-            if table.name != "scheduling_sessions"
+            if table.name not in {"scheduling_sessions", "pianist_availability_states"}
         ]
         Base.metadata.create_all(self.engine, tables=baseline_tables)
         with Session(self.engine) as db:
@@ -130,12 +130,55 @@ class DatabaseMigrationTests(unittest.TestCase):
         report = migrate_database(self.engine)
 
         self.assertEqual(report.initial_state, DatabaseState.LEGACY)
-        self.assertEqual(report.current_version, 2)
+        self.assertEqual(report.current_version, 3)
         with Session(self.engine) as db:
             lesson = db.query(models.Lesson).one()
             self.assertEqual(lesson.teacher_email, "teacher@example.invalid")
             self.assertEqual(lesson.student_id, "SYN-01")
             self.assertEqual(lesson.student, "Synthetic Student")
+
+    def test_v2_to_v3_adds_completeness_state_without_changing_existing_data(self):
+        migrate_database(self.engine)
+        with Session(self.engine) as db:
+            pianist = models.Pianist(name="Synthetic v2 Pianist", email="v2@example.invalid")
+            db.add(pianist)
+            db.flush()
+            db.add(models.AvailabilitySlot(
+                pianist_id=pianist.id,
+                day="Tuesday",
+                slot_start_minute=600,
+                status="Tentative",
+            ))
+            db.add(models.Lesson(
+                teacher="Synthetic v2 Teacher",
+                student="Synthetic v2 Student",
+                day="Tuesday",
+                start_minute=600,
+                end_minute=650,
+            ))
+            db.commit()
+            pianist_id = pianist.id
+            session_uuid = db.query(models.SchedulingSession).one().session_uuid
+
+        with self.engine.begin() as connection:
+            connection.exec_driver_sql("DROP TABLE pianist_availability_states")
+            connection.exec_driver_sql("PRAGMA user_version = 2")
+        self.engine.dispose()
+        self.engine = create_engine(f"sqlite:///{self.database_path}")
+
+        report = migrate_database(self.engine)
+
+        self.assertEqual(report.initial_version, 2)
+        self.assertEqual(report.current_version, 3)
+        self.assertEqual(report.applied_migrations, ("add_pianist_availability_completeness_state",))
+        with Session(self.engine) as db:
+            pianist = db.get(models.Pianist, pianist_id)
+            self.assertEqual(pianist.name, "Synthetic v2 Pianist")
+            self.assertFalse(pianist.availability_complete)
+            self.assertEqual(pianist.availability[0].status, "Tentative")
+            self.assertEqual(db.query(models.Lesson).one().student, "Synthetic v2 Student")
+            self.assertEqual(db.query(models.SchedulingSession).one().session_uuid, session_uuid)
+            self.assertEqual(db.query(models.PianistAvailabilityState).count(), 0)
 
     def test_failed_migration_rolls_back_ddl_and_keeps_version_unadvanced(self):
         def fail_after_ddl(connection):
@@ -161,14 +204,14 @@ class DatabaseMigrationTests(unittest.TestCase):
     def test_newer_schema_version_is_rejected_without_downgrade(self):
         migrate_database(self.engine)
         with self.engine.begin() as connection:
-            connection.exec_driver_sql("PRAGMA user_version = 3")
+            connection.exec_driver_sql("PRAGMA user_version = 4")
 
         with self.assertRaises(DatabaseMigrationError) as raised:
             migrate_database(self.engine)
 
         self.assertEqual(raised.exception.code, "UNSUPPORTED_SCHEMA_VERSION")
         with self.engine.connect() as connection:
-            self.assertEqual(connection.exec_driver_sql("PRAGMA user_version").scalar_one(), 3)
+            self.assertEqual(connection.exec_driver_sql("PRAGMA user_version").scalar_one(), 4)
             self.assertEqual(
                 connection.execute(text("SELECT name FROM organizations WHERE id = 1")).scalar_one(),
                 "Default Organization",
