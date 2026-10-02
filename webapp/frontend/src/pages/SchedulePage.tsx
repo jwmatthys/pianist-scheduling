@@ -5,6 +5,10 @@ import { inputValueToMinutes, minutesToInputValue } from "../lib/time";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
+type Props = {
+  onImportLessons: () => void;
+};
+
 function fitClass(lesson: Lesson): string {
   if (lesson.assigned_pianist_id === null) return "row-unassigned";
   if (lesson.notes.includes("CONFLICT") || lesson.notes.includes("double-booked")) return "row-conflict";
@@ -15,7 +19,7 @@ function fitClass(lesson: Lesson): string {
   return "";
 }
 
-export function SchedulePage() {
+export function SchedulePage({ onImportLessons }: Props) {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [pianists, setPianists] = useState<Pianist[]>([]);
   const [hoursByPianist, setHoursByPianist] = useState<Record<string, number>>({});
@@ -117,9 +121,9 @@ export function SchedulePage() {
   return (
     <div className="page schedule-page">
       <div className="schedule-toolbar">
-        <h2>Schedule</h2>
-        <button className="primary-btn" onClick={runAlgorithm} disabled={busy}>
-          {busy ? "Assigning\u2026" : "Run best-fit assignment"}
+        <h2>Lesson Roster</h2>
+        <button className="secondary-btn" onClick={onImportLessons} disabled={busy}>
+          Import lessons from spreadsheet
         </button>
         <button className="secondary-btn" onClick={addLesson}>
           + Add lesson
@@ -129,7 +133,10 @@ export function SchedulePage() {
           onClick={clearAssignments}
           disabled={busy || !lessons.some((lesson) => lesson.assigned_pianist_id !== null)}
         >
-          Clear assignments
+          Clear all pianist assignments
+        </button>
+        <button className="primary-btn" onClick={runAlgorithm} disabled={busy}>
+          {busy ? "Assigning\u2026" : "Run best-fit assignment"}
         </button>
         <button className="danger-btn" onClick={removeAllLessons} disabled={!lessons.length}>
           Delete all lessons

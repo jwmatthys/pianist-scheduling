@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
+import { formatUtcTimestampLocally } from "../lib/time";
 import type {
   JuryReadiness,
   JuryScheduleEvent,
-  JuryScheduleHistoryItem,
   JuryScheduleResult,
-  JuryScheduleState,
 } from "../lib/types";
 
 type Props = {
@@ -32,18 +31,8 @@ function formatDate(value: string) {
   });
 }
 
-function formatTimestamp(value: string) {
-  return new Date(value).toLocaleString();
-}
-
 function titleCase(value: string) {
   return value.toLowerCase().replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function lifecycleTone(state: JuryScheduleState) {
-  if (state === "finalized") return "is-finalized";
-  if (state === "superseded") return "is-superseded";
-  return "is-draft";
 }
 
 function resultLessonCount(result: JuryScheduleResult) {
@@ -54,93 +43,29 @@ function resultLessonCount(result: JuryScheduleResult) {
 }
 
 function eventTitle(event: JuryScheduleEvent) {
-  if (event.kind === "meal_break") return "Meal Break";
-  if (event.kind === "periodic_break") return `Periodic Break · after ${event.after_jury_count} juries`;
+  if (event.kind === "meal_break") return "MEAL BREAK";
+  if (event.kind === "periodic_break") return "BREAK";
   return event.student_display_name || "Unnamed student";
-}
-
-function ReadinessPanel({ readiness }: { readiness: JuryReadiness | null }) {
-  if (!readiness) {
-    return <section className="jury-section jury-schedule-readiness" aria-label="Schedule readiness">
-      <h3>Schedule readiness</h3>
-      <p className="jury-muted">Readiness is loading.</p>
-    </section>;
-  }
-
-  const blockers = readiness.issues.filter((issue) => issue.severity === "error");
-  const warnings = readiness.issues.filter((issue) => issue.severity === "warning");
-  return (
-    <section className="jury-section jury-schedule-readiness" aria-label="Schedule readiness">
-      <div className="jury-section-heading">
-        <div>
-          <h3>Schedule readiness</h3>
-          <p>{blockers.length} blocking · {warnings.length} warnings</p>
-        </div>
-        <span className={`jury-schedule-status ${readiness.ready ? "is-current" : "is-stale"}`}>
-          {readiness.ready ? "Ready" : "Blocked"}
-        </span>
-      </div>
-      {blockers.length > 0 && (
-        <div className="jury-schedule-issues jury-schedule-blockers" aria-label="Blocking readiness issues">
-          <h4>Blockers</h4>
-          <ul>
-            {blockers.map((issue, index) => (
-              <li key={`${issue.code}-${index}`}>
-                <strong>{titleCase(issue.code)}</strong>
-                <span>{issue.message}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {warnings.length > 0 && (
-        <div className="jury-schedule-issues jury-schedule-warnings" aria-label="Readiness warnings">
-          <h4>Warnings</h4>
-          <ul>
-            {warnings.map((issue, index) => (
-              <li key={`${issue.code}-${index}`}>
-                <strong>{titleCase(issue.code)}</strong>
-                <span>{issue.message}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {blockers.length === 0 && warnings.length === 0 && (
-        <p className="jury-clear-state">No readiness blockers or warnings.</p>
-      )}
-    </section>
-  );
 }
 
 export function JurySchedulePage({ readiness, onReadinessChange }: Props) {
   const [currentResult, setCurrentResult] = useState<JuryScheduleResult | null>(null);
-  const [history, setHistory] = useState<JuryScheduleHistoryItem[]>([]);
-  const [historicalResult, setHistoricalResult] = useState<JuryScheduleResult | null>(null);
   const [loading, setLoading] = useState(true);
-  const [historyLoading, setHistoryLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function refreshResults() {
-    const [currentResponse, historyResponse] = await Promise.allSettled([
-      api.getCurrentJurySchedule(),
-      api.getJuryScheduleHistory(),
-    ]);
-    const errors: string[] = [];
-    if (currentResponse.status === "fulfilled") {
-      setCurrentResult(currentResponse.value);
-    } else if (currentResponse.reason instanceof Error && currentResponse.reason.message.startsWith("404:")) {
+    try {
+      setCurrentResult(await api.getCurrentJurySchedule());
+      setError(null);
+    } catch (cause) {
+      if (cause instanceof Error && cause.message.startsWith("404:")) {
       setCurrentResult(null);
-    } else {
-      errors.push(errorText(currentResponse.reason));
+        setError(null);
+      } else {
+        setError(errorText(cause));
+      }
     }
-    if (historyResponse.status === "fulfilled") {
-      setHistory(historyResponse.value);
-    } else {
-      errors.push(errorText(historyResponse.reason));
-    }
-    setError(errors.length ? errors.join(" ") : null);
   }
 
   useEffect(() => {
@@ -159,7 +84,6 @@ export function JurySchedulePage({ readiness, onReadinessChange }: Props) {
       onReadinessChange(freshReadiness);
       if (!freshReadiness.ready) return;
       await api.generateJurySchedule(freshReadiness.jury_input_revision);
-      setHistoricalResult(null);
       await refreshResults();
     } catch (cause) {
       setError(errorText(cause));
@@ -173,29 +97,47 @@ export function JurySchedulePage({ readiness, onReadinessChange }: Props) {
     }
   }
 
-  async function viewHistoricalResult(resultUuid: string) {
-    setHistoryLoading(true);
-    setError(null);
-    try {
-      setHistoricalResult(await api.getJuryScheduleResult(resultUuid));
-    } catch (cause) {
-      setError(errorText(cause));
-    } finally {
-      setHistoryLoading(false);
-    }
-  }
-
   const blockers = readiness?.issues.filter((issue) => issue.severity === "error") ?? [];
+  const warnings = readiness?.issues.filter((issue) => issue.severity === "warning") ?? [];
 
   return (
     <div className="jury-schedule-page">
-      <ReadinessPanel readiness={readiness} />
-
-      <section className="jury-section jury-schedule-controls">
-        <div>
-          <h3>Generate schedule</h3>
-          <p>{readiness?.ready ? "Readiness checks pass. Generate a new Jury schedule." : "Resolve all readiness blockers before generation."}</p>
+      <section className="jury-section jury-generate-schedule" aria-labelledby="generate-jury-schedule-title">
+        <div className="jury-section-heading">
+          <div>
+            <h3 id="generate-jury-schedule-title">Generate Jury Schedule</h3>
+            <p>{readiness
+              ? `${blockers.length} blocker${blockers.length === 1 ? "" : "s"} · ${warnings.length} warning${warnings.length === 1 ? "" : "s"}`
+              : "Checking readiness…"}</p>
+          </div>
         </div>
+        {blockers.length > 0 && (
+          <div className="jury-schedule-issues jury-schedule-blockers" aria-label="Schedule blockers">
+            <ul>
+              {blockers.map((issue, index) => (
+                <li key={`${issue.code}-${index}`}>
+                  <strong>{titleCase(issue.code)}</strong>
+                  <span>{issue.message}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {warnings.length > 0 && (
+          <div className="jury-schedule-issues jury-schedule-warnings" aria-label="Schedule warnings">
+            <ul>
+              {warnings.map((issue, index) => (
+                <li key={`${issue.code}-${index}`}>
+                  <strong>{titleCase(issue.code)}</strong>
+                  <span>{issue.message}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {readiness && blockers.length === 0 && warnings.length === 0 && (
+          <p className="jury-clear-state">No readiness blockers or warnings.</p>
+        )}
         <button
           type="button"
           className="primary-btn"
@@ -211,57 +153,12 @@ export function JurySchedulePage({ readiness, onReadinessChange }: Props) {
       {loading ? (
         <div className="jury-loading" role="status">Loading saved Jury schedules…</div>
       ) : currentResult ? (
-        <ScheduleDetails
-          result={currentResult}
-          heading="Current generated schedule"
-        />
+        <ScheduleDetails result={currentResult} />
       ) : (
         <section className="jury-section jury-empty-state">
           <strong>No Jury schedule generated yet</strong>
           <p>A current schedule will appear here after successful generation.</p>
         </section>
-      )}
-
-      <section className="jury-section jury-schedule-history" aria-label="Schedule history">
-        <div className="jury-section-heading">
-          <div>
-            <h3>Schedule history</h3>
-            <p>Saved results retain their original Accompanist and Jury input revisions.</p>
-          </div>
-        </div>
-        {history.length > 0 ? (
-          <ul className="jury-schedule-history-list">
-            {history.map((item) => (
-              <li key={item.result_uuid}>
-                <button
-                  type="button"
-                  className="jury-schedule-history-item"
-                  disabled={historyLoading}
-                  onClick={() => void viewHistoricalResult(item.result_uuid)}
-                >
-                  <strong>Result v{item.result_version}</strong>
-                  <span>{formatTimestamp(item.created_at)}</span>
-                  <span className="jury-schedule-history-meta">
-                    Source revision {item.source_revision} · {item.scheduled_count} scheduled · {item.unscheduled_count} unscheduled
-                  </span>
-                  <span className="jury-schedule-history-status">
-                    <span className={`jury-schedule-status ${lifecycleTone(item.state)}`}>{titleCase(item.state)}</span>
-                    {item.stale && <span className="jury-schedule-status is-stale">Stale</span>}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="jury-empty-copy">No generated schedules in this session.</p>
-        )}
-      </section>
-
-      {historicalResult && (
-        <ScheduleDetails
-          result={historicalResult}
-          heading={`Saved schedule v${historicalResult.result_version}`}
-        />
       )}
     </div>
   );
@@ -269,23 +166,17 @@ export function JurySchedulePage({ readiness, onReadinessChange }: Props) {
 
 function ScheduleDetails({
   result,
-  heading,
 }: {
   result: JuryScheduleResult;
-  heading: string;
 }) {
   const panelNames = new Map(result.panel_timelines.map((timeline) => [timeline.panel_uuid, timeline.panel_name]));
   return (
-    <section className="jury-section jury-schedule-result" aria-label={heading}>
+    <section className="jury-section jury-schedule-result" aria-label="Current generated schedule">
       <div className="jury-section-heading jury-schedule-result-heading">
         <div>
-          <h3>{heading}</h3>
-          <p>Result v{result.result_version} · Generated {formatTimestamp(result.created_at)} · Accompanist source revision {result.source_revision}</p>
+          <h3>Current generated schedule</h3>
+          <p>Generated {formatUtcTimestampLocally(result.created_at)}</p>
         </div>
-        <span className="jury-schedule-result-status">
-          <span className={`jury-schedule-status ${lifecycleTone(result.state)}`}>{titleCase(result.state)}</span>
-          {result.stale && <span className="jury-schedule-status is-stale">Stale</span>}
-        </span>
       </div>
 
       {result.stale && (
@@ -331,9 +222,9 @@ function ScheduleDetails({
                     <tr key={event.kind === "jury" ? event.source_lesson_uuid : `${event.kind}-${event.start_minute}-${index}`}>
                       <td>{formatTime(event.start_minute)}</td>
                       <td>{formatTime(event.end_minute)}</td>
-                      <td>
+                      <td className="jury-schedule-student-cell">
                         <strong>{eventTitle(event)}</strong>
-                        {event.kind === "jury" && <small>{event.instrument || "Instrument not supplied"}</small>}
+                        {event.kind === "jury" && <small className="jury-schedule-instrument">{event.instrument || "Instrument not supplied"}</small>}
                       </td>
                       <td>{event.kind === "jury" ? event.pianist_display_name || "—" : "—"}</td>
                     </tr>

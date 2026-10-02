@@ -14,19 +14,19 @@ export const SCHEDULING_MODULES: SchedulingModule[] = [
   {
     key: "accompanist",
     name: "Accompanist Scheduling",
-    description: "Assign pianists to student lessons using availability and workload.",
+    description: "Assign collaborative pianists to student lessons.",
     availability: "available",
   },
   {
     key: "juries",
-    name: "Performance Juries",
+    name: "Performance Jury Scheduling",
     description: "Configure lesson-based jury participation, panels, and pianist availability.",
     availability: "available",
   },
   {
     key: "clinical",
     name: "Clinical Placements",
-    description: "Plan Music Therapy student placements with clinical sites.",
+    description: "Plan music therapy and music education student placements with clinical sites and field experiences.",
     availability: "shell",
   },
 ];

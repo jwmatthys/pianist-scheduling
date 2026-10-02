@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import type {
-  AccompanistFinalizationState,
   JuryAvailability,
   JuryAvailableWindow,
   JuryLessonEntry,
@@ -9,10 +8,11 @@ import type {
   JuryPanelInput,
   JuryReadiness,
 } from "../lib/types";
+import { JuryReportsPage } from "./JuryReportsPage";
 import { JurySchedulePage } from "./JurySchedulePage";
 import "./JurySetupPage.css";
 
-type SetupView = "overview" | "lessons" | "panels" | "availability" | "schedule";
+type SetupView = "lessons" | "panels" | "availability" | "schedule" | "reports";
 type AvailabilityDraft = {
   windows: JuryAvailableWindow[];
   dirty: boolean;
@@ -34,11 +34,11 @@ type PanelDraft = {
 };
 
 const VIEWS: { id: SetupView; label: string }[] = [
-  { id: "overview", label: "Overview" },
-  { id: "panels", label: "Panels" },
-  { id: "availability", label: "Pianist availability" },
-  { id: "lessons", label: "Lessons" },
+  { id: "panels", label: "Jury Panels" },
+  { id: "lessons", label: "Lesson Roster" },
+  { id: "availability", label: "Pianist Availability" },
   { id: "schedule", label: "Schedule" },
+  { id: "reports", label: "Reports" },
 ];
 
 const EMPTY_PANEL: PanelDraft = {
@@ -77,16 +77,11 @@ function fromMinutes(value: number): string {
 }
 
 function formatTime(value: number): string {
-  if (value === 0 || value === 1440) return "12:00 AM";
   const hours = Math.floor(value / 60);
   const minutes = value % 60;
   const suffix = hours < 12 ? "AM" : "PM";
   const displayHours = hours % 12 || 12;
   return `${displayHours}:${String(minutes).padStart(2, "0")} ${suffix}`;
-}
-
-function formatJuryDate(value: string): string {
-  return new Date(`${value}T12:00:00`).toLocaleDateString(undefined, { month: "long", day: "numeric" });
 }
 
 function formatPanelTime(panel: JuryPanel) {
@@ -120,8 +115,7 @@ function errorText(error: unknown) {
 }
 
 export function JurySetupPage() {
-  const [view, setView] = useState<SetupView>("overview");
-  const [finalization, setFinalization] = useState<AccompanistFinalizationState | null>(null);
+  const [view, setView] = useState<SetupView>("panels");
   const [panels, setPanels] = useState<JuryPanel[]>([]);
   const [entries, setEntries] = useState<JuryLessonEntry[]>([]);
   const [readiness, setReadiness] = useState<JuryReadiness | null>(null);
@@ -144,8 +138,6 @@ export function JurySetupPage() {
       .filter((entry) => entry.jury_required && entry.pianist_required && entry.assigned_pianist)
       .map((entry) => [entry.assigned_pianist!.person_uuid, entry.assigned_pianist!] as const),
   ).values()].sort((left, right) => left.display_name.localeCompare(right.display_name));
-  const requiredCount = entries.filter((entry) => entry.jury_required).length;
-  const unresolvedCount = entries.filter((entry) => entry.jury_required && !entry.panel_uuid).length;
   const selectedPianist = assignedPianists.find((pianist) => pianist.person_uuid === selectedPianistUuid) ?? null;
   const selectedPianistRequiredOnDate = Boolean(selectedPianist && selectedAvailabilityDate && entries.some((entry) => {
     if (!entry.jury_required || !entry.pianist_required || entry.assigned_pianist?.person_uuid !== selectedPianist.person_uuid) {
@@ -158,16 +150,18 @@ export function JurySetupPage() {
     : null;
   const selectedAvailability = selectedAvailabilityKey ? availabilityDrafts[selectedAvailabilityKey] : undefined;
 
-  async function loadAll(synchronizeRoster = false) {
+  async function loadAll() {
     setLoading(true);
     setError(null);
     try {
-      if (synchronizeRoster) await api.synchronizeJuryWithAccompanist();
-      const nextFinalization = await api.getAccompanistFinalizationState();
+      let nextFinalization = await api.getAccompanistFinalizationState();
+      if (!nextFinalization.current_result_uuid) {
+        await api.finalizeAccompanist(nextFinalization.source_revision);
+        nextFinalization = await api.getAccompanistFinalizationState();
+      }
       const nextPanels = await api.getJuryPanels();
-      const nextEntries = await api.getJuryEntries();
+      const nextEntries = await api.synchronizeJuryRoster();
       const nextReadiness = await api.getJuryReadiness();
-      setFinalization(nextFinalization);
       setPanels(nextPanels);
       setEntries(nextEntries);
       setReadiness(nextReadiness);
@@ -215,7 +209,7 @@ export function JurySetupPage() {
   }
 
   useEffect(() => {
-    void loadAll(true);
+    void loadAll();
   }, []);
 
   async function refreshReadiness() {
@@ -223,65 +217,6 @@ export function JurySetupPage() {
       setReadiness(await api.getJuryReadiness());
     } catch (requestError) {
       setError(errorText(requestError));
-    }
-  }
-
-  async function activateView(nextView: SetupView) {
-    setView(nextView);
-    if (nextView !== "lessons" || loading || busy || !finalization?.current_result_uuid) return;
-
-    setBusy(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const result = await api.assignJuryPanelsByInstrument();
-      setEntries(result.entries);
-      await refreshReadiness();
-      if (result.assigned_count > 0) {
-        setNotice(`Assigned ${result.assigned_count} lesson${result.assigned_count === 1 ? "" : "s"} to matching Panels.`);
-      }
-    } catch (requestError) {
-      setError(errorText(requestError));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function finalizeAndSync() {
-    if (!finalization) return;
-    const approved = window.confirm(
-      "Approve the current Accompanist schedule for downstream Jury use? Existing solver warnings and manual assignments may be included."
-    );
-    if (!approved) return;
-    setBusy(true);
-    setError(null);
-    setNotice(null);
-    try {
-      await api.finalizeAccompanist(finalization.source_revision);
-      await api.synchronizeJuryRoster();
-      setNotice("Accompanist schedule finalized and Jury lesson entries synchronized.");
-      await loadAll();
-    } catch (requestError) {
-      setError(errorText(requestError));
-      await loadAll();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function synchronizeRoster() {
-    setBusy(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const nextEntries = await api.synchronizeJuryRoster();
-      setEntries(nextEntries);
-      setNotice(`Jury roster synchronized: ${nextEntries.length} lesson entries.`);
-      await loadAll();
-    } catch (requestError) {
-      setError(errorText(requestError));
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -308,15 +243,14 @@ export function JurySetupPage() {
     setNotice(null);
     try {
       const updated = await api.updateJuryRequired(entry.source_lesson_uuid, juryRequired);
-      setEntries((current) => current.map((item) => (
-        item.source_lesson_uuid === updated.source_lesson_uuid ? updated : item
+      const state = await api.getAccompanistFinalizationState();
+      await api.finalizeAccompanist(state.source_revision);
+      const synchronized = await api.synchronizeJuryRoster();
+      setEntries(synchronized.map((item) => (
+        item.source_lesson_uuid === updated.source_lesson_uuid ? { ...item, panel_uuid: updated.panel_uuid } : item
       )));
-      const [nextFinalization] = await Promise.all([
-        api.getAccompanistFinalizationState(),
-        refreshReadiness(),
-      ]);
-      setFinalization(nextFinalization);
-      setNotice("Jury Required updated on the source Lesson. Finalize the current Accompanist revision before scheduling.");
+      await refreshReadiness();
+      setNotice("Jury Required updated on the source Lesson.");
     } catch (requestError) {
       setError(errorText(requestError));
     } finally {
@@ -427,35 +361,7 @@ export function JurySetupPage() {
         ...current,
         [key]: { windows: saved.windows, dirty: false },
       }));
-      setNotice("Jury Availability Windows saved.");
-      await refreshReadiness();
-    } catch (requestError) {
-      setError(errorText(requestError));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function clearSelectedAvailability() {
-    if (!selectedPianist || !selectedAvailabilityDate || !selectedAvailability) return;
-    if (selectedAvailability.windows.length === 0) return;
-    const dateLabel = formatJuryDate(selectedAvailabilityDate);
-    if (!window.confirm(
-      `Clear Jury Availability?\n\nThis will remove all Jury Availability Windows for ${selectedPianist.display_name} on ${dateLabel}.`
-    )) return;
-
-    const key = availabilityKey(selectedPianist.person_uuid, selectedAvailabilityDate);
-    setBusy(true);
-    setError(null);
-    setNotice(null);
-    try {
-      await api.clearJuryAvailability(selectedPianist.person_uuid, selectedAvailabilityDate);
-      setAvailability((current) => ({ ...current, [key]: null }));
-      setAvailabilityDrafts((current) => ({
-        ...current,
-        [key]: { windows: [], dirty: false },
-      }));
-      setNotice("Jury Availability Windows cleared.");
+      setNotice("Jury-Day availability saved.");
       await refreshReadiness();
     } catch (requestError) {
       setError(errorText(requestError));
@@ -470,12 +376,12 @@ export function JurySetupPage() {
     const start = toMinutes(availabilityStart);
     const end = toMinutes(availabilityEnd);
     if (start === null || end === null || end <= start) {
-      setError("Availability Window end must be later than its start.");
+      setError("Available window end must be later than its start.");
       return;
     }
     const windows = selectedAvailability?.windows ?? [];
     if (windows.some((window) => start < window.end_minute && end > window.start_minute)) {
-      setError("Jury Availability Windows cannot overlap.");
+      setError("Available windows cannot overlap.");
       return;
     }
     setError(null);
@@ -502,11 +408,11 @@ export function JurySetupPage() {
     if (!selectedAvailability.dirty) return;
     const nextWindows = [...selectedAvailability.windows].sort((left, right) => left.start_minute - right.start_minute);
     if (nextWindows.some((window) => window.end_minute <= window.start_minute)) {
-      setError("Availability Window end must be later than its start.");
+      setError("Available window end must be later than its start.");
       return;
     }
     if (nextWindows.some((window, index) => index > 0 && window.start_minute < nextWindows[index - 1].end_minute)) {
-      setError("Jury Availability Windows cannot overlap.");
+      setError("Available windows cannot overlap.");
       return;
     }
     setError(null);
@@ -516,52 +422,20 @@ export function JurySetupPage() {
   const visibleEntries = entries.filter((entry) => entryFilter === "all" || entry.jury_required);
 
   return (
-    <section className="jury-setup" aria-labelledby="jury-setup-title">
-      <div className="jury-setup-heading">
-        <div>
-          <p className="jury-eyebrow">PERFORMANCE JURIES · SETUP</p>
-          <h2 id="jury-setup-title">Jury setup</h2>
-        </div>
-        <span className="jury-scope-note">Jury schedule</span>
-      </div>
-
+    <section className="jury-setup" aria-label="Performance Jury Scheduling">
       {error && <div className="jury-alert jury-alert-error" role="alert">{error}</div>}
       {notice && <div className="jury-alert jury-alert-success" role="status">{notice}</div>}
 
-      <section className={`jury-readiness-strip ${readiness?.ready ? "is-ready" : "is-blocked"}`} aria-live="polite">
-        <div className="jury-readiness-state">
-          <span className="jury-readiness-mark" aria-hidden="true">{readiness?.ready ? "✓" : "!"}</span>
-          <div>
-            <strong>{readiness?.ready ? "Ready for scheduling" : "Readiness needs attention"}</strong>
-            <span>
-              {readiness
-                ? `${readiness.issues.filter((issue) => issue.severity === "error").length} blocking · ${readiness.issues.filter((issue) => issue.severity === "warning").length} warnings`
-                : "Checking current setup"}
-            </span>
-          </div>
-        </div>
-        <div className="jury-readiness-meta">
-          <span>{requiredCount} required lesson{requiredCount === 1 ? "" : "s"}</span>
-          <span>{unresolvedCount} without Panel</span>
-          <button type="button" className="jury-text-button" disabled={busy || loading} onClick={() => void refreshReadiness()}>
-            Recheck
-          </button>
-        </div>
-      </section>
-
-      <nav className="jury-view-nav" aria-label="Jury setup views">
+      <nav className="tab-nav module-tab-nav" aria-label="Jury Scheduling views">
         {VIEWS.map((item) => (
           <button
             key={item.id}
             type="button"
-            className={view === item.id ? "is-active" : ""}
+            className={`tab-button ${view === item.id ? "active" : ""}`}
             aria-current={view === item.id ? "page" : undefined}
-            disabled={loading || busy}
-            onClick={() => void activateView(item.id)}
+            onClick={() => setView(item.id)}
           >
             {item.label}
-            {item.id === "lessons" && <span>{entries.length}</span>}
-            {item.id === "panels" && <span>{panels.length}</span>}
           </button>
         ))}
       </nav>
@@ -570,94 +444,11 @@ export function JurySetupPage() {
         <div className="jury-loading" role="status">Loading Jury setup…</div>
       ) : (
         <>
-          {view === "overview" && (
-            <div className="jury-overview-grid">
-              <section className="jury-section jury-date-section">
-                <div className="jury-section-heading">
-                  <div>
-                    <h3>Panel dates</h3>
-                    <p>Each Panel has its own one-day schedule date.</p>
-                  </div>
-                </div>
-                {panels.length === 0 ? (
-                  <p className="jury-field-note">Add a Panel and set its Scheduling Date before collecting availability.</p>
-                ) : (
-                  <ul className="jury-panel-date-list">
-                    {panels.map((panel) => (
-                      <li key={panel.panel_uuid}>
-                        <strong>{panel.panel_name}</strong>
-                        {" "}
-                        <span>{panel.jury_date ? new Date(`${panel.jury_date}T12:00:00`).toLocaleDateString(undefined, { dateStyle: "long" }) : "Date required"}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-
-              <section className="jury-section jury-source-section">
-                <div className="jury-section-heading">
-                  <div>
-                    <h3>Accompanist source</h3>
-                    <p>Jury entries use only the human-approved finalized lesson result.</p>
-                  </div>
-                </div>
-                {finalization?.current_result_uuid ? (
-                  <div className="jury-source-current">
-                    <span className="jury-state-dot" aria-hidden="true" />
-                    <div>
-                      <strong>Finalized result v{finalization.current_result_version}</strong>
-                      <span>Source revision {finalization.source_revision}</span>
-                    </div>
-                    <button type="button" className="secondary-btn" disabled={busy} onClick={() => void synchronizeRoster()}>
-                      Sync roster
-                    </button>
-                  </div>
-                ) : (
-                  <div className="jury-source-empty">
-                    <strong>No current finalized result</strong>
-                    <p>Review the manual Accompanist schedule before approving it for Jury use.</p>
-                    <button type="button" className="primary-btn" disabled={busy} onClick={() => void finalizeAndSync()}>
-                      {busy ? "Working…" : `Finalize revision ${finalization?.source_revision ?? "—"} & sync roster`}
-                    </button>
-                  </div>
-                )}
-                <p className="jury-field-note">Finalization records your approved assignments, including ordinary solver warnings and manual overrides.</p>
-              </section>
-
-              <section className="jury-section jury-readiness-detail">
-                <div className="jury-section-heading">
-                  <div>
-                    <h3>Readiness issues</h3>
-                    <p>Blocking issues must be resolved before any future schedule generation.</p>
-                  </div>
-                </div>
-                {readiness?.issues.length ? (
-                  <ul className="jury-issue-list">
-                    {readiness.issues.map((issue, index) => (
-                      <li key={`${issue.code}-${issue.entity_uuids.join("-")}-${index}`} className={`severity-${issue.severity}`}>
-                        <span>{issue.severity === "error" ? "Blocking" : "Warning"}</span>
-                        <div>
-                          <strong>{issue.code.replaceAll("_", " ").toLowerCase()}</strong>
-                          <p>{issue.message}</p>
-                          {issue.entity_uuids.length > 0 && (
-                            <small>{issue.entity_uuids.map((uuid) => uuid.slice(0, 8)).join(" · ")}</small>
-                          )}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="jury-clear-state"><span aria-hidden="true">✓</span> No readiness issues.</div>
-                )}
-              </section>
-            </div>
-          )}
-
           {view === "lessons" && (
             <section className="jury-section jury-entries-section">
               <div className="jury-section-heading jury-entries-heading">
                 <div>
-                  <h3>Lesson entries</h3>
+                  <h3>Lesson Roster</h3>
                   <p>Each finalized Accompanist lesson has independent Jury participation and Panel selection.</p>
                 </div>
                 <div className="jury-filter" role="group" aria-label="Filter lesson entries">
@@ -667,13 +458,8 @@ export function JurySetupPage() {
               </div>
               {entries.length === 0 ? (
                 <div className="jury-empty-state">
-                  <strong>Roster not synchronized</strong>
-                  <p>Finalize the Accompanist schedule, then sync its lesson entries here.</p>
-                  {!finalization?.current_result_uuid && (
-                    <button type="button" className="primary-btn" disabled={busy} onClick={() => void finalizeAndSync()}>
-                      Finalize Accompanist schedule
-                    </button>
-                  )}
+                  <strong>No finalized Jury roster</strong>
+                  <p>Lessons synchronize automatically when Jury Scheduling opens and a current Accompanist schedule is available.</p>
                 </div>
               ) : (
                 <div className="jury-table-wrap">
@@ -681,22 +467,23 @@ export function JurySetupPage() {
                     <thead>
                       <tr>
                         <th scope="col">Student</th>
-                        <th scope="col">Lesson / instrument</th>
                         <th scope="col">Teacher</th>
                         <th scope="col">Pianist</th>
                         <th scope="col">Jury Required</th>
+                        <th scope="col">Lesson / instrument</th>
                         <th scope="col">Panel</th>
                       </tr>
                     </thead>
                     <tbody>
                       {visibleEntries.map((entry) => (
-                        <tr key={entry.source_lesson_uuid} className={entry.jury_required ? "jury-entry-required" : ""}>
+                        <tr
+                          key={entry.source_lesson_uuid}
+                          className={entry.jury_required
+                            ? entry.panel_uuid ? "jury-entry-required" : "jury-entry-required jury-entry-unassigned-panel"
+                            : ""}
+                        >
                           <td>
                             <strong>{entry.student_display_name || "Unnamed student"}</strong>
-                          </td>
-                          <td>
-                            <span>{entry.instrument || "Instrument not supplied"}</span>
-                            <small>{entry.pianist_required ? "Needs pianist? Yes" : "Needs pianist? No"}</small>
                           </td>
                           <td>{entry.teacher || <span className="jury-muted">Not supplied</span>}</td>
                           <td>
@@ -717,6 +504,9 @@ export function JurySetupPage() {
                               />
                               <span>{entry.jury_required ? "Required" : "Not required"}</span>
                             </label>
+                          </td>
+                          <td>
+                            {entry.instrument || "Instrument not supplied"}
                           </td>
                           <td>
                             {entry.jury_required ? (
@@ -744,15 +534,15 @@ export function JurySetupPage() {
             <section className="jury-section jury-panels-section">
               <div className="jury-section-heading jury-entries-heading">
                 <div>
-                  <h3>Panels</h3>
+                  <h3>Jury Panels</h3>
                   <p>Define start preferences, Jury duration, periodic breaks, and meal intervals.</p>
                 </div>
-                <button type="button" className="primary-btn" onClick={openNewPanel}>Add Panel</button>
+                <button type="button" className="primary-btn" onClick={openNewPanel}>Add Jury Panel</button>
               </div>
               {panels.length === 0 ? (
                 <div className="jury-empty-state">
-                  <strong>No Panels defined</strong>
-                  <p>Panels are assigned explicitly to individual lesson entries.</p>
+                  <strong>No Jury Panels defined</strong>
+                  <p>Jury Panels are assigned explicitly to individual lessons.</p>
                 </div>
               ) : (
                 <div className="jury-panel-list">
@@ -787,10 +577,7 @@ export function JurySetupPage() {
             <section className="jury-availability-layout">
               <aside className="jury-section jury-pianist-picker">
                 <div className="jury-section-heading">
-                  <div>
-                    <h3>Pianists</h3>
-                    <p>{selectedAvailabilityDate ? formatJuryDate(selectedAvailabilityDate) : "Select a Panel date"}</p>
-                  </div>
+                  <div><h3>Assigned pianists</h3><p>From the finalized Accompanist result.</p></div>
                 </div>
                 {assignedPianists.length === 0 ? (
                   <p className="jury-empty-copy">No assigned pianists in the current Jury roster.</p>
@@ -800,7 +587,12 @@ export function JurySetupPage() {
                       const key = selectedAvailabilityDate ? availabilityKey(pianist.person_uuid, selectedAvailabilityDate) : "";
                       const record = key ? availability[key] : null;
                       const draft = key ? availabilityDrafts[key] : undefined;
-                      const windows = draft?.windows ?? record?.windows ?? [];
+                      const complete = draft ? draft.windows.length > 0 : record?.is_complete ?? false;
+                      const needed = Boolean(selectedAvailabilityDate && entries.some((entry) => (
+                        entry.jury_required && entry.pianist_required &&
+                        entry.assigned_pianist?.person_uuid === pianist.person_uuid &&
+                        panels.some((panel) => panel.panel_uuid === entry.panel_uuid && panel.jury_date === selectedAvailabilityDate)
+                      )));
                       return (
                         <li key={pianist.person_uuid}>
                           <button
@@ -809,15 +601,8 @@ export function JurySetupPage() {
                             onClick={() => setSelectedPianistUuid(pianist.person_uuid)}
                           >
                             <strong>{pianist.display_name}</strong>
-                            <span className="jury-pianist-window-summary">
-                              {!selectedAvailabilityDate ? "Select a Panel date"
-                                : windows.length
-                                  ? windows.map((item) => (
-                                    <span key={`${item.start_minute}-${item.end_minute}`}>
-                                      {formatTime(item.start_minute)} - {formatTime(item.end_minute)}
-                                    </span>
-                                  ))
-                                  : "No Jury Availability Windows"}
+                            <span className={draft?.dirty ? "is-unsaved" : ""}>
+                              {draft?.dirty ? busy ? "Saving…" : "Unsaved changes" : !needed ? "Not required" : complete ? "Complete" : "Declaration needed"}
                             </span>
                           </button>
                         </li>
@@ -829,7 +614,7 @@ export function JurySetupPage() {
 
               <section className="jury-section jury-availability-editor">
                 {panelDates.length === 0 ? (
-                  <div className="jury-empty-state"><strong>Set a Scheduling Date on a Panel first</strong><p>Each Panel specifies its own date; enter Availability Windows for each date.</p></div>
+                  <div className="jury-empty-state"><strong>Set a Scheduling Date on a Panel first</strong><p>Each Panel specifies its own date; availability is declared for those dates.</p></div>
                 ) : !selectedAvailabilityDate ? (
                   <div className="jury-empty-state"><strong>Select a Panel date</strong><p>Availability is stored independently for each date used by a Panel.</p></div>
                 ) : !selectedPianist ? (
@@ -838,15 +623,9 @@ export function JurySetupPage() {
                   <>
                     <div className="jury-section-heading">
                       <div>
-                        <h3>Jury Availability Windows</h3>
-                        <p>{selectedPianist.display_name}</p>
+                        <h3>{selectedPianist.display_name}</h3>
+                        <p>Availability declaration by Panel date</p>
                       </div>
-                      <button
-                        type="button"
-                        className="jury-delete-button"
-                        disabled={busy || selectedAvailability.windows.length === 0}
-                        onClick={() => void clearSelectedAvailability()}
-                      >Clear Availability</button>
                     </div>
                     <label className="jury-date-control">
                       <span>Panel Scheduling Date</span>
@@ -858,21 +637,25 @@ export function JurySetupPage() {
                         ))}
                       </select>
                     </label>
-                    {!selectedPianistRequiredOnDate && (
-                      <p className="jury-field-note">No Jury-required lesson assigns this Pianist to a Panel on this date; Availability Windows are not required.</p>
-                    )}
+                    <p className={`jury-availability-status ${selectedAvailability.dirty ? "is-unsaved" : !selectedPianistRequiredOnDate ? "is-not-required" : selectedAvailability.windows.length ? "is-complete" : "is-incomplete"}`}>
+                      {selectedAvailability.dirty
+                        ? busy ? "Saving Availability Windows…" : "Changes not saved · check the error and retry"
+                        : !selectedPianistRequiredOnDate
+                          ? "No Jury-required lesson assigns this Pianist to a Panel on this date; an Availability Window is not required."
+                          : selectedAvailability.windows.length ? "Complete declaration" : "Incomplete · add at least one Availability Window"}
+                    </p>
                     <form className="jury-window-form" onSubmit={addAvailabilityWindow}>
                       <label>Available from<input type="time" value={availabilityStart} onChange={(event) => setAvailabilityStart(event.target.value)} required /></label>
                       <label>Available until<input type="time" value={availabilityEnd} onChange={(event) => setAvailabilityEnd(event.target.value)} required /></label>
-                      <button type="submit" className="secondary-btn" disabled={busy}>Add Availability Window</button>
+                      <button type="submit" className="secondary-btn" disabled={busy}>Add window</button>
                     </form>
                     {selectedAvailability.windows.length > 0 ? (
                       <ul className="jury-window-list">
                         {selectedAvailability.windows.map((window, index) => (
                           <li key={index}>
                             <span className="jury-window-swatch" aria-hidden="true" />
-                              <label className="jury-window-time">From<input aria-label={`Availability Window ${index + 1} start`} type="time" value={fromMinutes(window.start_minute)} disabled={busy} onChange={(event) => editAvailabilityWindow(index, "start_minute", event.target.value)} onBlur={saveEditedAvailabilityWindow} /></label>
-                              <label className="jury-window-time">Until<input aria-label={`Availability Window ${index + 1} end`} type="time" value={fromMinutes(window.end_minute)} disabled={busy} onChange={(event) => editAvailabilityWindow(index, "end_minute", event.target.value)} onBlur={saveEditedAvailabilityWindow} /></label>
+                            <label className="jury-window-time">From<input aria-label={`Window ${index + 1} start`} type="time" value={fromMinutes(window.start_minute)} disabled={busy} onChange={(event) => editAvailabilityWindow(index, "start_minute", event.target.value)} onBlur={saveEditedAvailabilityWindow} /></label>
+                            <label className="jury-window-time">Until<input aria-label={`Window ${index + 1} end`} type="time" value={fromMinutes(window.end_minute)} disabled={busy} onChange={(event) => editAvailabilityWindow(index, "end_minute", event.target.value)} onBlur={saveEditedAvailabilityWindow} /></label>
                             <button
                               type="button"
                               className="jury-delete-button"
@@ -888,12 +671,12 @@ export function JurySetupPage() {
                         ))}
                       </ul>
                     ) : (
-                      <p className="jury-empty-copy">No Jury Availability Windows</p>
+                      <p className="jury-empty-copy">No Available windows entered. This declaration is incomplete.</p>
                     )}
-                    <p className="jury-field-note">Each Panel has its own Scheduling Date. Availability Windows apply only to the selected date; times outside these windows are Unavailable.</p>
+                    <p className="jury-field-note">Each Panel has its own date. Availability applies only to the selected date, and all times outside its windows are Unavailable.</p>
                   </>
                 ) : (
-                  <div className="jury-empty-state" role="status">Loading Jury Availability Windows…</div>
+                  <div className="jury-empty-state" role="status">Loading this date’s declaration…</div>
                 )}
               </section>
             </section>
@@ -902,6 +685,8 @@ export function JurySetupPage() {
           {view === "schedule" && (
             <JurySchedulePage readiness={readiness} onReadinessChange={setReadiness} />
           )}
+
+          {view === "reports" && <JuryReportsPage />}
         </>
       )}
 
@@ -909,7 +694,7 @@ export function JurySetupPage() {
         <dialog className="jury-panel-dialog" open aria-labelledby="jury-panel-dialog-title">
           <form onSubmit={(event) => void savePanel(event)}>
             <div className="jury-dialog-heading">
-              <div><p className="jury-eyebrow">PANEL SETTINGS</p><h2 id="jury-panel-dialog-title">{panelDialog.panel_uuid ? "Edit Panel" : "Add Panel"}</h2></div>
+              <div><p className="jury-eyebrow">JURY PANEL SETTINGS</p><h2 id="jury-panel-dialog-title">{panelDialog.panel_uuid ? "Edit Jury Panel" : "Add Jury Panel"}</h2></div>
               <button type="button" className="jury-icon-button" aria-label="Close Panel editor" onClick={() => setPanelDialog(null)}>×</button>
             </div>
             <div className="jury-panel-form-grid">

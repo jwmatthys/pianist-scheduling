@@ -1,12 +1,15 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { api } from "../lib/api";
+import { saveBinaryFile, saveTextFile } from "../lib/platform";
+import { createMarkdownPdf } from "../lib/markdownPdf";
 
 export function ReportsPage() {
   const [markdown, setMarkdown] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [downloadingPdf, setDownloadingPdf] = useState(false);
-  const reportRef = useRef<HTMLDivElement>(null);
+  const [saving, setSaving] = useState<"pdf" | "markdown" | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
 
   async function generate() {
     setBusy(true);
@@ -18,32 +21,34 @@ export function ReportsPage() {
     }
   }
 
-  function download() {
+  async function downloadMarkdown() {
     if (!markdown) return;
-    const blob = new Blob([markdown], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "lesson_pianists.md";
-    a.click();
-    URL.revokeObjectURL(url);
+    setSaving("markdown");
+    setExportError(null);
+    setExportMessage(null);
+    try {
+      const saved = await saveTextFile(markdown, "lesson_pianists.md", "Markdown report", "md");
+      setExportMessage(saved ? "Markdown report saved." : "Markdown save canceled.");
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Could not save the Markdown report.");
+    } finally {
+      setSaving(null);
+    }
   }
 
   async function downloadPdf() {
-    if (!markdown || !reportRef.current) return;
-    setDownloadingPdf(true);
+    if (!markdown) return;
+    setSaving("pdf");
+    setExportError(null);
+    setExportMessage(null);
     try {
-      const { jsPDF } = await import("jspdf");
-      const pdf = new jsPDF({ format: "letter", unit: "pt" });
-      await pdf.html(reportRef.current, {
-        autoPaging: "text",
-        margin: [42, 42, 42, 42],
-        width: 528,
-        windowWidth: reportRef.current.scrollWidth,
-      });
-      pdf.save("lesson_pianists.pdf");
+      const pdf = await createMarkdownPdf(markdown);
+      const saved = await saveBinaryFile(pdf, "lesson_pianists.pdf", "PDF report", "pdf");
+      setExportMessage(saved ? "PDF report saved." : "PDF save canceled.");
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Could not generate or save the PDF report.");
     } finally {
-      setDownloadingPdf(false);
+      setSaving(null);
     }
   }
 
@@ -58,15 +63,17 @@ export function ReportsPage() {
         <button className="primary-btn" onClick={generate} disabled={busy}>
           {busy ? "Generating\u2026" : "Generate report"}
         </button>
-        <button className="secondary-btn" onClick={downloadPdf} disabled={!markdown || downloadingPdf}>
-          {downloadingPdf ? "Preparing PDF\u2026" : "Download .pdf"}
+        <button className="secondary-btn" onClick={() => void downloadPdf()} disabled={!markdown || saving !== null}>
+          {saving === "pdf" ? "Saving PDF…" : "Download .pdf"}
         </button>
-        <button className="secondary-btn" onClick={download} disabled={!markdown}>
-          Download .md
+        <button className="secondary-btn" onClick={() => void downloadMarkdown()} disabled={!markdown || saving !== null}>
+          {saving === "markdown" ? "Saving Markdown…" : "Download .md"}
         </button>
       </div>
+      {exportError && <p className="error-banner" role="alert">{exportError}</p>}
+      {exportMessage && <p className="availability-success" role="status">{exportMessage}</p>}
       {markdown && (
-        <div ref={reportRef} className="markdown-preview">
+        <div className="markdown-preview">
           <ReactMarkdown>{markdown}</ReactMarkdown>
         </div>
       )}

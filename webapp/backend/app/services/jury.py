@@ -199,30 +199,45 @@ def _entry_out(
     )
 
 
+def _current_source_flags(db: Session, lesson_uuids: list[str]) -> dict[str, tuple[bool, bool]]:
+    if not lesson_uuids:
+        return {}
+    rows = db.query(
+        module_models.AccompanistLessonIdentity.lesson_uuid,
+        module_models.AccompanistLessonJuryRequirement.jury_required,
+        models.Lesson.need_pianist,
+    ).join(
+        models.Lesson,
+        models.Lesson.id == module_models.AccompanistLessonIdentity.lesson_id,
+    ).outerjoin(
+        module_models.AccompanistLessonJuryRequirement,
+        module_models.AccompanistLessonJuryRequirement.lesson_id == models.Lesson.id,
+    ).filter(module_models.AccompanistLessonIdentity.lesson_uuid.in_(lesson_uuids)).all()
+    return {
+        lesson_uuid: (bool(jury_required), bool(pianist_required))
+        for lesson_uuid, jury_required, pianist_required in rows
+    }
+
+
 def list_entries(
     db: Session,
     result: ResultEnvelope | None = None,
 ) -> list[JuryLessonEntryOut]:
-    current_result = accompanist_results.get_current_accompanist_result(db)
+    result = result or accompanist_results.get_latest_accompanist_result(db)
     if result is None:
-        result = current_result
-    if (
-        result is None
-        or result.state != "finalized"
-        or current_result is None
-        or result.result_uuid != current_result.result_uuid
-    ):
         return []
     session_uuid = active_session_uuid(db)
     source_by_uuid = {str(entry.source_lesson_uuid): entry for entry in result.payload.entries}
     rows = db.query(module_models.JuryLessonEntry).filter(
         module_models.JuryLessonEntry.session_uuid == session_uuid
     ).order_by(module_models.JuryLessonEntry.source_lesson_uuid).all()
+    current_flags = _current_source_flags(db, list(source_by_uuid))
     return [
         _entry_out(
             session_uuid,
             row,
             source_by_uuid[str(row.source_lesson_uuid)],
+            current_flags.get(str(row.source_lesson_uuid)),
         )
         for row in rows
         if str(row.source_lesson_uuid) in source_by_uuid
@@ -235,14 +250,16 @@ def update_lesson_entry(
     *,
     panel_uuid: str | None,
 ) -> JuryLessonEntryOut:
-    result = accompanist_results.get_current_accompanist_result(db)
+    result = accompanist_results.get_latest_accompanist_result(db)
     if result is None:
         raise JuryDataError("NO_CURRENT_FINALIZED_RESULT", "No current finalized Accompanist result is available.")
     source_by_uuid = {str(item.source_lesson_uuid): item for item in result.payload.entries}
     source = source_by_uuid.get(source_lesson_uuid)
     if source is None:
         raise JuryDataError("SOURCE_LESSON_NOT_FOUND", "Lesson is not present in the current finalized Accompanist result.")
-    if not source.jury_required and panel_uuid is not None:
+    current_flags = _current_source_flags(db, [source_lesson_uuid]).get(source_lesson_uuid)
+    jury_required = current_flags[0] if current_flags else source.jury_required
+    if not jury_required and panel_uuid is not None:
         raise JuryDataError(
             "JURY_NOT_REQUIRED",
             "A Panel can only be assigned to a lesson marked Jury Required in the finalized Accompanist result.",
@@ -275,46 +292,6 @@ def update_lesson_entry(
         bump_jury_revision(db)
         db.flush()
     return _entry_out(session_uuid, row, source)
-
-
-def assign_unassigned_panels_by_instrument(
-    db: Session,
-) -> tuple[list[JuryLessonEntryOut], int]:
-    result = accompanist_results.get_current_accompanist_result(db)
-    if result is None:
-        raise JuryDataError("NO_CURRENT_FINALIZED_RESULT", "No current finalized Accompanist result is available.")
-
-    session_uuid = active_session_uuid(db)
-    panels = db.query(module_models.JuryPanel).filter_by(
-        session_uuid=session_uuid
-    ).order_by(module_models.JuryPanel.panel_uuid).all()
-    panels_by_name: dict[str, list[module_models.JuryPanel]] = {}
-    for panel in panels:
-        panels_by_name.setdefault(panel.panel_name.casefold(), []).append(panel)
-
-    source_by_lesson = {
-        str(source.source_lesson_uuid): source
-        for source in result.payload.entries
-    }
-    entries = db.query(module_models.JuryLessonEntry).filter_by(
-        session_uuid=session_uuid
-    ).order_by(module_models.JuryLessonEntry.source_lesson_uuid).all()
-    assigned_count = 0
-    for entry in entries:
-        if entry.panel_uuid is not None:
-            continue
-        source = source_by_lesson.get(entry.source_lesson_uuid)
-        if source is None or not source.instrument:
-            continue
-        matches = panels_by_name.get(source.instrument.casefold(), [])
-        if len(matches) == 1:
-            entry.panel_uuid = matches[0].panel_uuid
-            assigned_count += 1
-
-    if assigned_count:
-        bump_jury_revision(db)
-        db.flush()
-    return list_entries(db, result), assigned_count
 
 
 def update_lesson_jury_required(
@@ -372,7 +349,7 @@ def save_availability(
     if panel_for_date is None:
         raise JuryDataError(
             "JURY_DATE_MISMATCH",
-            "Enter Jury Availability Windows for a date used by a Jury Panel.",
+            "Availability must be declared for a date used by a Jury Panel.",
         )
     pianist = db.get(module_models.PersonIdentity, pianist_person_uuid)
     if pianist is None or db.query(module_models.AccompanistPianistIdentity).filter_by(
@@ -383,7 +360,7 @@ def save_availability(
     windows = sorted(payload.windows, key=lambda item: (item.start_minute, item.end_minute))
     for previous, current in zip(windows, windows[1:]):
         if current.start_minute < previous.end_minute:
-            raise JuryDataError("OVERLAPPING_AVAILABILITY", "Jury Availability Windows must not overlap.")
+            raise JuryDataError("OVERLAPPING_AVAILABILITY", "Available windows must not overlap.")
 
     declaration = db.get(
         module_models.JuryPianistAvailabilityDeclaration,
@@ -457,43 +434,6 @@ def get_availability(
     return _availability_out(db, declaration) if declaration is not None else None
 
 
-def clear_availability(
-    db: Session,
-    pianist_person_uuid: str,
-    jury_date: date,
-) -> int:
-    session_uuid = active_session_uuid(db)
-    panel_for_date = db.query(module_models.JuryPanelDate.panel_uuid).filter_by(
-        session_uuid=session_uuid,
-        jury_date=jury_date,
-    ).first()
-    if panel_for_date is None:
-        raise JuryDataError(
-            "JURY_DATE_MISMATCH",
-            "Jury Availability Windows can only be cleared for a date used by a Jury Panel.",
-        )
-    if db.get(module_models.PersonIdentity, pianist_person_uuid) is None or db.query(
-        module_models.AccompanistPianistIdentity
-    ).filter_by(person_uuid=pianist_person_uuid).first() is None:
-        raise JuryDataError("PIANIST_NOT_FOUND", "Pianist identity is not available from Accompanist Scheduling.")
-
-    window_count = db.query(module_models.JuryPianistAvailableWindow).filter_by(
-        session_uuid=session_uuid,
-        pianist_person_uuid=pianist_person_uuid,
-        jury_date=jury_date,
-    ).delete(synchronize_session=False)
-    declaration = db.get(
-        module_models.JuryPianistAvailabilityDeclaration,
-        (session_uuid, pianist_person_uuid, jury_date),
-    )
-    if declaration is not None:
-        db.delete(declaration)
-    if window_count or declaration is not None:
-        bump_jury_revision(db)
-    db.flush()
-    return window_count
-
-
 def _issue(code: str, severity: str, message: str, *entities: str) -> ReadinessIssue:
     return ReadinessIssue(
         code=code,
@@ -509,30 +449,23 @@ def readiness(db: Session) -> JuryReadinessOut:
     if configuration is None:
         raise JuryDataError("JURY_CONFIGURATION_MISSING", "Jury configuration is unavailable.")
 
-    result = accompanist_results.get_current_accompanist_result(db)
+    result = accompanist_results.get_latest_accompanist_result(db)
     issues: list[ReadinessIssue] = []
     if result is None:
-        latest_result = accompanist_results.get_latest_accompanist_result(db)
-        if latest_result is None:
-            issues.append(_issue(
-                "NO_CURRENT_FINALIZED_RESULT", "error",
-                "There is no current finalized Accompanist result.",
-            ))
-        else:
-            issues.append(_issue(
-                "ACCOMPANIST_RESULT_STALE", "error",
-                "Accompanist source data changed after the last finalized result; finalize the current schedule before continuing.",
-                str(latest_result.result_uuid),
-            ))
-        return JuryReadinessOut(
-            ready=False,
-            source_result_uuid=latest_result.result_uuid if latest_result else None,
-            source_revision=latest_result.source_revision if latest_result else None,
-            jury_input_revision=configuration.input_revision,
-            issues=issues,
-        )
+        issues.append(_issue(
+            "NO_CURRENT_FINALIZED_RESULT", "error",
+            "There is no current finalized Accompanist result.",
+        ))
+        source_by_uuid = {}
+    else:
+        source_by_uuid = {str(item.source_lesson_uuid): item for item in result.payload.entries}
 
-    source_by_uuid = {str(item.source_lesson_uuid): item for item in result.payload.entries}
+    if result is not None and module_revision(db).source_revision != result.source_revision:
+        issues.append(_issue(
+            "ACCOMPANIST_RESULT_STALE", "error",
+            "Accompanist source data changed after this finalized result; review and finalize the current schedule.",
+            str(result.result_uuid),
+        ))
 
     if result is not None and configuration.roster_source_result_uuid != str(result.result_uuid):
         issues.append(_issue(
@@ -573,6 +506,7 @@ def readiness(db: Session) -> JuryReadinessOut:
     entries = db.query(module_models.JuryLessonEntry).filter_by(
         session_uuid=session_uuid
     ).order_by(module_models.JuryLessonEntry.source_lesson_uuid).all()
+    current_flags = _current_source_flags(db, list(source_by_uuid))
     required_count = 0
     used_panels: set[str] = set()
     for entry in entries:
@@ -591,7 +525,7 @@ def readiness(db: Session) -> JuryReadinessOut:
                 "Jury entry identity does not match the finalized source lesson.",
                 lesson_uuid, str(source.student_person_uuid),
             ))
-        jury_required, pianist_required = source.jury_required, source.pianist_required
+        jury_required, pianist_required = current_flags.get(lesson_uuid, (source.jury_required, source.pianist_required))
         if not jury_required:
             continue
         required_count += 1
@@ -624,24 +558,11 @@ def readiness(db: Session) -> JuryReadinessOut:
                 (session_uuid, str(assigned.person_uuid), panel_date),
             )
             if declaration is None or not declaration.is_complete:
-                pianist_name = assigned.display_name or "The assigned Pianist"
-                date_label = panel_date.strftime("%B %d, %Y").replace(" 0", " ")
                 issues.append(_issue(
                     "PIANIST_AVAILABILITY_INCOMPLETE", "error",
-                    f"{pianist_name} has no Jury Availability Windows for {date_label}.",
+                    "The assigned pianist has no complete declaration of Availability Windows for this Panel's Scheduling Date.",
                     lesson_uuid, str(assigned.person_uuid), str(panel.panel_uuid),
                 ))
-
-    entry_lesson_uuids = {entry.source_lesson_uuid for entry in entries}
-    for lesson_uuid, source in source_by_uuid.items():
-        jury_required = source.jury_required
-        if jury_required and lesson_uuid not in entry_lesson_uuids:
-            required_count += 1
-            issues.append(_issue(
-                "JURY_ENTRY_MISSING", "error",
-                "Jury-required source Lesson has no Jury entry. Synchronize the roster and select a Panel.",
-                lesson_uuid,
-            ))
 
     if required_count == 0:
         issues.append(_issue("NO_JURY_REQUIRED_ENTRIES", "warning", "No Jury lesson entries are currently required."))

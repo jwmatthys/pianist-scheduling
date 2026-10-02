@@ -4,13 +4,12 @@ import { PianistsPage, type PianistsPageHandle } from "./PianistsPage";
 import { SchedulePage } from "./SchedulePage";
 import { ReportsPage } from "./ReportsPage";
 
-type Tab = "import" | "pianists" | "schedule" | "reports";
+type Tab = "pianists" | "schedule" | "reports";
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: "import", label: "1. Import Lessons" },
-  { id: "pianists", label: "2. Pianists & Availability" },
-  { id: "schedule", label: "3. Schedule" },
-  { id: "reports", label: "4. Reports" },
+  { id: "pianists", label: "Pianists & Availability" },
+  { id: "schedule", label: "Lesson Roster" },
+  { id: "reports", label: "Reports" },
 ];
 
 export type AccompanistModuleHandle = {
@@ -18,8 +17,10 @@ export type AccompanistModuleHandle = {
 };
 
 export const AccompanistModule = forwardRef<AccompanistModuleHandle>(function AccompanistModule(_, ref) {
-  const [tab, setTab] = useState<Tab>("import");
+  const [tab, setTab] = useState<Tab>("schedule");
+  const [rosterRevision, setRosterRevision] = useState(0);
   const pianistsPageRef = useRef<PianistsPageHandle>(null);
+  const lessonImportDialogRef = useRef<HTMLDialogElement>(null);
 
   useImperativeHandle(ref, () => ({
     saveAvailabilityBeforeLeaving: async () => {
@@ -50,11 +51,29 @@ export const AccompanistModule = forwardRef<AccompanistModuleHandle>(function Ac
         ))}
       </nav>
       <div className="app-main accompanist-main">
-        {tab === "import" && <ImportPage onImported={() => setTab("schedule")} />}
         {tab === "pianists" && <PianistsPage ref={pianistsPageRef} />}
-        {tab === "schedule" && <SchedulePage />}
+        {tab === "schedule" && (
+          <SchedulePage
+            key={rosterRevision}
+            onImportLessons={() => lessonImportDialogRef.current?.showModal()}
+          />
+        )}
         {tab === "reports" && <ReportsPage />}
       </div>
+      <dialog className="lesson-import-dialog" ref={lessonImportDialogRef}>
+        <div className="lesson-import-dialog-content">
+          <header className="lesson-import-dialog-heading">
+            <h2>Import lessons from spreadsheet</h2>
+            <button type="button" className="dialog-close" onClick={() => lessonImportDialogRef.current?.close()}>
+              Close
+            </button>
+          </header>
+          <ImportPage onImported={() => {
+            setRosterRevision((revision) => revision + 1);
+            lessonImportDialogRef.current?.close();
+          }} />
+        </div>
+      </dialog>
     </>
   );
 });

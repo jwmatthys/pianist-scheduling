@@ -187,7 +187,6 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
       await onApplied();
       setSuccess(`Replaced ${result.pianists_removed} Pianist(s) with ${result.pianists_created} new Pianist(s), cleared ${result.assignments_cleared} Lesson assignments and ${result.jury_availability_windows_removed} Jury Availability Windows, and applied ${result.slots_created} Accompanist availability slots.`);
       setPreview(null);
-      dialogRef.current?.close();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not apply availability.");
     } finally {
@@ -381,7 +380,7 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
               </details>
 
               <p className="muted availability-completeness-note">
-                Names in this file group that respondent's rows. Applying replaces the whole Pianist roster and weekly availability; all Lesson-to-Pianist assignments are cleared. Blank mapped windows mean Unavailable. Missing mappings or malformed rows block the import.
+                Names in this file group that respondent's rows. Applying replaces the entire Pianist roster and weekly Availability Windows; all Lesson assignments are cleared. Blank mapped windows mean Unavailable. Missing mappings or malformed rows block the import.
               </p>
 
               <div className="availability-import-actions">
@@ -396,10 +395,10 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
             <section className="availability-import-review" aria-live="polite">
               <h3>Import review</h3>
               <p className="availability-import-summary">
-                {preview.incoming_pianist_count} Pianists · {preview.valid_window_count} Availability Windows · {preview.warnings.length} warnings · {preview.errors.length} errors
+                {preview.incoming_pianist_count} incoming Pianists · {preview.valid_window_count} Availability Windows · {preview.warnings.length} warnings · {preview.errors.length} errors
               </p>
               <p className="muted">
-                This will replace {preview.existing_pianist_count} current Pianists and clear {preview.existing_assignment_count} Lesson assignments. Imported names receive fresh internal records. Sparse Available/Tentative windows are stored; other times derive Unavailable.
+                This replaces {preview.existing_pianist_count} current Pianists and clears {preview.existing_assignment_count} Lesson assignments. Every imported name receives a fresh Pianist record. Sparse Available/Tentative windows are stored; other times derive Unavailable.
               </p>
               <ul className="availability-import-plan">
                 {preview.pianists.map((pianist, index) => (

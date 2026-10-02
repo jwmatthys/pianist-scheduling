@@ -72,7 +72,6 @@ export function ImportPage({ onImported }: { onImported: () => void }) {
 
   return (
     <div className="page import-page">
-      <h2>Import lessons</h2>
       <p className="muted">
         Upload a CSV or XLSX file of lessons, then tell us which column maps to which field.
       </p>
