@@ -7,10 +7,12 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -51,6 +53,7 @@ class Pianist(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), default=1, index=True)
+    pianist_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
     name: Mapped[str] = mapped_column(String(200))
     email: Mapped[str] = mapped_column(String(200), default="")
     max_hours_per_week: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -67,6 +70,14 @@ class Pianist(Base):
     @property
     def availability_complete(self) -> bool:
         return bool(self.availability_state and self.availability_state.is_complete)
+
+
+Index(
+    "uq_pianists_organization_code_ci",
+    Pianist.organization_id,
+    func.lower(Pianist.pianist_code),
+    unique=True,
+)
 
 
 class AvailabilitySlot(Base):

@@ -60,6 +60,14 @@ def accompanist_finalization_state(db: Session = Depends(get_db)):
     return jury_schemas.AccompanistFinalizationStateOut(
         session_uuid=state.session_uuid,
         source_revision=state.source_revision,
-        current_result_uuid=state.current_result_uuid,
-        current_result_version=result.result_version if result and result.state == "finalized" else None,
+        current_result_uuid=(
+            state.current_result_uuid
+            if result and result.state == "finalized" and result.source_revision == state.source_revision
+            else None
+        ),
+        current_result_version=(
+            result.result_version
+            if result and result.state == "finalized" and result.source_revision == state.source_revision
+            else None
+        ),
     )

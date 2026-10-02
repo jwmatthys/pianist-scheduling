@@ -26,7 +26,7 @@ Reporting is currently accompanist-specific Markdown generated from `Lesson` and
 
 The standalone jury script is a different Python scheduling problem. It consumes separate lesson, pianist-availability, jury-information, and accompanist-assignment workbooks; `load_students` joins the pianist assignment to the jury roster by student display name. Its behaviors and failure cases are documented in [JURY-SCHEDULER-CHARACTERIZATION.md](JURY-SCHEDULER-CHARACTERIZATION.md), with synthetic characterization tests. It remains outside the production API; the integrated data boundary does not call or port its scheduler.
 
-The backend test suite covers Accompanist behavior and mutation revisions, schema migrations, session archives, and Jury identities/results/input/readiness using synthetic data. Jury optimizer behavior and the final Jury setup/schedule UI are not implemented by this data milestone.
+The backend test suite covers Accompanist behavior and mutation revisions, schema migrations, session archives, and Jury identities/results/input/readiness using synthetic data. The Jury Setup UI orders its workflow as Panels, Lesson Entries, Pianist Availability, Schedule, and Overview; Panels is the initial view. Both Jury and Accompanist Schedule edit the same Accompanist-owned Jury Required Lesson field. Jury scheduling/optimization remains unimplemented.
 
 ## 3. Product Shell and Workflow
 
@@ -43,7 +43,7 @@ flowchart TD
     Dashboard --> Jury[Performance Juries]
 ```
 
-A session dashboard should summarize its institution/program, academic term, and modules with usable data/results. It should link into implemented modules. During the incremental rollout, Accompanist Scheduling is the only active module; Clinical Placements and Performance Juries should not be represented by nonfunctional screens merely to fill dashboard space.
+A session dashboard should summarize its institution/program, academic term, and modules with usable data/results. It links into Accompanist Scheduling and the implemented Performance Juries setup workflow. Clinical Placements remains a shell until its workflow is designed; do not represent it with fake workflow state.
 
 The existing Accompanist UI becomes the first module workflow with minimal movement: its Import, Pianists/Availability, Schedule, and Reports views remain internal Accompanist views. Product navigation owns session selection and the module dashboard; Accompanist navigation and terminology stay inside that module.
 
@@ -93,7 +93,7 @@ Each optimizer remains module-specific. A common time-window/conflict primitive 
 
 ### Keep module-specific
 
-- Accompanist lesson rows, instruments, pianist requirements, workload caps, fit tiers, overlap eligibility, manual locks, schedule consolidation, and assignment scoring.
+- Accompanist lesson rows, instruments, pianist requirements, lesson-level Jury Required, workload caps, fit tiers, overlap eligibility, manual locks, schedule consolidation, and assignment scoring.
 - Clinical placement requirements, population/service capabilities, capacity, placement history, transport/car access, travel feasibility, equity scoring, and student-to-site allocation.
 - Jury areas/panels, jury durations, room sequencing, breaks, jury-day pianist unavailability, jury conflict rules, and jury schedule output.
 - Each module's import target fields, validation policy, report catalog, and result payload.
@@ -134,7 +134,7 @@ Use a shared import pipeline, not a universal spreadsheet schema:
 5. Commit valid windows transactionally to the selected module's availability set. The imported rows become ordinary editable application records.
 6. Existing manual editing remains available. A user edit changes the normal window record and retains its origin/import provenance; it is not a separate temporary overlay.
 
-Profiles should be keyed by module/data kind and user/program context, not shared blindly between lesson and availability spreadsheets. Re-import replacement semantics must be explicit and limited to the selected set/module; they must never replace the full Scheduling Session. For the initial Accompanist workflow, every accepted submission is complete for each matched pianist's weekly horizon and replaces that pianist's prior week; pianists absent from the file remain unchanged. A valid wide Forms row with all mapped windows blank is a complete zero-availability response, while malformed rows or incomplete mappings block the entire import. The current Accompanist lesson importer is a reference for preview/mapping, not a schema to generalize.
+Profiles should be keyed by module/data kind and user/program context, not shared blindly between lesson and availability spreadsheets. Re-import replacement semantics must be explicit and limited to the selected module; they must never replace the full Scheduling Session. The preferred Accompanist workflow is: import Lessons, import Pianist Availability, review/edit Pianists and Availability Windows, then run Best-Fit Assignment. A Pianist Availability import is a full-roster replacement: rows are grouped only by Pianist Name after trimming surrounding whitespace and collapsing repeated spaces within that file. It never matches an imported name to the previous roster or reconciles by email or identifier. Preview the incoming names and Availability Windows, then warn and confirm before atomically replacing the Pianist roster and Accompanist weekly availability, clearing Lesson assignments, and deleting all Jury Availability Windows for every date. Student Lessons, Jury Required values, Panels, Panel dates, and Panel choices remain. Each imported name receives a fresh internal identity. Email is blank unless explicitly mapped; Max Hours Per Week starts at 40. Application-generated record identifiers remain internal and are never requested or displayed. A valid wide Forms row with all mapped windows blank is a complete zero-availability response, while malformed rows or incomplete mappings block the entire import. The current Accompanist lesson importer is a reference for preview/mapping, not a schema to generalize.
 
 Each module may compose shared primitives differently: a weekly grid for accompanist availability, a student/site form or calendar for placements, and date-specific faculty/resource windows for juries. No Forms API, cloud sync, or external import service is proposed.
 
@@ -255,11 +255,11 @@ ModuleResultEnvelope
 
 Accompanist publishes a finalized `AccompanistAssignmentResult`; Jury declares a dependency on that contract and resolves student/pianist associations through stable shared IDs. The Jury module should not import `AccompanistOptimizer` or query its tables directly. Internally represent draft/finalized/superseded states while keeping user-facing labels simple. If a finalized result consumed by another module changes, mark the dependent result as potentially stale and surface that condition to the user before it is reused.
 
-The legacy name join is historical behavior only. The integrated boundary uses session-scoped shared Person UUIDs and stable Lesson UUIDs. Schema v4 groups identical trimmed nonblank Student IDs, keeps blank-ID lessons distinct, and flags conflicting normalized names for review. The finalized `accompanist.assignment-result` contract v1 publishes one typed entry per source lesson. Jury owns participation, Panel assignment, date, and date-specific availability; its readiness service consumes the typed result registry without reading Accompanist tables. The scheduler remains unimplemented.
+The legacy name join is historical behavior only. The integrated boundary uses session-scoped shared Person UUIDs and stable Lesson UUIDs. Schema v4 groups identical trimmed nonblank Student IDs, keeps blank-ID lessons distinct, and flags conflicting normalized names for review. Schema v7 stores Jury Required as Accompanist-owned source lesson data, default false for existing lessons. Finalized `accompanist.assignment-result` contract v2 publishes one typed entry per source lesson including Jury Required. Jury edits that same source field by stable Lesson UUID through the Accompanist-owned service; no Jury-owned Boolean copy exists. Jury also owns Panel assignment, each Panel's date, and date-specific availability. Its readiness service checks current source requirements against the latest immutable finalized snapshot and blocks when that snapshot is stale. Schema v9 added the legacy `pianist_code` compatibility column; no normal product workflow exposes or uses it. `.mpsession` remains format version 1. The scheduler remains unimplemented.
 
 ## 13. Relationship to Current SQLite and Tauri
 
-Keep the Tauri → React → temporary local FastAPI/SQLAlchemy → SQLite path. The service remains bound to loopback; no user data leaves the device. SQLite schema v6 contains shared identity mappings, the finalized-result registry, and Jury-owned inputs; `.mpsession` remains archive format version 1.
+Keep the Tauri → React → temporary local FastAPI/SQLAlchemy → SQLite path. The service remains bound to loopback; no user data leaves the device. SQLite schema v9 contains shared identity mappings, the historical `pianist_code` compatibility column, the finalized-result registry, Accompanist-owned Jury Required lesson facts, and Jury-owned inputs; `.mpsession` remains archive format version 1. The application uses Person UUID mappings internally and does not expose the legacy column in normal workflows.
 
 A later session implementation can preserve one active SQLite working database in Tauri app-data. That database represents the active session only; no session library or per-row `session_id` is needed initially. `SessionStorage` owns new/export/open/restore and coordinates a consistent snapshot with the backend. Open/Restore stages a validated/migrated archive, automatically creates a local recovery snapshot, asks for confirmation, then replaces the active database atomically. The `.mpsession` archive is the public portable contract; `pianist_scheduling.db` remains an internal working database. Electron's separate database remains separate until an explicit migration/sharing decision is approved.
 
@@ -315,7 +315,7 @@ Keep the current React app and Python service working while moving ownership in 
 4. **Introduce shared report infrastructure by adapting existing Accompanist reports.** Preserve established semantics; no arbitrary query designer.
 5. **Introduce the product module registry/dashboard once the session and shared infrastructure make it useful.** Keep Accompanist as the working module and avoid placeholder workflows.
 6. **Characterize and test the standalone Jury scheduler.** Complete: see [JURY-SCHEDULER-CHARACTERIZATION.md](JURY-SCHEDULER-CHARACTERIZATION.md).
-7. **Establish the Jury identity/result/input/readiness boundary.** Complete: schema v4-v6, Accompanist result contract v1, and Jury readiness are implemented. Jury optimizer, Schedule UI, and stale-result refresh UI remain later work.
+7. **Establish the Jury identity/result/input/readiness boundary.** Complete through schema v9 and contract v2. Jury Panels, Lesson Entries, date-specific Pianist Availability, source-flag editing, and stale-readiness handling are implemented; optimizer and schedule generation remain later work.
 8. **Build the Clinical Placement data-entry/import/manual-edit workflow.** Keep its records and validation module-specific.
 9. **Design the Clinical Placement optimizer only after detailed constraints and policies are gathered from the actual Music Therapy workflow owner.**
 

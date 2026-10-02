@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 import pandas as pd
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
+from .. import models, module_models, schemas
 from . import tabular
 from .accompanist_availability import AccompanistAvailabilitySlot, windows_to_accompanist_slots
 from .availability import (
@@ -19,6 +19,13 @@ from .availability import (
     normalize_status,
     normalize_windows,
     parse_time_minutes,
+)
+from .module_lifecycle import (
+    active_session_uuid,
+    bump_accompanist_revision,
+    bump_jury_revision,
+    ensure_pianist_identity,
+    remove_pianist_identity_mapping,
 )
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
@@ -42,16 +49,27 @@ class StagedUpload:
 
 
 @dataclass
+class PianistImportPlan:
+    key: str
+    pianist_name: str
+    email: str
+    row_numbers: set[int] = field(default_factory=set)
+    days: set[str] = field(default_factory=set)
+
+
+@dataclass
 class PreparedImport:
     upload_token: str
     sheet_name: str | None
-    windows_by_pianist: dict[int, list[AvailabilityWindow]] = field(default_factory=dict)
-    slots_by_pianist: dict[int, list[AccompanistAvailabilitySlot]] = field(default_factory=dict)
-    names_by_pianist: dict[int, str] = field(default_factory=dict)
-    days_by_pianist: dict[int, set[str]] = field(default_factory=dict)
+    pianists: dict[str, PianistImportPlan] = field(default_factory=dict)
+    review_pianists: list[schemas.AvailabilityImportPianistOut] = field(default_factory=list)
+    windows_by_pianist: dict[str, list[AvailabilityWindow]] = field(default_factory=dict)
+    slots_by_pianist: dict[str, list[AccompanistAvailabilitySlot]] = field(default_factory=dict)
     errors: list[AvailabilityIssue] = field(default_factory=list)
     warnings: list[AvailabilityIssue] = field(default_factory=list)
     rows_processed: int = 0
+    existing_pianist_ids: set[int] = field(default_factory=set)
+    existing_assignment_count: int = 0
     existing_slots_in_scope: int = 0
 
 
@@ -127,6 +145,7 @@ def _inspection(upload_token: str, upload: StagedUpload, sheet_name: str | None)
     columns = [str(column) for column in frame.columns]
     suggested = {
         "person_name_column": _suggest_column(columns, ("pianist name", "person name", "full name", "name", "pianist", "respondent")),
+        "email_column": _suggest_column(columns, ("pianist email", "email address", "email")),
         "day_column": _suggest_column(columns, ("day", "weekday", "day of week")),
         "start_column": _suggest_column(columns, ("start time", "start", "available from")),
         "end_column": _suggest_column(columns, ("end time", "end", "available until")),
@@ -193,6 +212,7 @@ def _mapping_columns(
             issues.append(_issue("error", "INVALID_MAPPING", f"The mapped {label} column is not in the selected worksheet."))
 
     check(mapping.person_name_column, "pianist name", True)
+    check(mapping.email_column, "email", False)
     if mapping.layout == "normalized":
         check(mapping.day_column, "weekday", True)
         check(mapping.start_column, "start time", True)
@@ -228,7 +248,6 @@ def _parse_row_window(
     start_value: object,
     end_value: object,
     status_value: object,
-    name: str,
     errors: list[AvailabilityIssue],
 ) -> AvailabilityWindow | None:
     day = normalize_day(day_value)
@@ -256,27 +275,44 @@ def _parse_row_window(
 def _person_for_row(
     row: pd.Series,
     row_number: int,
-    person_column: str | None,
-    pianists_by_name: dict[str, list[models.Pianist]],
+    mapping: schemas.AvailabilityImportMapping,
     prepared: PreparedImport,
-) -> models.Pianist | None:
-    name_value = row.get(person_column) if person_column else None
+) -> PianistImportPlan | None:
+    name_value = row.get(mapping.person_name_column) if mapping.person_name_column else None
     if _is_blank(name_value):
         prepared.errors.append(_issue("error", "MISSING_PERSON", "Pianist name is missing.", row_number))
+        prepared.review_pianists.append(schemas.AvailabilityImportPianistOut(
+            action="invalid", pianist_name="", days=[], row_numbers=[row_number],
+        ))
         return None
-    name = str(name_value).strip()
-    matches = pianists_by_name.get(name.casefold(), [])
-    if not matches:
-        prepared.errors.append(_issue("error", "UNKNOWN_PIANIST", f"No pianist exactly matches '{name}'.", row_number))
+    name = " ".join(str(name_value).split())
+    if len(name) > 200:
+        prepared.errors.append(_issue("error", "INVALID_PERSON_NAME", "Pianist name must be 200 characters or fewer.", row_number))
+        prepared.review_pianists.append(schemas.AvailabilityImportPianistOut(
+            action="invalid", pianist_name=name[:200], days=[], row_numbers=[row_number],
+        ))
         return None
-    if len(matches) > 1:
-        prepared.errors.append(_issue("error", "AMBIGUOUS_PIANIST", f"More than one pianist exactly matches '{name}'.", row_number))
+
+    email_value = row.get(mapping.email_column) if mapping.email_column else None
+    imported_email = "" if _is_blank(email_value) else str(email_value).strip()
+    if len(imported_email) > 200:
+        prepared.errors.append(_issue("error", "INVALID_EMAIL", "Email must be 200 characters or fewer.", row_number))
+        prepared.review_pianists.append(schemas.AvailabilityImportPianistOut(
+            action="invalid", pianist_name=name, days=[], row_numbers=[row_number],
+        ))
         return None
-    pianist = matches[0]
-    prepared.names_by_pianist[pianist.id] = pianist.name
-    prepared.windows_by_pianist.setdefault(pianist.id, [])
-    prepared.days_by_pianist.setdefault(pianist.id, set())
-    return pianist
+
+    identity_key = name
+    plan = prepared.pianists.get(identity_key)
+    if plan is None:
+        plan = PianistImportPlan(key=identity_key, pianist_name=name, email=imported_email)
+        prepared.pianists[identity_key] = plan
+    elif imported_email and not plan.email:
+        plan.email = imported_email
+
+    plan.row_numbers.add(row_number)
+    prepared.windows_by_pianist.setdefault(identity_key, [])
+    return plan
 
 
 def preview_import(
@@ -301,18 +337,18 @@ def preview_import(
         rows_processed=len(frame),
     )
     prepared.errors.extend(_mapping_columns(request.mapping, columns))
-    pianists = db.query(models.Pianist).order_by(models.Pianist.id).all()
-    pianists_by_name: dict[str, list[models.Pianist]] = {}
-    for pianist in pianists:
-        pianists_by_name.setdefault(pianist.name.strip().casefold(), []).append(pianist)
-
     mapping = request.mapping
     if not prepared.errors:
         for index, row in frame.iterrows():
             row_number = int(index) + 2 if isinstance(index, (int, float)) else 0
             if all(_is_blank(value) for value in row.values):
                 continue
-            pianist = _person_for_row(row, row_number, mapping.person_name_column, pianists_by_name, prepared)
+            pianist = _person_for_row(
+                row,
+                row_number,
+                mapping,
+                prepared,
+            )
             if pianist is None:
                 continue
 
@@ -333,7 +369,6 @@ def preview_import(
                     start_value=values[1],
                     end_value=values[2],
                     status_value=values[3],
-                    name=pianist.name,
                     errors=prepared.errors,
                 )
                 if window:
@@ -363,35 +398,35 @@ def preview_import(
                             start_value=start_value,
                             end_value=end_value,
                             status_value=mapping.wide_status,
-                            name=pianist.name,
                             errors=prepared.errors,
                         )
                         if window:
                             row_windows.append(window)
-            prepared.windows_by_pianist[pianist.id].extend(row_windows)
-            prepared.days_by_pianist[pianist.id].update(window.day for window in row_windows)
+            prepared.windows_by_pianist[pianist.key].extend(row_windows)
+            pianist.days.update(window.day for window in row_windows)
 
-    for pianist_id, windows in prepared.windows_by_pianist.items():
+    for pianist_key, windows in prepared.windows_by_pianist.items():
         normalized, issues = normalize_windows(windows)
-        prepared.windows_by_pianist[pianist_id] = normalized
+        prepared.windows_by_pianist[pianist_key] = normalized
         prepared.errors.extend(issue for issue in issues if issue.severity == "error")
         prepared.warnings.extend(issue for issue in issues if issue.severity == "warning")
         slots, adapter_issues = windows_to_accompanist_slots(normalized)
-        prepared.slots_by_pianist[pianist_id] = slots
+        prepared.slots_by_pianist[pianist_key] = slots
         prepared.errors.extend(issue for issue in adapter_issues if issue.severity == "error")
 
-    matched_ids = list(prepared.names_by_pianist)
-    if matched_ids:
+    existing_pianists = db.query(models.Pianist).all()
+    prepared.existing_pianist_ids = {pianist.id for pianist in existing_pianists}
+    if prepared.existing_pianist_ids:
         prepared.existing_slots_in_scope = db.query(models.AvailabilitySlot).filter(
-            models.AvailabilitySlot.pianist_id.in_(matched_ids)
+            models.AvailabilitySlot.pianist_id.in_(prepared.existing_pianist_ids)
         ).count()
-
-    absent_pianists = len(pianists) - len(prepared.names_by_pianist)
-    if absent_pianists:
-        prepared.warnings.append(_issue(
-            "warning", "PIANISTS_ABSENT_FROM_IMPORT",
-            f"{absent_pianists} pianist(s) are absent from the import and will remain unchanged.",
-        ))
+        prepared.existing_assignment_count = db.query(models.Lesson).filter(
+            models.Lesson.assigned_pianist_id.in_(prepared.existing_pianist_ids)
+        ).count()
+    prepared.warnings.append(_issue(
+        "warning", "FULL_ROSTER_REPLACEMENT",
+        "Applying this import replaces the entire Pianist roster and Accompanist weekly availability, clears Lesson assignments, and removes all Jury Availability Windows.",
+    ))
     preview_token = uuid.uuid4().hex
     _STAGED_PREVIEWS[preview_token] = prepared
     while len(_STAGED_PREVIEWS) > MAX_STAGED_UPLOADS:
@@ -399,31 +434,34 @@ def preview_import(
 
     preview_pianists = [
         schemas.AvailabilityImportPianistOut(
-            pianist_id=pianist_id,
-            pianist_name=prepared.names_by_pianist[pianist_id],
-            days=sorted(prepared.days_by_pianist.get(pianist_id, set()), key=models.DAYS_ORDER.index),
+            action="new",
+            pianist_name=plan.pianist_name,
+            email=plan.email,
+            max_hours_per_week=40,
+            days=sorted(plan.days, key=models.DAYS_ORDER.index),
+            row_numbers=sorted(plan.row_numbers),
         )
-        for pianist_id in prepared.names_by_pianist
-    ]
+        for plan in prepared.pianists.values()
+    ] + prepared.review_pianists
     preview_windows = [
         schemas.AvailabilityImportWindowOut(
-            pianist_id=pianist_id,
-            pianist_name=prepared.names_by_pianist[pianist_id],
+            pianist_name=prepared.pianists[pianist_key].pianist_name,
             day=window.day,
             start_minute=window.start_minute,
             end_minute=window.end_minute,
             status=window.status,
         )
-        for pianist_id, windows in prepared.windows_by_pianist.items()
+        for pianist_key, windows in prepared.windows_by_pianist.items()
         for window in windows
     ][:MAX_PREVIEW_WINDOWS]
-    can_apply = not prepared.errors and bool(matched_ids)
+    can_apply = not prepared.errors and bool(prepared.pianists)
     return schemas.AvailabilityImportPreviewOut(
         preview_token=preview_token,
         sheet_name=request.sheet_name,
         rows_processed=prepared.rows_processed,
-        matched_pianist_count=len(matched_ids),
-        absent_pianist_count=absent_pianists,
+        existing_pianist_count=len(prepared.existing_pianist_ids),
+        existing_assignment_count=prepared.existing_assignment_count,
+        incoming_pianist_count=len(prepared.pianists),
         valid_window_count=sum(len(windows) for windows in prepared.windows_by_pianist.values()),
         existing_slots_in_scope=prepared.existing_slots_in_scope,
         pianists=preview_pianists,
@@ -445,24 +483,61 @@ def apply_import(
         raise AvailabilityImportError("PREVIEW_EXPIRED", "The availability preview expired; review the file again.")
     if prepared.errors:
         raise AvailabilityImportError("VALIDATION_ERRORS", "Resolve all validation errors before applying availability.")
-    if not prepared.names_by_pianist:
-        raise AvailabilityImportError("NO_MATCHED_PIANISTS", "No existing pianists matched the import.")
-    pianist_ids = list(prepared.names_by_pianist)
+    if not prepared.pianists:
+        raise AvailabilityImportError("NO_PIANISTS", "The selected file contains no valid Pianist respondents.")
     try:
-        current_pianists = {
-            pianist.id: pianist.name
-            for pianist in db.query(models.Pianist).filter(models.Pianist.id.in_(pianist_ids)).all()
-        }
-        for pianist_id, expected_name in prepared.names_by_pianist.items():
-            if current_pianists.get(pianist_id) != expected_name:
-                raise AvailabilityImportError(
-                    "PIANISTS_CHANGED", "Pianist records changed after preview; review the availability import again."
-                )
+        current_pianists = db.query(models.Pianist).all()
+        current_ids = {pianist.id for pianist in current_pianists}
+        if current_ids != prepared.existing_pianist_ids:
+            raise AvailabilityImportError(
+                "PIANISTS_CHANGED", "The Pianist roster changed after preview; review the replacement import again."
+            )
 
-        slots_replaced = db.query(models.AvailabilitySlot).filter(
-            models.AvailabilitySlot.pianist_id.in_(pianist_ids)
-        ).delete(synchronize_session=False)
-        days_replaced = len(pianist_ids) * len(models.DAYS_ORDER)
+        session_uuid = active_session_uuid(db)
+        jury_availability_windows_removed = db.query(
+            module_models.JuryPianistAvailableWindow
+        ).filter_by(session_uuid=session_uuid).delete(synchronize_session=False)
+        jury_availability_records_removed = db.query(
+            module_models.JuryPianistAvailabilityDeclaration
+        ).filter_by(session_uuid=session_uuid).delete(synchronize_session=False)
+        if jury_availability_windows_removed or jury_availability_records_removed:
+            bump_jury_revision(db)
+
+        assignments_cleared = 0
+        slots_replaced = 0
+        if current_ids:
+            assignments_cleared = db.query(models.Lesson).filter(
+                models.Lesson.assigned_pianist_id.in_(current_ids)
+            ).update({models.Lesson.assigned_pianist_id: None}, synchronize_session=False)
+            slots_replaced = db.query(models.AvailabilitySlot).filter(
+                models.AvailabilitySlot.pianist_id.in_(current_ids)
+            ).delete(synchronize_session=False)
+            db.query(models.PianistAvailabilityState).filter(
+                models.PianistAvailabilityState.pianist_id.in_(current_ids)
+            ).delete(synchronize_session=False)
+            for pianist in current_pianists:
+                remove_pianist_identity_mapping(db, pianist.id)
+                db.delete(pianist)
+            db.flush()
+
+        pianist_ids_by_key: dict[str, int] = {}
+        created_count = 0
+        for key, plan in prepared.pianists.items():
+            pianist = models.Pianist(
+                organization_id=1,
+                name=plan.pianist_name,
+                email=plan.email,
+                max_hours_per_week=40,
+            )
+            db.add(pianist)
+            db.flush()
+            ensure_pianist_identity(db, pianist)
+            pianist_id = pianist.id
+            created_count += 1
+            pianist_ids_by_key[key] = pianist_id
+
+        pianist_ids = list(pianist_ids_by_key.values())
+        days_replaced = (len(current_pianists) + len(pianist_ids)) * len(models.DAYS_ORDER)
 
         new_slots = [
             models.AvailabilitySlot(
@@ -471,7 +546,8 @@ def apply_import(
                 slot_start_minute=slot.slot_start_minute,
                 status=slot.status,
             )
-            for pianist_id, slots in prepared.slots_by_pianist.items()
+            for pianist_key, slots in prepared.slots_by_pianist.items()
+            for pianist_id in [pianist_ids_by_key[pianist_key]]
             for slot in slots
         ]
         db.add_all(new_slots)
@@ -481,6 +557,7 @@ def apply_import(
                 db.add(models.PianistAvailabilityState(pianist_id=pianist_id, is_complete=True))
             else:
                 availability_state.is_complete = True
+        bump_accompanist_revision(db)
         db.commit()
     except Exception as error:
         db.rollback()
@@ -490,8 +567,11 @@ def apply_import(
 
     _STAGED_PREVIEWS.pop(request.preview_token, None)
     return schemas.AvailabilityImportApplyResult(
-        pianists_updated=len(pianist_ids),
+        pianists_removed=len(current_pianists),
+        pianists_created=created_count,
+        assignments_cleared=assignments_cleared,
         slots_replaced=slots_replaced,
         slots_created=len(new_slots),
         days_replaced=days_replaced,
+        jury_availability_windows_removed=jury_availability_windows_removed,
     )

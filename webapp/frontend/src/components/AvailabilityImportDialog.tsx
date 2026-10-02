@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { api } from "../lib/api";
-import { chooseLocalFile } from "../lib/platform";
+import { chooseLocalFile, saveTextFile } from "../lib/platform";
+import { generateAvailabilityTemplateCsv } from "../lib/availabilityTemplate";
 import { DAYS_ORDER, type AvailabilityImportInspection, type AvailabilityImportLayout, type AvailabilityImportMapping, type AvailabilityImportPreview, type AvailabilityStatus, type AvailabilityWindowColumns } from "../lib/types";
 
 type Props = {
@@ -10,6 +11,7 @@ type Props = {
 
 const COLUMN_LABELS: Record<string, string> = {
   person_name_column: "Pianist name",
+  email_column: "Email",
   day_column: "Weekday",
   start_column: "Start time",
   end_column: "End time",
@@ -48,6 +50,7 @@ function initialMappings(inspection: AvailabilityImportInspection) {
   return {
     layout: hasNormalized || !hasWide ? "normalized" as const : "wide" as const,
     person: suggested.person_name_column ?? "",
+    email: suggested.email_column ?? "",
     day: suggested.day_column ?? "",
     start: suggested.start_column ?? "",
     end: suggested.end_column ?? "",
@@ -68,6 +71,7 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
   const [inspection, setInspection] = useState<AvailabilityImportInspection | null>(null);
   const [layout, setLayout] = useState<AvailabilityImportLayout>("normalized");
   const [personColumn, setPersonColumn] = useState("");
+  const [emailColumn, setEmailColumn] = useState("");
   const [dayColumn, setDayColumn] = useState("");
   const [startColumn, setStartColumn] = useState("");
   const [endColumn, setEndColumn] = useState("");
@@ -90,6 +94,7 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
     setInspection(next);
     setLayout(mapping.layout);
     setPersonColumn(mapping.person);
+    setEmailColumn(mapping.email);
     setDayColumn(mapping.day);
     setStartColumn(mapping.start);
     setEndColumn(mapping.end);
@@ -136,6 +141,7 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
       ? {
           layout,
           person_name_column: personColumn || null,
+          email_column: emailColumn || null,
           day_column: dayColumn || null,
           start_column: startColumn || null,
           end_column: endColumn || null,
@@ -144,6 +150,7 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
       : {
           layout,
           person_name_column: personColumn || null,
+          email_column: emailColumn || null,
           wide_status: wideStatus,
           wide_windows: wideWindows,
         };
@@ -171,19 +178,35 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
     if (!preview?.can_apply) return;
     const ready = await onBeforeApply();
     if (!ready) return;
-    const detail = `Replace all saved weekly availability for ${preview.matched_pianist_count} matched pianist(s). Pianists absent from the file remain unchanged. ${preview.existing_slots_in_scope} saved slots are in scope, including manual edits. Blank days and times in this complete submission mean Unavailable. Continue?`;
+    const detail = `Replace the current Pianist roster with ${preview.incoming_pianist_count} Pianist(s) from this file? This removes ${preview.existing_pianist_count} current Pianist(s), their Accompanist weekly availability, ${preview.existing_assignment_count} Lesson assignments, and all Jury Availability Windows. Student Lessons, Jury Required values, and Panel choices remain.`;
     if (!window.confirm(detail)) return;
     setBusy(true);
     setError(null);
     try {
       const result = await api.applyAvailabilityImport(preview.preview_token);
       await onApplied();
-      setSuccess(`Updated ${result.pianists_updated} pianist(s); ${result.slots_created} availability slots applied.`);
+      setSuccess(`Replaced ${result.pianists_removed} Pianist(s) with ${result.pianists_created} new Pianist(s), cleared ${result.assignments_cleared} Lesson assignments and ${result.jury_availability_windows_removed} Jury Availability Windows, and applied ${result.slots_created} Accompanist availability slots.`);
       setPreview(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not apply availability.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function saveAvailabilityTemplate() {
+    setError(null);
+    setSuccess(null);
+    try {
+      const saved = await saveTextFile(
+        generateAvailabilityTemplateCsv(),
+        "pianist-availability-template.csv",
+        "Pianist availability CSV",
+        "csv",
+      );
+      if (saved) setSuccess("Availability template saved.");
+    } catch {
+      setError("Could not save the availability template. Check the selected destination and try again.");
     }
   }
 
@@ -218,7 +241,9 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
             <button type="button" className="primary-btn" disabled={busy} onClick={() => void selectFile()}>
               {inspection ? "Choose another file" : "Choose spreadsheet"}
             </button>
-            <a href="/availability-template.csv" download>Download CSV template</a>
+            <button type="button" className="template-download-button" disabled={busy} onClick={() => void saveAvailabilityTemplate()}>
+              Download CSV template
+            </button>
           </div>
 
           {inspection && (
@@ -254,6 +279,14 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
                   columns={inspection.columns}
                   onChange={(value) => updateMapping(() => setPersonColumn(value ?? ""))}
                 />
+                <div className="availability-normalized-mapping">
+                  <ColumnSelect
+                    label="Email (optional)"
+                    value={emailColumn || null}
+                    columns={inspection.columns}
+                    onChange={(value) => updateMapping(() => setEmailColumn(value ?? ""))}
+                  />
+                </div>
                 {layout === "normalized" ? (
                   <div className="availability-normalized-mapping">
                     {(["day_column", "start_column", "end_column", "status_column"] as const).map((field) => {
@@ -347,7 +380,7 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
               </details>
 
               <p className="muted availability-completeness-note">
-                A matched respondent is a complete weekly submission. Blank mapped windows mean Unavailable; missing mappings or malformed rows block the import.
+                Names in this file group that respondent's rows. Applying replaces the whole Pianist roster and weekly availability; all Lesson-to-Pianist assignments are cleared. Blank mapped windows mean Unavailable. Missing mappings or malformed rows block the import.
               </p>
 
               <div className="availability-import-actions">
@@ -362,11 +395,25 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
             <section className="availability-import-review" aria-live="polite">
               <h3>Import review</h3>
               <p className="availability-import-summary">
-                {preview.rows_processed} rows · {preview.matched_pianist_count} pianists matched · {preview.valid_window_count} windows · {preview.warnings.length} warnings · {preview.errors.length} errors
+                {preview.incoming_pianist_count} Pianists · {preview.valid_window_count} Availability Windows · {preview.warnings.length} warnings · {preview.errors.length} errors
               </p>
               <p className="muted">
-                Complete weekly replacement for matched respondents. Sparse Available/Tentative windows are stored; other times derive Unavailable. Pianists absent from the file remain unchanged.
+                This will replace {preview.existing_pianist_count} current Pianists and clear {preview.existing_assignment_count} Lesson assignments. Imported names receive fresh internal records. Sparse Available/Tentative windows are stored; other times derive Unavailable.
               </p>
+              <ul className="availability-import-plan">
+                {preview.pianists.map((pianist, index) => (
+                  <li key={`${pianist.pianist_name}-${index}`} className={`is-${pianist.action}`}>
+                    <div>
+                      <strong>{pianist.pianist_name || "Unnamed respondent"}</strong>
+                      <span>
+                        {pianist.action === "new" ? "New Pianist"
+                          : `Invalid row${pianist.row_numbers.length ? ` · row ${pianist.row_numbers.join(", ")}` : ""}`}
+                      </span>
+                    </div>
+                    {pianist.action === "new" && <small>Email: {pianist.email || "blank"} · Max hours/week: 40</small>}
+                  </li>
+                ))}
+              </ul>
               {preview.errors.length > 0 && (
                 <div className="availability-issue-list availability-errors" role="alert">
                   <strong>Resolve these errors before applying:</strong>
@@ -385,7 +432,7 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
                     <thead><tr><th>Pianist</th><th>Day</th><th>Start</th><th>End</th><th>Status</th></tr></thead>
                     <tbody>
                       {preview.windows.map((item, index) => (
-                        <tr key={`${item.pianist_id}-${item.day}-${item.start_minute}-${index}`}>
+                        <tr key={`${item.pianist_name}-${item.day}-${item.start_minute}-${index}`}>
                           <td>{item.pianist_name}</td><td>{item.day}</td><td>{formatMinute(item.start_minute)}</td><td>{formatMinute(item.end_minute)}</td><td>{item.status}</td>
                         </tr>
                       ))}

@@ -1,12 +1,16 @@
 from pathlib import Path
 import sqlite3
 import tempfile
+from threading import Thread
 import unittest
+from unittest.mock import patch
+from datetime import date, datetime
+from uuid import uuid4
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
-from app import database, models
+from app import database, models, module_models
 from app.database import (
     DatabaseMigrationError,
     DatabaseState,
@@ -15,6 +19,7 @@ from app.database import (
     SchemaMigration,
     migrate_database,
 )
+from app.services.accompanist_results import get_result_by_uuid
 
 LEGACY_FIXTURE = Path(__file__).parent / "fixtures" / "legacy_accompanist_v0.sql"
 
@@ -23,7 +28,10 @@ class DatabaseMigrationTests(unittest.TestCase):
     def setUp(self):
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.database_path = Path(self.temporary_directory.name) / "session.sqlite3"
-        self.engine = create_engine(f"sqlite:///{self.database_path}")
+        self.engine = create_engine(
+            f"sqlite:///{self.database_path}",
+            connect_args={"check_same_thread": False},
+        )
 
     def tearDown(self):
         self.engine.dispose()
@@ -34,10 +42,13 @@ class DatabaseMigrationTests(unittest.TestCase):
 
         self.assertEqual(report.initial_state, DatabaseState.FRESH)
         self.assertEqual(report.initial_version, 0)
-        self.assertEqual(report.current_version, 6)
-        self.assertEqual(len(report.applied_migrations), 6)
+        self.assertEqual(report.current_version, LATEST_SCHEMA_VERSION)
+        self.assertEqual(len(report.applied_migrations), LATEST_SCHEMA_VERSION)
         with self.engine.connect() as connection:
-            self.assertEqual(connection.exec_driver_sql("PRAGMA user_version").scalar_one(), 6)
+            self.assertEqual(
+                connection.exec_driver_sql("PRAGMA user_version").scalar_one(),
+                LATEST_SCHEMA_VERSION,
+            )
             from app.module_models import ModuleBase
 
             self.assertEqual(
@@ -76,8 +87,8 @@ class DatabaseMigrationTests(unittest.TestCase):
         after = self.database_path.read_bytes()
 
         self.assertEqual(report.initial_state, DatabaseState.CURRENT)
-        self.assertEqual(report.initial_version, 6)
-        self.assertEqual(report.current_version, 6)
+        self.assertEqual(report.initial_version, LATEST_SCHEMA_VERSION)
+        self.assertEqual(report.current_version, LATEST_SCHEMA_VERSION)
         self.assertEqual(report.applied_migrations, ())
         self.assertEqual(after, before)
 
@@ -91,7 +102,7 @@ class DatabaseMigrationTests(unittest.TestCase):
 
         self.assertEqual(report.initial_state, DatabaseState.LEGACY)
         self.assertEqual(report.initial_version, 0)
-        self.assertEqual(report.current_version, 6)
+        self.assertEqual(report.current_version, LATEST_SCHEMA_VERSION)
         with Session(self.engine) as db:
             organization = db.get(models.Organization, 1)
             pianist = db.get(models.Pianist, 7)
@@ -99,6 +110,7 @@ class DatabaseMigrationTests(unittest.TestCase):
             profile = db.get(models.ImportProfile, 13)
             self.assertEqual(organization.name, "Synthetic Music Program")
             self.assertEqual(pianist.name, "Synthetic Pianist")
+            self.assertEqual(pianist.pianist_code, "7")
             self.assertEqual(pianist.email, "pianist@example.invalid")
             self.assertEqual(pianist.availability[0].status, "Available")
             self.assertEqual(lesson.student, "Synthetic Student")
@@ -134,7 +146,7 @@ class DatabaseMigrationTests(unittest.TestCase):
         report = migrate_database(self.engine)
 
         self.assertEqual(report.initial_state, DatabaseState.LEGACY)
-        self.assertEqual(report.current_version, 6)
+        self.assertEqual(report.current_version, LATEST_SCHEMA_VERSION)
         with Session(self.engine) as db:
             lesson = db.query(models.Lesson).one()
             self.assertEqual(lesson.teacher_email, "teacher@example.invalid")
@@ -171,7 +183,7 @@ class DatabaseMigrationTests(unittest.TestCase):
         report = migrate_database(self.engine)
 
         self.assertEqual(report.initial_version, 2)
-        self.assertEqual(report.current_version, 6)
+        self.assertEqual(report.current_version, LATEST_SCHEMA_VERSION)
         self.assertEqual(report.applied_migrations, tuple(migration.name for migration in MIGRATIONS[2:]))
         with Session(self.engine) as db:
             pianist = db.get(models.Pianist, pianist_id)
@@ -205,7 +217,7 @@ class DatabaseMigrationTests(unittest.TestCase):
         report = migrate_database(self.engine)
 
         self.assertEqual(report.initial_version, 3)
-        self.assertEqual(report.current_version, 6)
+        self.assertEqual(report.current_version, LATEST_SCHEMA_VERSION)
         from app import module_models
         with Session(self.engine) as db:
             lesson_identities = {
@@ -237,6 +249,131 @@ class DatabaseMigrationTests(unittest.TestCase):
                 db.get(module_models.PersonIdentity, pianist_identity.person_uuid).display_name,
                 "Synthetic Pianist",
             )
+
+    def test_v6_to_v7_defaults_existing_lessons_false_and_preserves_v1_history(self):
+        migrate_database(self.engine)
+        with self.engine.begin() as connection:
+            connection.exec_driver_sql("DROP TABLE accompanist_lesson_jury_requirements")
+            connection.exec_driver_sql("DROP TABLE jury_panel_dates")
+            connection.exec_driver_sql("PRAGMA user_version = 6")
+        with Session(self.engine) as db:
+            lesson = models.Lesson(
+                id=601,
+                student="Synthetic Existing Student",
+                student_id="S-601",
+                instrument="Voice",
+                teacher="Synthetic Teacher",
+                day="Friday",
+                start_minute=600,
+                end_minute=650,
+            )
+            db.add(lesson)
+            db.flush()
+            session_uuid = db.query(models.SchedulingSession).one().session_uuid
+            state = db.get(module_models.ModuleRevision, (session_uuid, "accompanists"))
+            result_uuid = str(uuid4())
+            legacy_payload = (
+                '{"entries":[{"source_lesson_uuid":"00000000-0000-0000-0000-000000000601",'
+                '"student_person_uuid":"00000000-0000-0000-0000-000000000602",'
+                '"student_display_name":"Synthetic Existing Student","instrument":"Voice",'
+                '"teacher":"Synthetic Teacher","pianist_required":false,"assigned_pianist":null}]}'
+            )
+            db.add(module_models.ModuleResult(
+                result_uuid=result_uuid,
+                session_uuid=session_uuid,
+                module_id="accompanists",
+                contract_id="accompanist.assignment-result",
+                contract_version=1,
+                payload_schema_version=1,
+                result_version=1,
+                source_revision=state.source_revision,
+                state="finalized",
+                payload_json=legacy_payload,
+                payload_sha256="0" * 64,
+                created_at=datetime.utcnow(),
+                finalized_at=datetime.utcnow(),
+            ))
+            state.current_result_uuid = result_uuid
+            db.commit()
+
+        report = migrate_database(self.engine)
+
+        self.assertEqual(report.initial_version, 6)
+        self.assertEqual(report.current_version, LATEST_SCHEMA_VERSION)
+        with Session(self.engine) as db:
+            lesson = db.get(models.Lesson, 601)
+            self.assertEqual(lesson.student, "Synthetic Existing Student")
+            requirement = db.get(module_models.AccompanistLessonJuryRequirement, 601)
+            self.assertFalse(requirement.jury_required)
+            state = db.get(module_models.ModuleRevision, (session_uuid, "accompanists"))
+            self.assertIsNone(state.current_result_uuid)
+            historical = get_result_by_uuid(db, result_uuid)
+            self.assertEqual(historical.contract_version, 1)
+            self.assertEqual(historical.state, "superseded")
+            self.assertFalse(hasattr(historical.payload.entries[0], "jury_required"))
+
+    def test_v7_to_v8_backfills_existing_panels_from_legacy_session_date(self):
+        migrate_database(self.engine)
+        legacy_date = "2027-05-01"
+        with Session(self.engine) as db:
+            session_row = db.query(models.SchedulingSession).one()
+            session_uuid = session_row.session_uuid
+            configuration = db.get(module_models.JuryConfiguration, session_uuid)
+            configuration.jury_date = date.fromisoformat(legacy_date)
+            db.add_all([
+                module_models.JuryPanel(
+                    panel_uuid=str(uuid4()),
+                    session_uuid=session_uuid,
+                    panel_name="Synthetic Panel One",
+                    room="Room A",
+                    earliest_start_minute=540,
+                    preferred_start_minute=540,
+                    jury_length_minutes=30,
+                ),
+                module_models.JuryPanel(
+                    panel_uuid=str(uuid4()),
+                    session_uuid=session_uuid,
+                    panel_name="Synthetic Panel Two",
+                    room="Room B",
+                    earliest_start_minute=540,
+                    preferred_start_minute=540,
+                    jury_length_minutes=30,
+                ),
+            ])
+            db.commit()
+        with self.engine.begin() as connection:
+            connection.exec_driver_sql("DROP TABLE jury_panel_dates")
+            connection.exec_driver_sql("PRAGMA user_version = 7")
+
+        report = migrate_database(self.engine)
+
+        self.assertEqual(report.initial_version, 7)
+        self.assertEqual(report.current_version, LATEST_SCHEMA_VERSION)
+        with Session(self.engine) as db:
+            self.assertEqual(
+                {panel_date.jury_date for panel_date in db.query(module_models.JuryPanelDate).all()},
+                {date.fromisoformat(legacy_date)},
+            )
+
+    def test_v8_to_v9_backfills_editable_pianist_ids_from_numeric_primary_keys(self):
+        migrate_database(self.engine)
+        with Session(self.engine) as db:
+            db.add(models.Pianist(id=42, name="Synthetic v8 Pianist"))
+            db.commit()
+        with self.engine.begin() as connection:
+            connection.exec_driver_sql("DROP INDEX uq_pianists_organization_code_ci")
+            connection.exec_driver_sql("ALTER TABLE pianists DROP COLUMN pianist_code")
+            connection.exec_driver_sql("PRAGMA user_version = 8")
+
+        report = migrate_database(self.engine)
+
+        self.assertEqual(report.initial_version, 8)
+        self.assertEqual(report.current_version, 9)
+        with Session(self.engine) as db:
+            self.assertEqual(db.get(models.Pianist, 42).pianist_code, "42")
+        with self.engine.connect() as connection:
+            indexes = connection.exec_driver_sql("PRAGMA index_list('pianists')").all()
+            self.assertIn("uq_pianists_organization_code_ci", {row[1] for row in indexes})
 
     def test_failed_migration_rolls_back_ddl_and_keeps_version_unadvanced(self):
         def fail_after_ddl(connection):
@@ -311,6 +448,41 @@ class DatabaseMigrationTests(unittest.TestCase):
 
         self.assertEqual(raised.exception.code, "INVALID_MIGRATION_REGISTRY")
         self.assertFalse(self.database_path.exists())
+
+    def test_request_database_session_can_close_on_a_different_worker_thread(self):
+        with patch.object(database, "SessionLocal", sessionmaker(bind=self.engine)):
+            dependency = database.get_db()
+            entered = []
+            errors = []
+
+            def enter_dependency():
+                try:
+                    entered.append(next(dependency))
+                except BaseException as error:
+                    errors.append(error)
+
+            enter_thread = Thread(target=enter_dependency)
+            enter_thread.start()
+            enter_thread.join()
+            self.assertEqual(errors, [])
+            self.assertEqual(database.ACTIVE_DATABASE_SESSIONS, 1)
+
+            def close_dependency():
+                try:
+                    next(dependency)
+                except StopIteration:
+                    pass
+                except BaseException as error:
+                    errors.append(error)
+
+            close_thread = Thread(target=close_dependency)
+            close_thread.start()
+            close_thread.join()
+
+        self.assertEqual(errors, [])
+        self.assertEqual(database.ACTIVE_DATABASE_SESSIONS, 0)
+        with database.database_operation_lock():
+            self.assertEqual(database.ACTIVE_DATABASE_SESSIONS, 0)
 
 
 if __name__ == "__main__":

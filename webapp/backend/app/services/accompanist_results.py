@@ -11,8 +11,10 @@ from sqlalchemy.orm import Session
 from .. import models, module_models
 from ..jury_schemas import (
     AccompanistAssignmentPayload,
+    AccompanistAssignmentPayloadV1,
     FinalizedLessonEntry,
     FinalizedPianist,
+    HistoricalResultEnvelopeV1,
     ResultEnvelope,
 )
 from .module_lifecycle import (
@@ -20,10 +22,11 @@ from .module_lifecycle import (
     ACCOMPANIST_RESULT_CONTRACT,
     ACCOMPANIST_RESULT_CONTRACT_VERSION,
     active_session_uuid,
+    get_lesson_jury_required,
     module_revision,
 )
 
-PAYLOAD_SCHEMA_VERSION = 1
+PAYLOAD_SCHEMA_VERSION = 2
 
 
 class ResultPublicationError(ValueError):
@@ -95,24 +98,36 @@ def _build_payload(db: Session) -> AccompanistAssignmentPayload:
             teacher=lesson.teacher,
             pianist_required=lesson.need_pianist,
             assigned_pianist=assigned_pianist,
+            jury_required=get_lesson_jury_required(db, lesson.id),
         ))
 
     return AccompanistAssignmentPayload(entries=entries)
 
 
-def _envelope(db: Session, result: module_models.ModuleResult) -> ResultEnvelope:
+def _envelope(
+    db: Session,
+    result: module_models.ModuleResult,
+) -> ResultEnvelope | HistoricalResultEnvelopeV1:
+    common = {
+        "result_uuid": result.result_uuid,
+        "session_uuid": result.session_uuid,
+        "module_id": result.module_id,
+        "contract_id": result.contract_id,
+        "contract_version": result.contract_version,
+        "source_revision": result.source_revision,
+        "result_version": result.result_version,
+        "state": result.state,
+        "created_at": result.created_at,
+        "finalized_at": result.finalized_at,
+        "payload_schema_version": result.payload_schema_version,
+    }
+    if result.contract_version == 1 and result.payload_schema_version == 1:
+        return HistoricalResultEnvelopeV1(
+            **common,
+            payload=AccompanistAssignmentPayloadV1.model_validate_json(result.payload_json),
+        )
     return ResultEnvelope(
-        result_uuid=result.result_uuid,
-        session_uuid=result.session_uuid,
-        module_id=result.module_id,
-        contract_id=result.contract_id,
-        contract_version=result.contract_version,
-        source_revision=result.source_revision,
-        result_version=result.result_version,
-        state=result.state,
-        created_at=result.created_at,
-        finalized_at=result.finalized_at,
-        payload_schema_version=result.payload_schema_version,
+        **common,
         payload=AccompanistAssignmentPayload.model_validate_json(result.payload_json),
     )
 
@@ -172,21 +187,37 @@ def get_current_accompanist_result(db: Session) -> ResultEnvelope | None:
     state = module_revision(db)
     if not state.current_result_uuid:
         return None
-    result = db.get(module_models.ModuleResult, state.current_result_uuid)
+    result = get_latest_accompanist_result(db)
     if (
         result is None
         or result.state != "finalized"
-        or result.module_id != ACCOMPANIST_MODULE_ID
         or result.source_revision != state.source_revision
-        or result.contract_id != ACCOMPANIST_RESULT_CONTRACT
-        or result.contract_version != ACCOMPANIST_RESULT_CONTRACT_VERSION
-        or result.payload_schema_version != PAYLOAD_SCHEMA_VERSION
+    ):
+        return None
+    return result
+
+
+def get_latest_accompanist_result(db: Session) -> ResultEnvelope | None:
+    session_uuid = active_session_uuid(db)
+    result = db.query(module_models.ModuleResult).filter(
+        module_models.ModuleResult.session_uuid == session_uuid,
+        module_models.ModuleResult.module_id == ACCOMPANIST_MODULE_ID,
+        module_models.ModuleResult.contract_id == ACCOMPANIST_RESULT_CONTRACT,
+        module_models.ModuleResult.contract_version == ACCOMPANIST_RESULT_CONTRACT_VERSION,
+        module_models.ModuleResult.payload_schema_version == PAYLOAD_SCHEMA_VERSION,
+        module_models.ModuleResult.state.in_(["finalized", "superseded"]),
+    ).order_by(module_models.ModuleResult.result_version.desc()).first()
+    if (
+        result is None
     ):
         return None
     return _envelope(db, result)
 
 
-def get_result_by_uuid(db: Session, result_uuid: str) -> ResultEnvelope | None:
+def get_result_by_uuid(
+    db: Session,
+    result_uuid: str,
+) -> ResultEnvelope | HistoricalResultEnvelopeV1 | None:
     result = db.get(module_models.ModuleResult, result_uuid)
     if result is None or result.module_id != ACCOMPANIST_MODULE_ID:
         return None

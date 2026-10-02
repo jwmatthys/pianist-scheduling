@@ -542,7 +542,7 @@ Students + Clinical Sites + Constraints
 11. FUTURE JURY MODULE
 ==================================================
 
-Do not integrate or rewrite the existing Python jury scheduler during the Tauri shell migration. Independently characterize and test its behavior before integration or rewriting it.
+The standalone Python Jury scheduler is characterized in [JURY-SCHEDULER-CHARACTERIZATION.md](JURY-SCHEDULER-CHARACTERIZATION.md). Jury Integration Milestone A now provides identities, finalized Accompanist result contract v2, Jury-owned setup persistence, and readiness. Do not call, port, or rewrite the legacy scheduler until a separately approved optimizer milestone.
 
 Preserve awareness that a working Python jury scheduler already exists.
 
@@ -773,8 +773,8 @@ After the current Tauri shell validation milestone, proceed in this order:
 3. Introduce shared availability value/import infrastructure with Accompanist Scheduling as the first consumer. Preserve the current manual pianist editor and solver semantics; track complete-submission state separately, treat valid blank periods as Unavailable only within a complete submission, reject malformed imports without mutation, and flag conflicting-status overlaps.
 4. Introduce shared report infrastructure by adapting existing Accompanist reports without changing their established semantics. Do not create an arbitrary query designer.
 5. Introduce the product module registry/dashboard once the session and shared infrastructure are useful. Do not add placeholder module workflows.
-6. Independently characterize and test the standalone Jury scheduler during this work; do not integrate or rewrite it before that gate.
-7. Integrate Jury after its behavior, identities, and dependency on finalized Accompanist assignments are understood. Mark downstream results potentially stale when a consumed finalized result changes.
+6. Independently characterize and test the standalone Jury scheduler. Complete: see [JURY-SCHEDULER-CHARACTERIZATION.md](JURY-SCHEDULER-CHARACTERIZATION.md).
+7. Establish the Jury identity/result/input/readiness boundary. Complete through schema v9 and contract v2; Jury Setup provides Panels, Lesson Entries, date-keyed Pianist Availability, and stale-readiness handling. Optimizer integration and schedule generation remain later work.
 8. Build the Clinical Placement data-entry/import/manual-edit workflow.
 9. Design the Clinical Placement optimizer only after requirements and policies are gathered from the Music Therapy workflow owner.
 

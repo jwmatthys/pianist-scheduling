@@ -15,16 +15,20 @@ from sqlalchemy.orm import Session
 
 from app import models, module_models, schemas
 from app.database import LATEST_SCHEMA_VERSION, MIGRATIONS, migrate_database
-from app.jury_schemas import JuryAvailabilityIn, JuryPanelFields
+from app.jury_schemas import AccompanistAssignmentPayload, JuryAvailabilityIn, JuryPanelFields
 from app.services.accompanist_results import finalize_accompanist_result
 from app.services.jury import (
     create_panel,
+    list_entries,
     save_availability,
     sync_roster_from_current_result,
-    update_configuration,
     update_lesson_entry,
 )
-from app.services.module_lifecycle import ensure_pianist_identity, synchronize_lesson_identity
+from app.services.module_lifecycle import (
+    ensure_pianist_identity,
+    set_lesson_jury_required,
+    synchronize_lesson_identity,
+)
 from app.services.session_files import (
     DATABASE_ENTRY,
     RECOVERY_RETENTION,
@@ -247,12 +251,14 @@ class SessionFileTests(unittest.TestCase):
             db.add(lesson)
             db.flush()
             student_uuid = synchronize_lesson_identity(db, lesson, identity_fields_changed=True)
+            set_lesson_jury_required(db, lesson.id, True)
             result = finalize_accompanist_result(db, expected_source_revision=0)
             sync_roster_from_current_result(db)
-            configuration = update_configuration(db, jury_date)
+            session_uuid = db.query(models.SchedulingSession).one().session_uuid
             panel = create_panel(db, JuryPanelFields(
                 panel_name="Synthetic Panel",
                 room="Room A",
+                jury_date=jury_date,
                 earliest_start_minute=540,
                 jury_length_minutes=30,
             ))
@@ -260,18 +266,17 @@ class SessionFileTests(unittest.TestCase):
             update_lesson_entry(
                 db,
                 source_lesson_uuid,
-                jury_required=True,
                 panel_uuid=str(panel.panel_uuid),
             )
             save_availability(
                 db,
                 pianist_uuid,
                 jury_date,
-                JuryAvailabilityIn(is_complete=True, windows=[{"start_minute": 540, "end_minute": 720}]),
+                JuryAvailabilityIn(windows=[{"start_minute": 540, "end_minute": 720}]),
             )
             db.commit()
             result_uuid = str(result.result_uuid)
-            session_uuid = str(configuration.session_uuid)
+            session_uuid = str(session_uuid)
 
         exported = export_session_archive(self.engine)
         create_new_session(self.engine, self.metadata("Replacement", "Music", "Spring 2027"), self.recovery_directory)
@@ -285,15 +290,24 @@ class SessionFileTests(unittest.TestCase):
             )
             lesson_identity = db.query(module_models.AccompanistLessonIdentity).one()
             self.assertEqual(lesson_identity.student_person_uuid, student_uuid)
+            jury_requirement = db.get(
+                module_models.AccompanistLessonJuryRequirement,
+                lesson_identity.lesson_id,
+            )
+            self.assertTrue(jury_requirement.jury_required)
             result_row = db.get(module_models.ModuleResult, result_uuid)
             self.assertEqual(result_row.state, "finalized")
+            result_payload = AccompanistAssignmentPayload.model_validate_json(result_row.payload_json)
+            self.assertTrue(result_payload.entries[0].jury_required)
             entry = db.query(module_models.JuryLessonEntry).one()
             self.assertEqual(entry.source_lesson_uuid, source_lesson_uuid)
-            self.assertTrue(entry.jury_required)
+            self.assertTrue(list_entries(db)[0].jury_required)
             self.assertIsNotNone(entry.panel_uuid)
-            self.assertEqual(db.query(module_models.JuryPanel).one().panel_name, "Synthetic Panel")
-            config = db.get(module_models.JuryConfiguration, session_uuid)
-            self.assertEqual(config.jury_date, jury_date)
+            panel = db.query(module_models.JuryPanel).one()
+            self.assertEqual(panel.panel_name, "Synthetic Panel")
+            self.assertEqual(db.get(module_models.JuryPanelDate, panel.panel_uuid).jury_date, jury_date)
+            panel_date = db.get(module_models.JuryPanelDate, str(panel.panel_uuid))
+            self.assertEqual(panel_date.jury_date, jury_date)
             declaration = db.query(module_models.JuryPianistAvailabilityDeclaration).one()
             self.assertTrue(declaration.is_complete)
             self.assertEqual(db.query(module_models.JuryPianistAvailableWindow).count(), 1)

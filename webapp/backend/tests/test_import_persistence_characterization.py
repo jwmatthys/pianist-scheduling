@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app import models, schemas
+from app import models, module_models, schemas
 from app import database
 from app.database import Base
 from app.routers import assignments, imports, lessons, pianists
@@ -60,6 +60,47 @@ class ImportCharacterizationTests(unittest.TestCase):
         self.assertEqual(rows[1]["end_minute"], 855)
         self.assertFalse(rows[1]["need_pianist"])
 
+    def test_needs_pianist_and_specific_pianist_import_as_independent_fields(self):
+        content = (
+            "Student,Day,Start,Needs pianist?,Jury required?,Specific pianist\n"
+            "Assigned student,Mon,9:00 AM,Yes,No,Susan Roberts\n"
+            "Unassigned student,Tue,10:00 AM,No,Yes,\n"
+            "Flexible student,Wed,11:00 AM,Yes,Yes,\n"
+            "No-accompanist student,Thu,12:00 PM,No,No,Susan Roberts\n"
+        ).encode()
+        token, _, _ = importer.stage_upload("lesson-pianist-fields.csv", content)
+
+        rows, warnings = importer.commit_upload(token, {
+            "student": "Student",
+            "day": "Day",
+            "start_time": "Start",
+            "need_pianist": "Needs pianist?",
+            "jury_required": "Jury required?",
+            "required_pianist_name": "Specific pianist",
+        })
+
+        self.assertEqual(warnings, [])
+        self.assertEqual(
+            [
+                (row["need_pianist"], row["required_pianist_name"], row["jury_required"])
+                for row in rows
+            ],
+            [
+                (True, "Susan Roberts", False),
+                (False, "", True),
+                (True, "", True),
+                (False, "Susan Roberts", False),
+            ],
+        )
+
+    def test_import_target_field_order_distinguishes_boolean_and_specific_name(self):
+        fields = imports.target_fields()["fields"]
+
+        self.assertEqual(
+            fields[-3:],
+            ["need_pianist", "jury_required", "required_pianist_name"],
+        )
+
     def test_xlsx_mapping_reads_excel_time_cells(self):
         workbook = Workbook()
         sheet = workbook.active
@@ -79,6 +120,46 @@ class ImportCharacterizationTests(unittest.TestCase):
         self.assertEqual(rows[0]["day"], "Thursday")
         self.assertEqual(rows[0]["start_minute"], 600)
         self.assertEqual(rows[0]["end_minute"], 645)
+
+    def test_jury_required_boolean_import_values_and_invalid_nonblank_issue(self):
+        truthy = ("Yes", "Y", "True", "1", "1.0", " yEs ")
+        falsy = ("No", "N", "False", "0", "0.0", " nO ", "", "   ")
+        for value in truthy:
+            with self.subTest(value=value):
+                self.assertIs(importer.parse_optional_boolean(value), True)
+        for value in falsy:
+            with self.subTest(value=value):
+                self.assertIs(importer.parse_optional_boolean(value), False)
+        self.assertIsNone(importer.parse_optional_boolean("sometimes"))
+
+        content = (
+            "Student,Day,Start,Jury status\n"
+            "Included Student,Mon,9:00 AM,TRUE\n"
+            "Blank Defaults False,Tue,10:00 AM,\n"
+            "Invalid Value,Wed,11:00 AM,sometimes\n"
+        ).encode()
+        token, _, _ = importer.stage_upload("jury-required.csv", content)
+        lessons, warnings = importer.commit_upload(token, {
+            "student": "Student",
+            "day": "Day",
+            "start_time": "Start",
+            "jury_required": "Jury status",
+        })
+        self.assertEqual([lesson["jury_required"] for lesson in lessons], [True, False])
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("Jury Required", warnings[0])
+        self.assertIn("sometimes", warnings[0])
+
+    def test_legacy_import_without_jury_column_defaults_false(self):
+        content = b"Student,Day,Start\nLegacy Student,T,11:00 AM\n"
+        token, _, _ = importer.stage_upload("legacy-lessons.csv", content)
+        lessons, warnings = importer.commit_upload(token, {
+            "student": "Student",
+            "day": "Day",
+            "start_time": "Start",
+        })
+        self.assertEqual(warnings, [])
+        self.assertFalse(lessons[0]["jury_required"])
 
 
 class PersistenceCharacterizationTests(unittest.TestCase):
@@ -133,6 +214,10 @@ class PersistenceCharacterizationTests(unittest.TestCase):
         profile = self.db.query(models.ImportProfile).one()
         self.assertEqual(profile.name, "Synthetic Lesson Columns")
         self.assertEqual(json.loads(profile.mapping_json), mapping)
+        imported_id = self.db.query(models.Lesson.id).one()[0]
+        self.assertFalse(
+            self.db.get(module_models.AccompanistLessonJuryRequirement, imported_id).jury_required
+        )
 
         self.db.close()
         self.db = Session(self.engine)
@@ -174,6 +259,33 @@ class PersistenceCharacterizationTests(unittest.TestCase):
         self.assertEqual((slots[0].day, slots[0].slot_start_minute, slots[0].status),
                          ("Tuesday", 600, "Available"))
         self.assertTrue(self.db.query(models.Pianist).filter_by(name="Bea Lin").one().availability_complete)
+
+    def test_import_persists_jury_required_and_skips_invalid_boolean_row(self):
+        content = (
+            "Student,Day,Start,Jury Required\n"
+            "Synthetic Jury Student,Monday,9:00 AM,Yes\n"
+            "Synthetic Invalid Student,Tuesday,10:00 AM,maybe\n"
+        ).encode()
+        token, _, _ = importer.stage_upload("jury-required-import.csv", content)
+        result = imports.commit(
+            schemas.ImportCommit(
+                upload_token=token,
+                mapping={
+                    "student": "Student",
+                    "day": "Day",
+                    "start_time": "Start",
+                    "jury_required": "Jury Required",
+                },
+            ),
+            self.db,
+        )
+
+        self.assertEqual(result.created, 1)
+        self.assertEqual(result.skipped, 1)
+        self.assertIn("maybe", result.warnings[0])
+        lesson = self.db.query(models.Lesson).one()
+        requirement = self.db.get(module_models.AccompanistLessonJuryRequirement, lesson.id)
+        self.assertTrue(requirement.jury_required)
 
     def test_database_startup_adds_legacy_columns_without_losing_rows(self):
         legacy_engine = create_engine(

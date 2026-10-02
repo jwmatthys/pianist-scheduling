@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import models, module_models, schemas
+from .. import models, schemas
 from ..database import get_db
 from ..services.module_lifecycle import (
     bump_accompanist_revision,
@@ -19,11 +20,17 @@ def list_pianists(db: Session = Depends(get_db)):
 
 @router.post("", response_model=schemas.PianistOut)
 def create_pianist(payload: schemas.PianistCreate, db: Session = Depends(get_db)):
-    pianist = models.Pianist(**payload.model_dump())
+    values = payload.model_dump()
+    values["name"] = values["name"].strip()
+    pianist = models.Pianist(**values)
     db.add(pianist)
-    db.flush()
-    ensure_pianist_identity(db, pianist)
-    db.commit()
+    try:
+        db.flush()
+        ensure_pianist_identity(db, pianist)
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(409, detail={"code": "PIANIST_CONFLICT", "message": "A conflicting Pianist record exists."}) from error
     db.refresh(pianist)
     return pianist
 
@@ -34,6 +41,8 @@ def update_pianist(pianist_id: int, payload: schemas.PianistUpdate, db: Session 
     if not pianist:
         raise HTTPException(404, "Pianist not found")
     data = payload.model_dump(exclude_unset=True)
+    if "name" in data and data["name"] is not None:
+        data["name"] = data["name"].strip()
     name_changed = "name" in data and pianist.name != data["name"]
     for key, value in data.items():
         setattr(pianist, key, value)
@@ -43,7 +52,11 @@ def update_pianist(pianist_id: int, payload: schemas.PianistUpdate, db: Session 
     ).first() is not None
     if assigned:
         bump_accompanist_revision(db)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(409, detail={"code": "PIANIST_CONFLICT", "message": "A conflicting Pianist record exists."}) from error
     db.refresh(pianist)
     return pianist
 

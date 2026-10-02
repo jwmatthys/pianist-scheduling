@@ -12,6 +12,20 @@ class FinalizedPianist(BaseModel):
     display_name: str
 
 
+class FinalizedLessonEntryV1(BaseModel):
+    source_lesson_uuid: UUID
+    student_person_uuid: UUID
+    student_display_name: str
+    instrument: str
+    teacher: str
+    pianist_required: bool
+    assigned_pianist: FinalizedPianist | None
+
+
+class AccompanistAssignmentPayloadV1(BaseModel):
+    entries: list[FinalizedLessonEntryV1]
+
+
 class FinalizedLessonEntry(BaseModel):
     source_lesson_uuid: UUID
     student_person_uuid: UUID
@@ -20,6 +34,7 @@ class FinalizedLessonEntry(BaseModel):
     teacher: str
     pianist_required: bool
     assigned_pianist: FinalizedPianist | None
+    jury_required: bool
 
 
 class AccompanistAssignmentPayload(BaseModel):
@@ -41,6 +56,21 @@ class ResultEnvelope(BaseModel):
     payload: AccompanistAssignmentPayload
 
 
+class HistoricalResultEnvelopeV1(BaseModel):
+    result_uuid: UUID
+    session_uuid: UUID
+    module_id: str
+    contract_id: str
+    contract_version: Literal[1]
+    source_revision: int
+    result_version: int
+    state: Literal["draft", "finalized", "superseded"]
+    created_at: datetime
+    finalized_at: datetime | None
+    payload_schema_version: Literal[1]
+    payload: AccompanistAssignmentPayloadV1
+
+
 class FinalizeAccompanistRequest(BaseModel):
     expected_source_revision: int = Field(ge=0)
 
@@ -52,13 +82,8 @@ class AccompanistFinalizationStateOut(BaseModel):
     current_result_version: int | None
 
 
-class JuryConfigurationIn(BaseModel):
-    jury_date: date | None
-
-
 class JuryConfigurationOut(BaseModel):
     session_uuid: UUID
-    jury_date: date | None
     input_revision: int
     roster_source_result_uuid: UUID | None
     created_at: datetime
@@ -70,6 +95,7 @@ class JuryConfigurationOut(BaseModel):
 class JuryPanelFields(BaseModel):
     panel_name: str = Field(min_length=1, max_length=200)
     room: str = Field(default="", max_length=200)
+    jury_date: date
     earliest_start_minute: int = Field(ge=0, le=1439)
     preferred_start_minute: int | None = Field(default=None, ge=0, le=1439)
     jury_length_minutes: int = Field(gt=0, le=1440)
@@ -118,16 +144,31 @@ class JuryPanelFields(BaseModel):
         return self
 
 
-class JuryPanelOut(JuryPanelFields):
+class JuryPanelOut(BaseModel):
     panel_uuid: UUID
     session_uuid: UUID
+    panel_name: str
+    room: str
+    jury_date: date | None
+    earliest_start_minute: int
+    preferred_start_minute: int
+    jury_length_minutes: int
+    break_needed: bool
+    break_every_x_juries: int | None
+    break_length_minutes: int | None
+    meal_break: bool
+    meal_start_minute: int | None
+    meal_end_minute: int | None
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class JuryLessonEntryUpdate(BaseModel):
-    jury_required: bool
     panel_uuid: UUID | None = None
+
+
+class JuryRequiredUpdate(BaseModel):
+    jury_required: bool
 
 
 class JuryLessonEntryOut(BaseModel):
@@ -150,12 +191,11 @@ class AvailableWindowIn(BaseModel):
     @model_validator(mode="after")
     def validate_interval(self):
         if self.end_minute <= self.start_minute:
-            raise ValueError("Available window end must be later than its start.")
+            raise ValueError("Availability Window end must be later than its start.")
         return self
 
 
 class JuryAvailabilityIn(BaseModel):
-    is_complete: bool
     windows: list[AvailableWindowIn] = Field(default_factory=list)
 
 
@@ -167,6 +207,10 @@ class JuryAvailabilityOut(BaseModel):
     declared_at: datetime | None
     modified_at: datetime
     windows: list[AvailableWindowIn]
+
+
+class JuryAvailabilityClearOut(BaseModel):
+    windows_deleted: int
 
 
 class ReadinessIssue(BaseModel):

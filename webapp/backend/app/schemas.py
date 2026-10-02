@@ -78,12 +78,16 @@ class SessionArchiveManifest(BaseModel):
 
 
 class PianistCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str
     email: str = ""
     max_hours_per_week: float | None = None
 
 
 class PianistUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = None
     email: str | None = None
     max_hours_per_week: float | None = None
@@ -125,6 +129,7 @@ class AvailabilityImportMapping(BaseModel):
 
     layout: Literal["normalized", "wide"]
     person_name_column: str | None = None
+    email_column: str | None = None
     day_column: str | None = None
     start_column: str | None = None
     end_column: str | None = None
@@ -151,7 +156,6 @@ class AvailabilityImportIssueOut(BaseModel):
 
 
 class AvailabilityImportWindowOut(BaseModel):
-    pianist_id: int
     pianist_name: str
     day: str
     start_minute: int
@@ -160,9 +164,12 @@ class AvailabilityImportWindowOut(BaseModel):
 
 
 class AvailabilityImportPianistOut(BaseModel):
-    pianist_id: int
+    action: Literal["new", "invalid"]
     pianist_name: str
+    email: str = ""
+    max_hours_per_week: float | None = None
     days: list[str]
+    row_numbers: list[int] = Field(default_factory=list)
 
 
 class AvailabilityImportPreviewRequest(BaseModel):
@@ -177,8 +184,9 @@ class AvailabilityImportPreviewOut(BaseModel):
     preview_token: str
     sheet_name: str | None = None
     rows_processed: int
-    matched_pianist_count: int
-    absent_pianist_count: int
+    existing_pianist_count: int
+    existing_assignment_count: int
+    incoming_pianist_count: int
     valid_window_count: int
     existing_slots_in_scope: int
     pianists: list[AvailabilityImportPianistOut]
@@ -194,10 +202,13 @@ class AvailabilityImportApplyRequest(BaseModel):
 
 
 class AvailabilityImportApplyResult(BaseModel):
-    pianists_updated: int
+    pianists_removed: int
+    pianists_created: int
+    assignments_cleared: int
     slots_replaced: int
     slots_created: int
     days_replaced: int
+    jury_availability_windows_removed: int
 
 
 class LessonCreate(BaseModel):
@@ -212,6 +223,7 @@ class LessonCreate(BaseModel):
     instrument: str = ""
     required_pianist_name: str = ""
     need_pianist: bool = True
+    jury_required: bool = False
 
 
 class LessonUpdate(BaseModel):
@@ -226,6 +238,7 @@ class LessonUpdate(BaseModel):
     instrument: str | None = None
     required_pianist_name: str | None = None
     need_pianist: bool | None = None
+    jury_required: bool | None = None
     assigned_pianist_id: int | None = None
     clear_assigned_pianist: bool = False
 
@@ -244,6 +257,7 @@ class LessonOut(BaseModel):
     instrument: str
     required_pianist_name: str
     need_pianist: bool
+    jury_required: bool = False
     assigned_pianist_id: int | None = None
     fit_quality: str
     notes: str

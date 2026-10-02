@@ -5,11 +5,11 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
-from .. import models, module_models
+from .. import models, module_models, schemas
 
 ACCOMPANIST_MODULE_ID = "accompanists"
 ACCOMPANIST_RESULT_CONTRACT = "accompanist.assignment-result"
-ACCOMPANIST_RESULT_CONTRACT_VERSION = 1
+ACCOMPANIST_RESULT_CONTRACT_VERSION = 2
 
 
 def active_session_uuid(db: Session) -> str:
@@ -175,3 +175,28 @@ def remove_pianist_identity_mapping(db: Session, pianist_id: int) -> None:
     mapping = db.get(module_models.AccompanistPianistIdentity, pianist_id)
     if mapping is not None:
         db.delete(mapping)
+
+
+def get_lesson_jury_required(db: Session, lesson_id: int) -> bool:
+    row = db.get(module_models.AccompanistLessonJuryRequirement, lesson_id)
+    return bool(row and row.jury_required)
+
+
+def set_lesson_jury_required(db: Session, lesson_id: int, value: bool) -> bool:
+    row = db.get(module_models.AccompanistLessonJuryRequirement, lesson_id)
+    if row is None:
+        row = module_models.AccompanistLessonJuryRequirement(
+            lesson_id=lesson_id,
+            jury_required=value,
+        )
+        db.add(row)
+        db.flush()
+        return True
+    changed = row.jury_required != value
+    row.jury_required = value
+    return changed
+
+
+def lesson_response(db: Session, lesson: models.Lesson) -> schemas.LessonOut:
+    response = schemas.LessonOut.model_validate(lesson)
+    return response.model_copy(update={"jury_required": get_lesson_jury_required(db, lesson.id)})

@@ -88,6 +88,35 @@ class FitCharacterizationTests(unittest.TestCase):
         self.assertIn("UNAVAILABLE", desktop_lessons[0].notes)
         self.assertIn("OVER CAP", desktop_lessons[0].notes)
 
+    def test_needs_pianist_gates_assignment_and_specific_name_selects_required_pianist(self):
+        availability = available_slots(540, 720)
+        lessons = [
+            desktop.EngineLesson(1, "Monday", 540, 600, need_pianist=True),
+            desktop.EngineLesson(
+                2,
+                "Monday",
+                600,
+                660,
+                required_pianist_name="Susan Roberts",
+                need_pianist=True,
+            ),
+            desktop.EngineLesson(
+                3,
+                "Monday",
+                660,
+                720,
+                required_pianist_name="Susan Roberts",
+                need_pianist=False,
+            ),
+        ]
+        pianist = desktop.EnginePianist(7, "Susan Roberts", 4, availability)
+
+        desktop.assign_lessons(lessons, [pianist])
+
+        self.assertEqual(lessons[0].assigned_pianist_id, 7)
+        self.assertEqual(lessons[1].assigned_pianist_id, 7)
+        self.assertIsNone(lessons[2].assigned_pianist_id)
+
     def test_over_cap_warning_uses_current_union_hours_not_existing_notes(self):
         lessons = [
             desktop.EngineLesson(

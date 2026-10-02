@@ -12,8 +12,9 @@ const FIELD_LABELS: Record<string, string> = {
   end_time: "End time",
   room: "Room",
   instrument: "Instrument",
-  required_pianist_name: "Required pianist (optional)",
-  need_pianist: "Needs pianist? (optional)",
+  need_pianist: "Needs pianist?",
+  jury_required: "Jury required?",
+  required_pianist_name: "Specific pianist (optional)",
 };
 
 const REQUIRED_FIELDS = new Set(["day", "start_time"]);

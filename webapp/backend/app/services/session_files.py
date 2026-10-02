@@ -17,7 +17,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
-from ..database import DATABASE_LOCK, LATEST_SCHEMA_VERSION, migrate_database
+from ..database import database_operation_lock, LATEST_SCHEMA_VERSION, migrate_database
 
 ARCHIVE_FORMAT = "music-program-scheduler-session"
 ARCHIVE_VERSION = 1
@@ -50,7 +50,7 @@ def _session_metadata(target_engine: Engine) -> models.SchedulingSession:
 
 
 def get_active_session(target_engine: Engine) -> schemas.SessionMetadataOut:
-    with DATABASE_LOCK:
+    with database_operation_lock():
         return schemas.SessionMetadataOut.model_validate(_session_metadata(target_engine), from_attributes=True)
 
 
@@ -58,7 +58,7 @@ def update_session_metadata(
     target_engine: Engine,
     values: schemas.SessionMetadataIn,
 ) -> schemas.SessionMetadataOut:
-    with DATABASE_LOCK:
+    with database_operation_lock():
         metadata = _metadata_input(values.model_dump())
         with Session(target_engine) as db:
             rows = db.query(models.SchedulingSession).all()
@@ -155,7 +155,7 @@ def _snapshot_database(target_engine: Engine) -> bytes:
 
 
 def export_session_archive(target_engine: Engine) -> bytes:
-    with DATABASE_LOCK:
+    with database_operation_lock():
         database_bytes = _snapshot_database(target_engine)
         manifest = _manifest(target_engine, database_bytes)
         archive = BytesIO()
@@ -189,7 +189,7 @@ def _recovery_directory(target_engine: Engine) -> Path:
 
 
 def create_recovery_snapshot(target_engine: Engine, directory: Path | None = None) -> Path:
-    with DATABASE_LOCK:
+    with database_operation_lock():
         archive_bytes = export_session_archive(target_engine)
         recovery_directory = directory or _recovery_directory(target_engine)
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -346,7 +346,7 @@ def create_new_session(
     values: schemas.SessionMetadataIn,
     recovery_directory: Path | None = None,
 ) -> schemas.SessionMetadataOut:
-    with DATABASE_LOCK:
+    with database_operation_lock():
         metadata = _metadata_input(values.model_dump())
         create_recovery_snapshot(target_engine, recovery_directory)
         active_path = _database_path(target_engine)
@@ -374,7 +374,7 @@ def restore_session(
     archive_bytes: bytes,
     recovery_directory: Path | None = None,
 ) -> schemas.SessionMetadataOut:
-    with DATABASE_LOCK:
+    with database_operation_lock():
         manifest, database_bytes = _validate_archive(archive_bytes)
         initial_schema_version = _check_database_payload(database_bytes, manifest)
         active_path = _database_path(target_engine)

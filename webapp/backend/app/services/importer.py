@@ -26,8 +26,9 @@ TARGET_FIELDS = [
     "end_time",
     "room",
     "instrument",
-    "required_pianist_name",
     "need_pianist",
+    "jury_required",
+    "required_pianist_name",
 ]
 
 DAY_ALIASES = {
@@ -72,6 +73,20 @@ def parse_time_to_minutes(value) -> int | None:
     if pd.isna(parsed):
         return None
     return parsed.hour * 60 + parsed.minute
+
+
+def parse_optional_boolean(value) -> bool | None:
+    """Parse supported spreadsheet booleans; blank is the conservative false default."""
+    if value is None or pd.isna(value):
+        return False
+    normalized = str(value).strip().casefold()
+    if not normalized:
+        return False
+    if normalized in {"yes", "y", "true", "1", "1.0"}:
+        return True
+    if normalized in {"no", "n", "false", "0", "0.0"}:
+        return False
+    return None
 
 
 def commit_upload(token: str, mapping: dict[str, str | None]) -> tuple[list[dict], list[str]]:
@@ -119,6 +134,14 @@ def commit_upload(token: str, mapping: dict[str, str | None]) -> tuple[list[dict
         if need_raw is not None and not pd.isna(need_raw):
             need_pianist = str(need_raw).strip().upper() in ("1", "1.0", "TRUE", "YES", "Y")
 
+        jury_required = parse_optional_boolean(get("jury_required"))
+        if jury_required is None:
+            jury_value = get("jury_required")
+            warnings.append(
+                f"Row {idx + 2}: invalid Jury Required value '{jury_value}' -- skipped"
+            )
+            continue
+
         def text(field):
             v = get(field)
             if v is None or pd.isna(v):
@@ -137,6 +160,7 @@ def commit_upload(token: str, mapping: dict[str, str | None]) -> tuple[list[dict
             "instrument": text("instrument"),
             "required_pianist_name": text("required_pianist_name"),
             "need_pianist": need_pianist,
+            "jury_required": jury_required,
         })
 
     return lessons, warnings

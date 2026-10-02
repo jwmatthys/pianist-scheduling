@@ -26,8 +26,8 @@ export const SCHEDULING_MODULES: SchedulingModule[] = [
   {
     key: "juries",
     name: "Performance Juries",
-    description: "Organize jury sessions across students, panels, rooms, and times.",
-    availability: "shell",
+    description: "Configure lesson-based jury participation, panels, and pianist availability.",
+    availability: "available",
   },
 ];
 

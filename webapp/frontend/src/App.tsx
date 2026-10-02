@@ -8,6 +8,7 @@ import { SCHEDULING_MODULES, type ModuleKey } from "./moduleRegistry";
 import { ModuleShell } from "./components/ModuleShell";
 import { AccompanistModule, type AccompanistModuleHandle } from "./pages/AccompanistModule";
 import { DashboardPage } from "./pages/DashboardPage";
+import { JurySetupPage } from "./pages/JurySetupPage";
 
 function App() {
   const [activeModule, setActiveModule] = useState<ModuleKey | null>(null);
@@ -116,6 +117,8 @@ function App() {
         <ModuleShell module={selectedModule} session={session} onBack={() => void returnToDashboard()}>
           {selectedModule.key === "accompanist" ? (
             <AccompanistModule key={session?.session_uuid} ref={accompanistModuleRef} />
+          ) : selectedModule.key === "juries" ? (
+            <JurySetupPage key={session?.session_uuid} />
           ) : (
             <section className="module-landing" aria-labelledby="module-landing-heading">
               <h2 id="module-landing-heading">{selectedModule.name}</h2>

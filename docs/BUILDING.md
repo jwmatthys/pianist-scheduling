@@ -51,6 +51,8 @@ Tauri stores `pianist_scheduling.db` under its per-user application-data directo
 
 `.mpsession` archives are unencrypted and can include student educational information. Exported archives should be stored and transferred according to institutional policy. Export creates a portable copy; normal application edits are persisted automatically to the active local SQLite database.
 
+The Accompanist availability CSV template is generated locally from synthetic examples. Tauri opens a native Save dialog and writes only to the chosen destination; canceling does not save elsewhere. Browser mode uses a local save picker when available and otherwise a conventional download.
+
 ## Schema Migration Tests
 
 Run `npm test` before and after persistence/schema changes. The suite includes synthetic fixtures for the unversioned Accompanist schema, fresh/current database initialization, session metadata migration, `.mpsession` round trips, WAL snapshots, staged migrations, recovery behavior, and hostile/invalid archives. Do not use local production databases as test fixtures. The schema version and procedure for registering the next migration are documented in [ARCHITECTURE.md](ARCHITECTURE.md#sqlite-schema-migrations).

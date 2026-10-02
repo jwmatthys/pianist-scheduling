@@ -14,39 +14,62 @@ export const PianistsPage = forwardRef<PianistsPageHandle>(function PianistsPage
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [maxHours, setMaxHours] = useState("");
+  const [profileMessage, setProfileMessage] = useState<string | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const availabilityGridRef = useRef<AvailabilityGridHandle>(null);
 
   useImperativeHandle(ref, () => ({
     saveAvailabilityBeforeLeaving: () => availabilityGridRef.current?.saveBeforeLeaving() ?? Promise.resolve(),
   }));
 
-  function refresh() {
-    api.listPianists().then((list) => {
-      setPianists(list);
-      if (list.length && selectedId === null) setSelectedId(list[0].id);
-    });
+  async function refresh() {
+    const list = await api.listPianists();
+    setPianists(list);
+    if (list.length && selectedId === null) setSelectedId(list[0].id);
   }
 
-  useEffect(refresh, []);
+  useEffect(() => { void refresh(); }, []);
 
   async function addPianist(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    const created = await api.createPianist({
-      name: name.trim(),
-      email: email.trim(),
-      max_hours_per_week: maxHours ? Number(maxHours) : null,
-    });
-    setName("");
-    setEmail("");
-    setMaxHours("");
-    refresh();
-    setSelectedId(created.id);
+    setProfileMessage(null);
+    setProfileError(null);
+    try {
+      const created = await api.createPianist({
+        name: name.trim(),
+        email: email.trim(),
+        max_hours_per_week: maxHours ? Number(maxHours) : null,
+      });
+      setName("");
+      setEmail("");
+      setMaxHours("");
+      await refresh();
+      setSelectedId(created.id);
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : "Could not add Pianist.");
+    }
   }
 
-  async function updateCap(p: Pianist, value: string) {
-    await api.updatePianist(p.id, { max_hours_per_week: value ? Number(value) : null });
-    refresh();
+  async function updateSelectedPianist(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selected) return;
+    const form = new FormData(event.currentTarget);
+    setProfileMessage(null);
+    setProfileError(null);
+    try {
+      await api.updatePianist(selected.id, {
+        name: String(form.get("name") ?? "").trim(),
+        email: String(form.get("email") ?? "").trim(),
+        max_hours_per_week: String(form.get("max_hours_per_week") ?? "").trim()
+          ? Number(form.get("max_hours_per_week"))
+          : null,
+      });
+      await refresh();
+      setProfileMessage("Pianist details saved.");
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : "Could not update Pianist.");
+    }
   }
 
   async function removePianist(p: Pianist) {
@@ -97,17 +120,7 @@ export const PianistsPage = forwardRef<PianistsPageHandle>(function PianistsPage
             <li key={p.id} className={p.id === selectedId ? "selected" : ""}>
               <button className="pianist-list-item" onClick={() => selectPianist(p.id)}>
                 <strong>{p.name}</strong>
-                <span className="muted">{p.email}</span>
               </button>
-              <input
-                className="cap-input"
-                type="number"
-                min="0"
-                step="0.5"
-                defaultValue={p.max_hours_per_week ?? ""}
-                placeholder="cap (h)"
-                onBlur={(e) => updateCap(p, e.target.value)}
-              />
               <button className="danger-btn small" onClick={() => removePianist(p)}>
                 &times;
               </button>
@@ -133,6 +146,16 @@ export const PianistsPage = forwardRef<PianistsPageHandle>(function PianistsPage
             onApplied={refreshAvailabilityAfterImport}
           />
         </div>
+        {profileMessage && <div className="availability-success" role="status">{profileMessage}</div>}
+        {profileError && <div className="error-banner" role="alert">{profileError}</div>}
+        {selected && (
+          <form key={selected.id} className="pianist-profile-form" onSubmit={(event) => void updateSelectedPianist(event)}>
+            <label>Name<input name="name" defaultValue={selected.name} required /></label>
+            <label>Email<input name="email" type="email" defaultValue={selected.email} /></label>
+            <label>Max Hours Per Week<input name="max_hours_per_week" type="number" min="0" step="0.5" defaultValue={selected.max_hours_per_week ?? ""} /></label>
+            <button type="submit" className="secondary-btn">Save Pianist details</button>
+          </form>
+        )}
         {selected
           ? <AvailabilityGrid ref={availabilityGridRef} pianist={selected} />
           : <p className="muted">Select a pianist to edit availability manually.</p>}

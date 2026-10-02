@@ -1,7 +1,8 @@
 import unittest
 from io import BytesIO
-from datetime import time
+from datetime import date, time
 import tempfile
+from uuid import uuid4
 from unittest.mock import patch
 
 from openpyxl import Workbook
@@ -9,7 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from app import models, schemas
+from app import models, module_models, schemas
 from app.database import Base, migrate_database
 from app.routers import pianists
 from app.services import availability_importer
@@ -21,6 +22,7 @@ from app.services.availability import (
     normalize_windows,
     parse_time_minutes,
 )
+from app.services.module_lifecycle import active_session_uuid, ensure_pianist_identity, module_revision, synchronize_lesson_identity
 
 
 class AvailabilityValueTests(unittest.TestCase):
@@ -108,9 +110,8 @@ class AvailabilityImportServiceTests(unittest.TestCase):
             connect_args={"check_same_thread": False},
             poolclass=StaticPool,
         )
-        Base.metadata.create_all(self.engine)
+        migrate_database(self.engine)
         self.db = Session(self.engine)
-        self.db.add(models.Organization(id=1, name="Synthetic Availability Program"))
         self.db.add_all([
             models.Pianist(name="Ari Example"),
             models.Pianist(name="Bea Sample"),
@@ -129,48 +130,264 @@ class AvailabilityImportServiceTests(unittest.TestCase):
     def csv_upload(self, content):
         return availability_importer.inspect_upload("synthetic.csv", content.encode())
 
-    def normalized_mapping(self, inspection, person="Pianist Name"):
+    def normalized_mapping(self, inspection, person="Pianist Name", email=None):
         return schemas.AvailabilityImportMapping(
             layout="normalized",
             person_name_column=person,
+            email_column=email,
             day_column="Weekday",
             start_column="Start",
             end_column="End",
             status_column="Status",
         )
 
-    def preview_csv(self, content, *, person="Pianist Name"):
+    def preview_csv(self, content, *, person="Pianist Name", email=None):
         inspection = self.csv_upload(content)
         preview = availability_importer.preview_import(
             schemas.AvailabilityImportPreviewRequest(
                 upload_token=inspection.upload_token,
-                mapping=self.normalized_mapping(inspection, person),
+                mapping=self.normalized_mapping(inspection, person, email),
             ),
             self.db,
         )
         return inspection, preview
 
-    def test_normalized_csv_preview_and_apply_import_multiple_windows(self):
+    def add_jury_availability(self, person_uuid, jury_date):
+        session_uuid = active_session_uuid(self.db)
+        self.db.add(module_models.JuryPianistAvailabilityDeclaration(
+            session_uuid=session_uuid,
+            pianist_person_uuid=person_uuid,
+            jury_date=jury_date,
+            is_complete=True,
+        ))
+        self.db.add(module_models.JuryPianistAvailableWindow(
+            session_uuid=session_uuid,
+            pianist_person_uuid=person_uuid,
+            jury_date=jury_date,
+            start_minute=480,
+            end_minute=540,
+        ))
+
+    def test_import_groups_repeated_normalized_names_and_replaces_old_roster(self):
         _, preview = self.preview_csv(
             "Pianist Name,Weekday,Start,End,Status\n"
-            "Ari Example,Mon,08:00,09:30,Available\n"
+            "  Ari   Example  ,Mon,08:00,09:30,Available\n"
             "Ari Example,Monday,14:00,15:00,Tentative\n"
         )
 
         self.assertTrue(preview.can_apply)
         self.assertEqual(preview.rows_processed, 2)
-        self.assertEqual(preview.matched_pianist_count, 1)
+        self.assertEqual(preview.existing_pianist_count, 2)
+        self.assertEqual(preview.incoming_pianist_count, 1)
         self.assertEqual(preview.valid_window_count, 2)
+        self.assertIn("FULL_ROSTER_REPLACEMENT", {warning.code for warning in preview.warnings})
+        self.assertEqual([person.pianist_name for person in preview.pianists], ["Ari Example"])
         self.assertEqual([window.status for window in preview.windows], ["Available", "Tentative"])
         self.assertEqual(self.db.query(models.AvailabilitySlot).count(), 0)
+        self.assertNotIn("pianist_code", preview.model_dump())
+        self.assertNotIn("pianist_id", preview.model_dump())
 
         result = availability_importer.apply_import(
             schemas.AvailabilityImportApplyRequest(preview_token=preview.preview_token, confirmed=True),
             self.db,
         )
 
-        self.assertEqual((result.pianists_updated, result.slots_created), (1, 5))
+        self.assertEqual((result.pianists_removed, result.pianists_created), (2, 1))
+        self.assertEqual(result.slots_created, 5)
+        self.assertEqual(self.db.query(models.Pianist).one().name, "Ari Example")
         self.assertEqual(self.db.query(models.AvailabilitySlot).count(), 5)
+
+    def test_import_without_identifier_column_creates_fresh_people_with_defaults(self):
+        self.db.query(models.Pianist).delete()
+        self.db.commit()
+        rows = [f"Person {index},,Mon,08:00,09:00,Available" for index in range(1, 7)]
+        inspection, preview = self.preview_csv(
+            "Pianist Name,Email,Weekday,Start,End,Status\n" + "\n".join(rows) + "\n",
+        )
+
+        self.assertTrue(preview.can_apply)
+        self.assertEqual(preview.incoming_pianist_count, 6)
+        self.assertNotIn("person_id_column", inspection.suggested_normalized)
+        self.assertTrue(all(item.action == "new" and item.email == "" for item in preview.pianists))
+        self.assertTrue(all(item.max_hours_per_week == 40 for item in preview.pianists))
+
+        result = availability_importer.apply_import(
+            schemas.AvailabilityImportApplyRequest(preview_token=preview.preview_token, confirmed=True),
+            self.db,
+        )
+
+        pianists = self.db.query(models.Pianist).order_by(models.Pianist.name).all()
+        mappings = self.db.query(module_models.AccompanistPianistIdentity).all()
+        self.assertEqual((result.pianists_created, result.pianists_removed), (6, 0))
+        self.assertEqual(len(pianists), 6)
+        self.assertEqual(len(mappings), 6)
+        self.assertEqual(len({mapping.person_uuid for mapping in mappings}), 6)
+        self.assertTrue(all(pianist.email == "" and pianist.max_hours_per_week == 40 for pianist in pianists))
+        self.assertTrue(all(pianist.pianist_code is None for pianist in pianists))
+        self.assertEqual(self.db.query(models.AvailabilitySlot).count(), 12)
+        self.assertTrue(all(pianist.availability_complete for pianist in pianists))
+
+    def test_template_and_user_models_have_no_pianist_identifier(self):
+        from pathlib import Path
+
+        template = Path(__file__).resolve().parents[2] / "frontend" / "public" / "availability-template.csv"
+        self.assertEqual(template.read_text(encoding="utf-8").splitlines()[0], "Pianist Name,Day,Start,End,Status")
+        self.assertNotIn("pianist_code", schemas.PianistCreate.model_fields)
+        self.assertNotIn("pianist_code", schemas.PianistUpdate.model_fields)
+        self.assertNotIn("pianist_code", schemas.PianistOut.model_fields)
+        self.assertNotIn("person_id_column", schemas.AvailabilityImportMapping.model_fields)
+        with self.assertRaises(Exception):
+            schemas.AvailabilityImportMapping(
+                layout="normalized",
+                person_name_column="Pianist Name",
+                person_id_column="Pianist ID",
+            )
+
+    def test_imported_defaults_remain_editable_through_human_facing_api(self):
+        _, preview = self.preview_csv(
+            "Pianist Name,Weekday,Start,End,Status\nEditable Import,Mon,08:00,09:00,Available\n"
+        )
+        availability_importer.apply_import(
+            schemas.AvailabilityImportApplyRequest(preview_token=preview.preview_token, confirmed=True),
+            self.db,
+        )
+        imported = self.db.query(models.Pianist).filter_by(name="Editable Import").one()
+        self.assertEqual((imported.email, imported.max_hours_per_week), ("", 40))
+        updated = pianists.update_pianist(imported.id, schemas.PianistUpdate(
+            name="Edited Import",
+            email="edited@example.invalid",
+            max_hours_per_week=12,
+        ), self.db)
+        self.assertEqual(
+            (updated.name, updated.email, updated.max_hours_per_week),
+            ("Edited Import", "edited@example.invalid", 12),
+        )
+
+    def test_manual_pianist_creation_generates_internal_identity_without_id_input(self):
+        created = pianists.create_pianist(schemas.PianistCreate(name="Manual Pianist"), self.db)
+        self.assertIsNone(created.pianist_code)
+        self.assertNotIn("pianist_code", schemas.PianistOut.model_validate(created).model_dump())
+        mapping = self.db.get(module_models.AccompanistPianistIdentity, created.id)
+        self.assertIsNotNone(mapping)
+        self.assertIsNotNone(self.db.get(module_models.PersonIdentity, mapping.person_uuid))
+        with self.assertRaises(Exception):
+            schemas.PianistCreate(name="Invalid Input", pianist_code="P001")
+
+    def test_invalid_window_blocks_new_pianist_creation_atomically(self):
+        ari_id = self.pianist_id("Ari Example")
+        ari_uuid = ensure_pianist_identity(self.db, self.db.get(models.Pianist, ari_id))
+        self.add_jury_availability(ari_uuid, date(2027, 12, 14))
+        self.db.commit()
+        _, preview = self.preview_csv(
+            "Pianist Name,Weekday,Start,End,Status\n"
+            "Would Be New,Mon,08:00,09:00,Available\n"
+            "Would Be New,Tue,10:00,,Available\n"
+        )
+        self.assertFalse(preview.can_apply)
+        with self.assertRaises(availability_importer.AvailabilityImportError):
+            availability_importer.apply_import(
+                schemas.AvailabilityImportApplyRequest(preview_token=preview.preview_token, confirmed=True),
+                self.db,
+            )
+        self.assertEqual(self.db.query(models.Pianist).filter_by(name="Would Be New").count(), 0)
+        self.assertEqual(self.db.query(module_models.AccompanistPianistIdentity).count(), 1)
+        self.assertEqual(self.db.query(models.AvailabilitySlot).count(), 0)
+        self.assertEqual(self.db.query(module_models.JuryPianistAvailabilityDeclaration).count(), 1)
+        self.assertEqual(self.db.query(module_models.JuryPianistAvailableWindow).count(), 1)
+
+    def test_cancelled_replacement_preserves_jury_availability(self):
+        ari_id = self.pianist_id("Ari Example")
+        ari_uuid = ensure_pianist_identity(self.db, self.db.get(models.Pianist, ari_id))
+        self.add_jury_availability(ari_uuid, date(2027, 12, 14))
+        self.db.commit()
+        _, preview = self.preview_csv(
+            "Pianist Name,Weekday,Start,End,Status\nNew Pianist,Mon,08:00,09:00,Available\n"
+        )
+
+        with self.assertRaises(availability_importer.AvailabilityImportError) as raised:
+            availability_importer.apply_import(
+                schemas.AvailabilityImportApplyRequest(preview_token=preview.preview_token, confirmed=False),
+                self.db,
+            )
+        self.assertEqual(raised.exception.code, "CONFIRMATION_REQUIRED")
+        self.assertEqual(self.db.query(models.Pianist).count(), 2)
+        self.assertEqual(self.db.query(module_models.JuryPianistAvailabilityDeclaration).count(), 1)
+        self.assertEqual(self.db.query(module_models.JuryPianistAvailableWindow).count(), 1)
+
+    def test_failed_replacement_rolls_back_jury_cleanup_and_accompanist_changes(self):
+        ari_id = self.pianist_id("Ari Example")
+        ari_uuid = ensure_pianist_identity(self.db, self.db.get(models.Pianist, ari_id))
+        self.add_jury_availability(ari_uuid, date(2027, 12, 14))
+        jury_configuration = self.db.get(module_models.JuryConfiguration, active_session_uuid(self.db))
+        initial_jury_revision = jury_configuration.input_revision
+        lesson = models.Lesson(
+            student="Rollback Student",
+            day="Monday",
+            start_minute=480,
+            end_minute=510,
+            assigned_pianist_id=ari_id,
+        )
+        self.db.add_all([
+            lesson,
+            models.AvailabilitySlot(
+                pianist_id=ari_id,
+                day="Monday",
+                slot_start_minute=480,
+                status="Available",
+            ),
+        ])
+        self.db.commit()
+        _, preview = self.preview_csv(
+            "Pianist Name,Weekday,Start,End,Status\nNew Pianist,Mon,08:00,09:00,Available\n"
+        )
+
+        with patch.object(availability_importer, "bump_accompanist_revision", side_effect=RuntimeError("forced failure")):
+            with self.assertRaises(availability_importer.AvailabilityImportError) as raised:
+                availability_importer.apply_import(
+                    schemas.AvailabilityImportApplyRequest(preview_token=preview.preview_token, confirmed=True),
+                    self.db,
+                )
+
+        self.assertEqual(raised.exception.code, "APPLY_FAILED")
+        self.db.expire_all()
+        self.assertEqual(self.db.query(models.Pianist).count(), 2)
+        self.assertEqual(self.db.query(models.Pianist).filter_by(name="New Pianist").count(), 0)
+        self.assertEqual(self.db.get(models.Lesson, lesson.id).assigned_pianist_id, ari_id)
+        self.assertEqual(self.db.query(models.AvailabilitySlot).filter_by(pianist_id=ari_id).count(), 1)
+        self.assertEqual(self.db.query(module_models.JuryPianistAvailabilityDeclaration).count(), 1)
+        self.assertEqual(self.db.query(module_models.JuryPianistAvailableWindow).count(), 1)
+        self.assertEqual(
+            self.db.get(module_models.JuryConfiguration, active_session_uuid(self.db)).input_revision,
+            initial_jury_revision,
+        )
+
+    def test_reimport_same_name_replaces_identity_instead_of_matching_old_roster(self):
+        csv = "Pianist Name,Weekday,Start,End,Status\n"
+        first_inspection, first_preview = self.preview_csv(
+            csv + "Repeat Import,Mon,08:00,09:00,Available\n",
+        )
+        availability_importer.apply_import(
+            schemas.AvailabilityImportApplyRequest(preview_token=first_preview.preview_token, confirmed=True),
+            self.db,
+        )
+        first_pianist = self.db.query(models.Pianist).filter_by(name="Repeat Import").one()
+        first_identity = self.db.get(module_models.AccompanistPianistIdentity, first_pianist.id).person_uuid
+        second_preview = availability_importer.preview_import(
+            schemas.AvailabilityImportPreviewRequest(
+                upload_token=first_inspection.upload_token,
+                mapping=self.normalized_mapping(first_inspection),
+            ),
+            self.db,
+        )
+        self.assertEqual((second_preview.existing_pianist_count, second_preview.incoming_pianist_count), (1, 1))
+        availability_importer.apply_import(
+            schemas.AvailabilityImportApplyRequest(preview_token=second_preview.preview_token, confirmed=True),
+            self.db,
+        )
+        second_pianist = self.db.query(models.Pianist).filter_by(name="Repeat Import").one()
+        second_identity = self.db.get(module_models.AccompanistPianistIdentity, second_pianist.id).person_uuid
+        self.assertNotEqual(first_identity, second_identity)
+        self.assertEqual(self.db.query(models.Pianist).count(), 1)
 
     def test_xlsx_actual_time_cells_multiple_sheets_and_forms_wide_suggestions(self):
         workbook = Workbook()
@@ -238,23 +455,21 @@ class AvailabilityImportServiceTests(unittest.TestCase):
         self.assertEqual(preview.valid_window_count, 1)
         self.assertEqual((preview.windows[0].start_minute, preview.windows[0].end_minute), (480, 570))
 
-    def test_unknown_and_ambiguous_pianist_names_are_errors(self):
-        self.db.add(models.Pianist(name="Ari Example"))
-        self.db.commit()
+    def test_meaningfully_different_names_create_separate_pianists(self):
         _, preview = self.preview_csv(
             "Pianist Name,Weekday,Start,End,Status\n"
-            "Missing Person,Mon,08:00,09:00,Available\n"
-            "Ari Example,Mon,09:00,10:00,Available\n"
+            "Alex Smith,Mon,08:00,09:00,Available\n"
+            "Alex J. Smith,Mon,09:00,10:00,Available\n"
         )
 
-        self.assertFalse(preview.can_apply)
-        self.assertEqual({issue.code for issue in preview.errors}, {"UNKNOWN_PIANIST", "AMBIGUOUS_PIANIST"})
-        with self.assertRaises(availability_importer.AvailabilityImportError):
-            availability_importer.apply_import(
-                schemas.AvailabilityImportApplyRequest(preview_token=preview.preview_token, confirmed=True),
-                self.db,
-            )
-        self.assertEqual(self.db.query(models.AvailabilitySlot).count(), 0)
+        self.assertTrue(preview.can_apply)
+        self.assertEqual(preview.incoming_pianist_count, 2)
+        self.assertEqual({person.pianist_name for person in preview.pianists}, {"Alex Smith", "Alex J. Smith"})
+        availability_importer.apply_import(
+            schemas.AvailabilityImportApplyRequest(preview_token=preview.preview_token, confirmed=True),
+            self.db,
+        )
+        self.assertEqual(self.db.query(models.Pianist).count(), 2)
 
     def test_invalid_mapping_day_time_range_status_and_conflict_block_all_writes(self):
         missing_mapping_file = self.csv_upload(
@@ -296,9 +511,82 @@ class AvailabilityImportServiceTests(unittest.TestCase):
         self.assertIn("CONFLICTING_OVERLAP", {issue.code for issue in conflict.errors})
         self.assertEqual(self.db.query(models.AvailabilitySlot).count(), 0)
 
-    def test_complete_reimport_replaces_matched_week_and_leaves_absent_pianists_unchanged(self):
+    def test_full_replacement_clears_old_assignments_availability_and_absent_pianists(self):
         ari_id = self.pianist_id("Ari Example")
         bea_id = self.pianist_id("Bea Sample")
+        old_person_uuid = ensure_pianist_identity(self.db, self.db.get(models.Pianist, ari_id))
+        bea_person_uuid = ensure_pianist_identity(self.db, self.db.get(models.Pianist, bea_id))
+        first_date = date(2027, 12, 14)
+        second_date = date(2027, 12, 15)
+        lesson = models.Lesson(
+            student="Synthetic Student",
+            day="Monday",
+            start_minute=480,
+            end_minute=510,
+            assigned_pianist_id=ari_id,
+        )
+        self.db.add(lesson)
+        self.db.flush()
+        student_person_uuid = synchronize_lesson_identity(self.db, lesson)
+        lesson_identity = self.db.get(module_models.AccompanistLessonIdentity, lesson.id)
+        jury_panel = module_models.JuryPanel(
+            session_uuid=active_session_uuid(self.db),
+            panel_name="Panel A",
+            earliest_start_minute=480,
+            preferred_start_minute=540,
+            jury_length_minutes=10,
+        )
+        second_panel = module_models.JuryPanel(
+            session_uuid=active_session_uuid(self.db),
+            panel_name="Panel B",
+            earliest_start_minute=480,
+            preferred_start_minute=540,
+            jury_length_minutes=10,
+        )
+        self.db.add_all([jury_panel, second_panel])
+        self.db.flush()
+        self.db.add_all([
+            module_models.JuryPanelDate(
+                panel_uuid=jury_panel.panel_uuid,
+                session_uuid=active_session_uuid(self.db),
+                jury_date=first_date,
+            ),
+            module_models.JuryPanelDate(
+                panel_uuid=second_panel.panel_uuid,
+                session_uuid=active_session_uuid(self.db),
+                jury_date=second_date,
+            ),
+        ])
+        self.db.add_all([
+            module_models.AccompanistLessonJuryRequirement(lesson_id=lesson.id, jury_required=True),
+            module_models.JuryLessonEntry(
+                session_uuid=active_session_uuid(self.db),
+                source_lesson_uuid=lesson_identity.lesson_uuid,
+                student_person_uuid=student_person_uuid,
+                jury_required=True,
+                panel_uuid=jury_panel.panel_uuid,
+            ),
+        ])
+        revision = module_revision(self.db)
+        initial_source_revision = revision.source_revision
+        previous_result_uuid = str(uuid4())
+        self.db.add(module_models.ModuleResult(
+            result_uuid=previous_result_uuid,
+            session_uuid=revision.session_uuid,
+            module_id="accompanists",
+            contract_id="accompanist.assignment-result",
+            contract_version=2,
+            payload_schema_version=1,
+            result_version=1,
+            source_revision=revision.source_revision,
+            state="finalized",
+            payload_json="{}",
+            payload_sha256="0" * 64,
+        ))
+        revision.current_result_uuid = previous_result_uuid
+        for pianist_uuid in (old_person_uuid, bea_person_uuid):
+            for jury_date in (first_date, second_date):
+                self.add_jury_availability(pianist_uuid, jury_date)
         self.db.add_all([
             models.AvailabilitySlot(pianist_id=ari_id, day="Monday", slot_start_minute=480, status="Available"),
             models.AvailabilitySlot(pianist_id=ari_id, day="Monday", slot_start_minute=510, status="Tentative"),
@@ -306,59 +594,98 @@ class AvailabilityImportServiceTests(unittest.TestCase):
             models.AvailabilitySlot(pianist_id=bea_id, day="Monday", slot_start_minute=600, status="Available"),
         ])
         self.db.commit()
+        self.assertEqual(self.db.query(module_models.JuryPianistAvailabilityDeclaration).count(), 4)
+        self.assertEqual(self.db.query(module_models.JuryPianistAvailableWindow).count(), 4)
+        jury_configuration = self.db.get(module_models.JuryConfiguration, active_session_uuid(self.db))
+        initial_jury_revision = jury_configuration.input_revision
         _, preview = self.preview_csv(
             "Pianist Name,Weekday,Start,End,Status\n"
             "Ari Example,Tue,10:00,11:00,Available\n"
             "Ari Example,Thu,09:00,10:00,Tentative\n"
         )
 
-        self.assertEqual(preview.existing_slots_in_scope, 3)
-        self.assertEqual(preview.absent_pianist_count, 1)
+        self.assertEqual(preview.existing_pianist_count, 2)
+        self.assertEqual(preview.existing_assignment_count, 1)
+        self.assertEqual(preview.existing_slots_in_scope, 4)
         result = availability_importer.apply_import(
             schemas.AvailabilityImportApplyRequest(preview_token=preview.preview_token, confirmed=True),
             self.db,
         )
 
+        imported = self.db.query(models.Pianist).one()
+        new_person_uuid = self.db.get(
+            module_models.AccompanistPianistIdentity,
+            imported.id,
+        ).person_uuid
         slots = self.db.query(models.AvailabilitySlot).order_by(
-            models.AvailabilitySlot.pianist_id, models.AvailabilitySlot.day, models.AvailabilitySlot.slot_start_minute
+            models.AvailabilitySlot.day, models.AvailabilitySlot.slot_start_minute
         ).all()
-        self.assertEqual(result.slots_replaced, 3)
+        self.assertEqual(result.pianists_removed, 2)
+        self.assertEqual(result.assignments_cleared, 1)
+        self.assertEqual(result.slots_replaced, 4)
         self.assertEqual(result.slots_created, 4)
+        self.assertEqual(result.jury_availability_windows_removed, 4)
+        self.assertEqual(
+            self.db.get(module_models.JuryConfiguration, active_session_uuid(self.db)).input_revision,
+            initial_jury_revision + 1,
+        )
+        self.assertEqual(module_revision(self.db).source_revision, initial_source_revision + 1)
+        self.assertIsNone(module_revision(self.db).current_result_uuid)
+        self.assertEqual(self.db.get(module_models.ModuleResult, previous_result_uuid).state, "superseded")
+        self.assertIsNone(self.db.get(models.Lesson, lesson.id).assigned_pianist_id)
+        self.assertNotEqual(new_person_uuid, old_person_uuid)
+        self.assertEqual(self.db.query(models.Pianist).filter_by(name="Bea Sample").count(), 0)
+        self.assertEqual(
+            self.db.get(module_models.AccompanistLessonIdentity, lesson.id).lesson_uuid,
+            lesson_identity.lesson_uuid,
+        )
+        self.assertEqual(
+            self.db.get(
+                module_models.JuryLessonEntry,
+                (active_session_uuid(self.db), lesson_identity.lesson_uuid),
+            ).panel_uuid,
+            jury_panel.panel_uuid,
+        )
+        self.assertTrue(self.db.get(module_models.AccompanistLessonJuryRequirement, lesson.id).jury_required)
+        self.assertEqual(self.db.query(models.Lesson).count(), 1)
+        self.assertEqual(self.db.query(module_models.JuryPianistAvailabilityDeclaration).count(), 0)
+        self.assertEqual(self.db.query(module_models.JuryPianistAvailableWindow).count(), 0)
+        self.assertEqual(self.db.query(module_models.JuryPanel).count(), 2)
+        self.assertEqual(self.db.query(module_models.JuryPanelDate).count(), 2)
+        self.assertEqual(
+            {row.jury_date for row in self.db.query(module_models.JuryPanelDate).all()},
+            {first_date, second_date},
+        )
         self.assertEqual(
             [(slot.pianist_id, slot.day, slot.slot_start_minute, slot.status) for slot in slots],
             [
-                (ari_id, "Thursday", 540, "Tentative"),
-                (ari_id, "Thursday", 570, "Tentative"),
-                (ari_id, "Tuesday", 600, "Available"),
-                (ari_id, "Tuesday", 630, "Available"),
-                (bea_id, "Monday", 600, "Available"),
+                (imported.id, "Thursday", 540, "Tentative"),
+                (imported.id, "Thursday", 570, "Tentative"),
+                (imported.id, "Tuesday", 600, "Available"),
+                (imported.id, "Tuesday", 630, "Available"),
             ],
         )
-        self.assertTrue(self.db.get(models.Pianist, ari_id).availability_complete)
-        self.assertNotIn("Monday", {slot.day for slot in slots if slot.pianist_id == ari_id})
+        self.assertTrue(imported.availability_complete)
+        self.assertNotIn("Monday", {slot.day for slot in slots})
 
-        from app.services.scheduling import FIT_NONE, get_fit
+        from app.services.scheduling import FIT_FULL, FIT_NONE, get_fit
 
         availability_by_day = {}
         for slot in slots:
-            if slot.pianist_id == ari_id:
-                availability_by_day.setdefault(slot.day, {})[slot.slot_start_minute] = slot.status
+            availability_by_day.setdefault(slot.day, {})[slot.slot_start_minute] = slot.status
         self.assertEqual(get_fit("Monday", 480, 510, availability_by_day)[0], FIT_NONE)
         self.assertEqual(get_fit("Wednesday", 480, 510, availability_by_day)[0], FIT_NONE)
 
         pianists.set_availability(
-            ari_id,
+            imported.id,
             schemas.AvailabilityBulkIn(slots=[
                 schemas.AvailabilitySlotIn(day="Monday", slot_start_minute=480, status="Available"),
             ]),
             self.db,
         )
-        availability = {"Monday": {slot.slot_start_minute: slot.status for slot in self.db.query(models.AvailabilitySlot).filter_by(pianist_id=ari_id).all()}}
-        from app.services.scheduling import FIT_FULL, get_fit
-
-        self.assertTrue(self.db.get(models.Pianist, ari_id).availability_complete)
+        availability = {"Monday": {slot.slot_start_minute: slot.status for slot in self.db.query(models.AvailabilitySlot).filter_by(pianist_id=imported.id).all()}}
+        self.assertTrue(self.db.get(models.Pianist, imported.id).availability_complete)
         self.assertEqual(get_fit("Monday", 480, 510, availability)[0], FIT_FULL)
-        self.assertEqual(get_fit("Wednesday", 480, 510, availability)[0], FIT_NONE)
 
     def test_valid_zero_window_submission_clears_old_slots_and_marks_week_complete(self):
         ari_id = self.pianist_id("Ari Example")
@@ -487,8 +814,6 @@ class AvailabilityImportServiceTests(unittest.TestCase):
             engine = create_engine(f"sqlite:///{database_path}", connect_args={"check_same_thread": False})
             migrate_database(engine)
             session = Session(engine)
-            session.add(models.Pianist(name="Round Trip Pianist"))
-            session.commit()
             inspection = availability_importer.inspect_upload(
                 "round-trip.csv",
                 b"Pianist Name,Weekday,Start,End,Status\nRound Trip Pianist,Mon,08:00,09:00,Available\n",
@@ -511,6 +836,11 @@ class AvailabilityImportServiceTests(unittest.TestCase):
                 schemas.AvailabilityImportApplyRequest(preview_token=preview.preview_token, confirmed=True),
                 session,
             )
+            imported_pianist = session.query(models.Pianist).one()
+            imported_person_uuid = session.get(
+                module_models.AccompanistPianistIdentity,
+                imported_pianist.id,
+            ).person_uuid
             session.close()
             archive = export_session_archive(engine)
             create_new_session(
@@ -528,7 +858,12 @@ class AvailabilityImportServiceTests(unittest.TestCase):
                     [(slot.day, slot.slot_start_minute, slot.status) for slot in restored_slots],
                     [("Monday", minute, "Available") for minute in (480, 510)],
                 )
-                self.assertTrue(restored_db.query(models.Pianist).one().availability_complete)
+                restored_pianist = restored_db.query(models.Pianist).one()
+                self.assertTrue(restored_pianist.availability_complete)
+                identity_mapping = restored_db.get(module_models.AccompanistPianistIdentity, restored_pianist.id)
+                self.assertIsNotNone(identity_mapping)
+                self.assertEqual(identity_mapping.person_uuid, imported_person_uuid)
+                self.assertIsNotNone(restored_db.get(module_models.PersonIdentity, identity_mapping.person_uuid))
             engine.dispose()
 
 

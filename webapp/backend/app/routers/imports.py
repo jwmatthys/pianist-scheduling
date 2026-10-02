@@ -8,6 +8,7 @@ from ..database import get_db
 from ..services import importer
 from ..services.module_lifecycle import (
     bump_accompanist_revision,
+    set_lesson_jury_required,
     synchronize_lesson_identity,
 )
 
@@ -41,13 +42,19 @@ def commit(payload: schemas.ImportCommit, db: Session = Depends(get_db)):
         db.query(module_models.AccompanistLessonIdentity).filter(
             module_models.AccompanistLessonIdentity.lesson_id.in_(existing_ids)
         ).delete(synchronize_session="fetch")
+        db.query(module_models.AccompanistLessonJuryRequirement).filter(
+            module_models.AccompanistLessonJuryRequirement.lesson_id.in_(existing_ids)
+        ).delete(synchronize_session="fetch")
     db.query(models.Lesson).delete()
     db.expire_all()
     for d in lesson_dicts:
-        lesson = models.Lesson(**d)
+        values = dict(d)
+        jury_required = values.pop("jury_required", False)
+        lesson = models.Lesson(**values)
         db.add(lesson)
         db.flush()
         synchronize_lesson_identity(db, lesson, identity_fields_changed=True)
+        set_lesson_jury_required(db, lesson.id, jury_required)
 
     if payload.save_profile_name:
         existing = (

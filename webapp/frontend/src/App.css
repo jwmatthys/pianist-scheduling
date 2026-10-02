@@ -200,16 +200,40 @@ button {
   text-align: left;
 }
 
-.cap-input {
-  width: 70px;
-  padding: 0.2rem;
-  border: 1px solid #c6cdd5;
-  border-radius: 4px;
-}
-
 .pianists-detail {
   flex: 1;
   min-width: 0;
+}
+
+.pianist-profile-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin: 0 0 1rem;
+  padding: 0.8rem;
+  border: 1px solid #d5dfe2;
+  background: #f7faf9;
+}
+
+.pianist-profile-form label {
+  display: grid;
+  gap: 0.25rem;
+  color: #334e55;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.pianist-profile-form input {
+  min-width: 0;
+  padding: 0.45rem;
+  border: 1px solid #b8c7c9;
+  border-radius: 3px;
+  color: #20373c;
+  background: white;
+}
+
+.pianist-profile-form button {
+  justify-self: start;
 }
 
 .availability-legend {
@@ -857,6 +881,46 @@ button {
   font-size: 0.9rem;
 }
 
+.template-download-button {
+  padding: 0;
+  border: 0;
+  color: #1f4e79;
+  background: transparent;
+  font-size: 0.9rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.template-download-button:disabled {
+  color: #7b8794;
+  cursor: not-allowed;
+}
+
+.lesson-jury-required-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.lesson-pianist-required-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.lesson-pianist-required-control input {
+  accent-color: #315f4d;
+}
+
+.lesson-jury-required-control input {
+  width: 16px;
+  height: 16px;
+  accent-color: #276c57;
+}
+
 .availability-map-field {
   display: grid;
   gap: 0.3rem;
@@ -963,6 +1027,43 @@ button {
 
 .availability-import-summary {
   font-weight: 600;
+}
+
+.availability-import-plan {
+  display: grid;
+  gap: 0.4rem;
+  max-height: 190px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.availability-import-plan li {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #d5dfe2;
+  border-left: 3px solid #39745d;
+  background: #f7faf9;
+}
+
+.availability-import-plan li.is-ambiguous,
+.availability-import-plan li.is-invalid {
+  border-left-color: #9c4b36;
+  background: #fff8f5;
+}
+
+.availability-import-plan li div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+}
+
+.availability-import-plan li span,
+.availability-import-plan li small {
+  color: #43585f;
 }
 
 .availability-issue-list {

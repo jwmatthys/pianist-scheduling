@@ -18,7 +18,7 @@ def _jury_error(error: JuryDataError) -> HTTPException:
         "NO_CURRENT_FINALIZED_RESULT",
         "JURY_DATE_MISMATCH",
         "OVERLAPPING_AVAILABILITY",
-    } else 404 if error.code in {"PANEL_NOT_FOUND", "PIANIST_NOT_FOUND"} else 422
+    } else 404 if error.code in {"PANEL_NOT_FOUND", "PIANIST_NOT_FOUND", "SOURCE_LESSON_NOT_FOUND"} else 422
     return HTTPException(status_code=status, detail={"code": error.code, "message": str(error)})
 
 
@@ -38,17 +38,6 @@ def get_configuration(db: Session = Depends(get_db)):
     try:
         return jury.get_configuration(db)
     except JuryDataError as error:
-        raise _jury_error(error) from error
-
-
-@router.put("/configuration", response_model=jury_schemas.JuryConfigurationOut)
-def update_configuration(payload: jury_schemas.JuryConfigurationIn, db: Session = Depends(get_db)):
-    try:
-        result = jury.update_configuration(db, payload.jury_date)
-        db.commit()
-        return result
-    except JuryDataError as error:
-        db.rollback()
         raise _jury_error(error) from error
 
 
@@ -119,9 +108,23 @@ def update_entry(
         result = jury.update_lesson_entry(
             db,
             str(source_lesson_uuid),
-            jury_required=payload.jury_required,
             panel_uuid=str(payload.panel_uuid) if payload.panel_uuid else None,
         )
+        db.commit()
+        return result
+    except JuryDataError as error:
+        db.rollback()
+        raise _jury_error(error) from error
+
+
+@router.patch("/entries/{source_lesson_uuid}/jury-required", response_model=jury_schemas.JuryLessonEntryOut)
+def update_jury_required(
+    source_lesson_uuid: UUID,
+    payload: jury_schemas.JuryRequiredUpdate,
+    db: Session = Depends(get_db),
+):
+    try:
+        result = jury.update_lesson_jury_required(db, str(source_lesson_uuid), payload.jury_required)
         db.commit()
         return result
     except JuryDataError as error:
@@ -159,8 +162,26 @@ def get_availability(
 ):
     result = jury.get_availability(db, str(pianist_person_uuid), jury_date)
     if result is None:
-        raise HTTPException(status_code=404, detail={"code": "AVAILABILITY_NOT_FOUND", "message": "No declaration exists for this pianist and Jury Date."})
+        raise HTTPException(status_code=404, detail={"code": "AVAILABILITY_NOT_FOUND", "message": "No Availability Windows are saved for this pianist and Scheduling Date."})
     return result
+
+
+@router.delete(
+    "/pianists/{pianist_person_uuid}/availability/{jury_date}",
+    response_model=jury_schemas.JuryAvailabilityClearOut,
+)
+def clear_availability(
+    pianist_person_uuid: UUID,
+    jury_date: date,
+    db: Session = Depends(get_db),
+):
+    try:
+        windows_deleted = jury.clear_availability(db, str(pianist_person_uuid), jury_date)
+        db.commit()
+        return jury_schemas.JuryAvailabilityClearOut(windows_deleted=windows_deleted)
+    except JuryDataError as error:
+        db.rollback()
+        raise _jury_error(error) from error
 
 
 @router.get("/readiness", response_model=jury_schemas.JuryReadinessOut)

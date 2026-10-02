@@ -1,7 +1,8 @@
 """Database engine and migration setup for the active local Scheduling Session."""
 
 import os
-from threading import RLock
+from contextlib import contextmanager
+from threading import Condition, RLock
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -22,6 +23,8 @@ DATABASE_URL = f"sqlite:///{DB_PATH}"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 DATABASE_LOCK = RLock()
+DATABASE_QUIESCENCE = Condition(DATABASE_LOCK)
+ACTIVE_DATABASE_SESSIONS = 0
 
 
 class Base(DeclarativeBase):
@@ -29,12 +32,28 @@ class Base(DeclarativeBase):
 
 
 def get_db():
-    with DATABASE_LOCK:
+    global ACTIVE_DATABASE_SESSIONS
+    with DATABASE_QUIESCENCE:
+        ACTIVE_DATABASE_SESSIONS += 1
+    try:
         db: Session = SessionLocal()
         try:
             yield db
         finally:
             db.close()
+    finally:
+        with DATABASE_QUIESCENCE:
+            ACTIVE_DATABASE_SESSIONS -= 1
+            DATABASE_QUIESCENCE.notify_all()
+
+
+@contextmanager
+def database_operation_lock():
+    """Exclude session-file operations until all request-scoped DB sessions close."""
+    with DATABASE_QUIESCENCE:
+        while ACTIVE_DATABASE_SESSIONS:
+            DATABASE_QUIESCENCE.wait()
+        yield
 
 
 def init_db():
@@ -132,6 +151,8 @@ def _validate_schema_shape(
         missing_columns = expected_columns - actual_columns
         if allow_legacy_lesson_columns and table_name == "lessons":
             missing_columns -= {"teacher_email", "student_id"}
+        if allow_legacy_lesson_columns and table_name == "pianists":
+            missing_columns -= {"pianist_code"}
         extra_columns = actual_columns - expected_columns
         if missing_columns or extra_columns:
             details = []
@@ -371,6 +392,58 @@ def _upgrade_to_v6(connection: Connection) -> None:
         ))
 
 
+def _upgrade_to_v7(connection: Connection) -> None:
+    """Add Accompanist-owned Jury Required facts with a conservative false default."""
+    from . import module_models
+
+    _create_module_tables(connection, {"accompanist_lesson_jury_requirements"})
+    connection.exec_driver_sql(
+        "INSERT INTO accompanist_lesson_jury_requirements (lesson_id, jury_required) "
+        "SELECT id, 0 FROM lessons"
+    )
+    connection.exec_driver_sql(
+        "UPDATE module_results SET state = 'superseded' "
+        "WHERE result_uuid IN ("
+        "SELECT current_result_uuid FROM module_revisions "
+        "WHERE module_id = 'accompanists' AND current_result_uuid IS NOT NULL"
+        ") AND contract_id = 'accompanist.assignment-result' AND contract_version = 1"
+    )
+    connection.exec_driver_sql(
+        "UPDATE module_revisions SET current_result_uuid = NULL "
+        "WHERE module_id = 'accompanists' AND current_result_uuid IN ("
+        "SELECT result_uuid FROM module_results "
+        "WHERE contract_id = 'accompanist.assignment-result' AND contract_version = 1"
+        ")"
+    )
+
+
+def _upgrade_to_v8(connection: Connection) -> None:
+    """Add Panel-scoped Jury Dates and preserve the legacy session date where set."""
+    from . import module_models
+
+    module_models.JuryPanelDate.__table__.create(bind=connection)
+    connection.exec_driver_sql(
+        "INSERT INTO jury_panel_dates (panel_uuid, session_uuid, jury_date) "
+        "SELECT jury_panels.panel_uuid, jury_panels.session_uuid, jury_configurations.jury_date "
+        "FROM jury_panels JOIN jury_configurations "
+        "ON jury_configurations.session_uuid = jury_panels.session_uuid "
+        "WHERE jury_configurations.jury_date IS NOT NULL"
+    )
+
+
+def _upgrade_to_v9(connection: Connection) -> None:
+    """Retain the legacy Pianist code column for compatibility."""
+    if "pianist_code" not in _column_names(connection, "pianists"):
+        connection.exec_driver_sql("ALTER TABLE pianists ADD COLUMN pianist_code VARCHAR(100)")
+    connection.exec_driver_sql(
+        "UPDATE pianists SET pianist_code = CAST(id AS TEXT) WHERE pianist_code IS NULL"
+    )
+    connection.exec_driver_sql(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_pianists_organization_code_ci "
+        "ON pianists(organization_id, lower(pianist_code))"
+    )
+
+
 MIGRATIONS = (
     SchemaMigration(
         version=1,
@@ -401,6 +474,21 @@ MIGRATIONS = (
         version=6,
         name="add_jury_configuration_and_inputs",
         upgrade=_upgrade_to_v6,
+    ),
+    SchemaMigration(
+        version=7,
+        name="add_accompanist_lesson_jury_requirement",
+        upgrade=_upgrade_to_v7,
+    ),
+    SchemaMigration(
+        version=8,
+        name="scope_jury_date_to_panels",
+        upgrade=_upgrade_to_v8,
+    ),
+    SchemaMigration(
+        version=9,
+        name="add_editable_accompanist_pianist_ids",
+        upgrade=_upgrade_to_v9,
     ),
 )
 LATEST_SCHEMA_VERSION = MIGRATIONS[-1].version

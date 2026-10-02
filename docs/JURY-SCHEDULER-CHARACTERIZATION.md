@@ -34,7 +34,7 @@ Thirteen synthetic tests in `webapp/backend/tests/test_jury_characterization.py`
 
 ## Input and Identity Findings
 
-`Jury` is included only for the literal string forms `1`, `1.0`, `True`, and `TRUE`. `Need Pianist` uses the same narrow values. Jury participation and accompaniment need are already separate workbook columns, but the integrated design requires a typed Jury Required Boolean, independent from the Accompanist-owned Pianist Required value.
+`Jury` is included only for the literal string forms `1`, `1.0`, `True`, and `TRUE`. `Need Pianist` uses the same narrow values. Jury participation and accompaniment need are already separate workbook columns, but the integrated design requires a typed Jury Required Boolean, independent from the Accompanist-owned Needs pianist? Boolean.
 
 Assignments are joined by stripped display name. The join is case-sensitive, duplicate student names overwrite earlier assignment rows in the dictionary, and students without a resolved assignment are omitted from the assignment map. `load_students` then sets `needs_pianist` to `bool(pianist)`: a student whose source row requires a pianist but whose assignment is missing/UNASSIGNED is silently changed to not needing one. This is a confirmed behavior to replace with a blocking readiness issue. Do not use this name join as the integrated identity boundary.
 
@@ -53,7 +53,7 @@ The pianist availability loader treats only the exact string `Available` as avai
 
 - Excel handoff and student-name joins become structured inputs and stable identity references.
 - Area becomes an explicitly defined Jury Panel with manual student-to-panel assignment; no inference from instrument, teacher, lesson, or program.
-- The old Jury flag becomes Jury Required, independent of Pianist Required. Jury-exempt students are excluded.
+- The old Jury flag becomes Jury Required, independent of the Needs pianist? Boolean. Jury-exempt students are excluded.
 - A required pianist with no finalized assignment is a blocking readiness issue, not a student with no pianist requirement.
 - Ambiguous Start Time becomes hard Earliest Start plus soft Preferred Start. The current delay heuristic informs objectives but does not define the final weight.
 - Fixed hourly-break cycle and fixed noon lunch are replaced with optional every-X-juries breaks, configurable length (default Jury Length), and a configurable hard Meal Break interval. Meal Break resets the periodic count.
@@ -73,11 +73,11 @@ The pianist availability loader treats only the exact string `Available` as avai
 
 The current script actually consumes Accompanist-owned Student Name, Instrument, Need Pianist, and a separate Student-to-Accompanist assignment export. The integrated module must consume authoritative lesson/student identity, accompaniment requirement, and finalized pianist assignment information from the Accompanist module; the jury optimizer must not maintain an editable assignment copy or depend on Accompanist tables, UI, or solver objects.
 
-Before choosing the typed contract, document the characterized fields and validate the actual integrated Jury workflow requirements. A generated Jury result will need enough provenance to identify the Scheduling Session and the finalized Accompanist result version/revision it consumed, plus its own Jury input/result revision. If the consumed Accompanist result changes, the Jury result must be detectable as stale/superseded. This document does not define the final envelope schema.
+At characterization time, the typed contract was intentionally left undefined. The integrated data boundary is now implemented as `accompanist.assignment-result` contract v2: one entry per stable source Lesson UUID, including authoritative lesson-level Jury Required and pianist assignment facts. Future generated Jury results must retain the exact Accompanist result/version and Jury input/result revision provenance so stale dependencies remain detectable. This characterization does not authorize or define an optimizer implementation.
 
 ## Future Model Requirements
 
-- Students with Jury Required = No are excluded, regardless of Pianist Required.
+- Students with Jury Required = No are excluded, regardless of Needs pianist?.
 - Every Jury-required student is manually assigned to a named Jury Panel; no inferred panel mapping or batch assignment is assumed.
 - Jury-day pianist availability is Jury-owned, one-day, binary, and complete. Available windows are legal intervals; all other times are unavailable.
 - A pianist may not accompany overlapping juries in any panels/rooms. An existing finalized Accompanist assignment is not substitutable.

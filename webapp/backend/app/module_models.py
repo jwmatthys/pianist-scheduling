@@ -69,6 +69,13 @@ class AccompanistLessonIdentity(ModuleBase):
     )
 
 
+class AccompanistLessonJuryRequirement(ModuleBase):
+    __tablename__ = "accompanist_lesson_jury_requirements"
+
+    lesson_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    jury_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+
+
 class AccompanistPianistIdentity(ModuleBase):
     __tablename__ = "accompanist_pianist_identities"
 
@@ -129,7 +136,7 @@ class JuryConfiguration(ModuleBase):
     __tablename__ = "jury_configurations"
 
     session_uuid: Mapped[str] = mapped_column(String(36), primary_key=True)
-    jury_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    jury_date: Mapped[date | None] = mapped_column(Date, nullable=True)  # Legacy v7 source used by v8 Panel-date backfill.
     input_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     roster_source_result_uuid: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
@@ -155,6 +162,16 @@ class JuryPanel(ModuleBase):
     meal_break: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     meal_start_minute: Mapped[int | None] = mapped_column(Integer, nullable=True)
     meal_end_minute: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class JuryPanelDate(ModuleBase):
+    __tablename__ = "jury_panel_dates"
+
+    panel_uuid: Mapped[str] = mapped_column(
+        ForeignKey("jury_panels.panel_uuid", ondelete="CASCADE"), primary_key=True
+    )
+    session_uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    jury_date: Mapped[date] = mapped_column(Date, nullable=False)
 
 
 class JuryLessonEntry(ModuleBase):

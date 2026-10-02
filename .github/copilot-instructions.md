@@ -280,6 +280,8 @@ Do not create one giant universal spreadsheet format merely to make modules look
 
 Availability is a demonstrated shared concept. A shared `AvailabilityWindow` may represent recurring weekday or dated windows with Available/Tentative/Unavailable status and import provenance, but status meaning/scoring, owner associations, validation policy, and entry UI remain module-specific. Missing availability is not equivalent to Unavailable. Same-status imported overlaps may be merged; conflicting-status overlaps must be surfaced for review. Import Microsoft Forms exports locally from CSV/XLS/XLSX; do not add Forms/Graph API integration. Imported availability is normal editable data, and manual graphical editing must remain available.
 
+Accompanist Availability import is a full Pianist-roster replacement. Within one import, group rows only by Pianist Name after trimming surrounding whitespace and collapsing repeated spaces; do not match against the previous roster by name, email, or any identifier. Preview incoming names and Availability Windows, warn that the roster and Accompanist weekly availability will be replaced, Lesson assignments cleared, and all Jury Availability Windows removed, then apply atomically. Preserve Lessons, Jury Required values, Panels, Panel dates, and Panel selections. Create a fresh internal Pianist/Person identity for each distinct imported name. Pianist IDs and other internal identifiers are never part of user-facing create/edit/import/export workflows. New email defaults blank unless explicitly mapped; Max Hours Per Week defaults to 40.
+
 Share report rendering/export infrastructure, but modules own report definitions, fields, filters, and row semantics. Do not create a universal report designer or permit arbitrary SQL.
 
 
@@ -294,6 +296,7 @@ Maintain compatibility with:
 - Apple notarization
 - Apple Silicon
 - Intel macOS where reasonably practical
+- Linux AppImage and deb packaging where reasonably practical
 
 Do not add real production signing credentials to the repository.
 
@@ -359,31 +362,91 @@ and the user must be warned.
 Jury Scheduling must still support participants for whom no Accompanist
 assignment exists.
 
-Do not determine the exact Accompanist-to-Jury result schema until the
-existing standalone Jury scheduler has been behavior-characterized and
-its actual input requirements documented.
+The Accompanist-to-Jury typed result boundary is
+`accompanist.assignment-result` contract v2. Contract v1 finalized results
+remain historical and immutable.
 
-Jury Required is Jury-specific and independent from Accompanist-owned
-Pianist Required. Never infer Jury Required from accompaniment need or an
-assignment. Every Jury-required participant is manually assigned to a
-defined Jury Panel; do not infer panels from instrument, teacher, lesson
-area, or program.
+Jury Required is an Accompanist-owned source Lesson Boolean, independent
+from the Accompanist-owned Needs pianist? Boolean. Specific pianist is a
+separate optional required-Pianist name. Never infer either Boolean from the
+other, from Specific pianist, or from an assignment. The finalized
+Accompanist result publishes both Booleans per stable Lesson UUID.
+Accompanist Schedule and Jury Lesson Entries both edit the same Jury
+Required source field by stable Lesson UUID; do not create a Jury-owned copy.
+Jury owns manual Jury Panel selection per source lesson;
+turning Jury Required off does not delete its stored Panel selection. Do not
+infer panels from instrument, teacher, lesson area, or program.
 
-If Jury Required and Pianist Required are both true but no finalized
-Accompanist pianist assignment exists, treat that participant as a
-blocking Jury-readiness problem. Do not schedule them as though a pianist
-were not required, and do not substitute another pianist for a finalized
-assignment.
+Jury Setup navigation and keyboard order is Panels, Lesson Entries, Pianist
+Availability, Schedule, then Overview. Panels is the initial view. Schedule
+is a placeholder until an optimizer is separately authorized.
 
-Jury-day pianist availability is Jury-specific, one-day, binary
-Available/Unavailable, and closed-world for a complete submission.
-Tentative is not part of the Jury availability UI or solver semantics.
-Available windows are hard legal intervals; all other times in a valid
-complete schedule are unavailable. Incomplete or invalid submissions must
-not be interpreted as a complete unavailable schedule.
+If Jury Required and Needs pianist? are both Yes for the same source
+lesson but no finalized Accompanist pianist assignment exists, treat that
+lesson as a blocking Jury-readiness problem. Do not proceed as though a
+pianist were not required, and do not substitute another pianist for a
+finalized assignment.
 
-The future Jury result must retain enough source-result/session revision
-provenance to detect when its consumed finalized Accompanist result has
-changed and mark the Jury result stale/superseded. Do not define the final
-typed result contract until the standalone Jury requirements have been
-characterized and documented.
+Each Jury Panel has its own one-day Jury Date. Jury-day pianist availability
+is Jury-specific, binary Available/Unavailable, and keyed by pianist and
+date. Tentative is not part of the Jury availability UI or solver semantics.
+Available windows are hard legal intervals; all other times in a complete
+declaration are unavailable. A declaration is complete only when it contains
+one or more valid Available windows. Empty or invalid submissions are
+incomplete and must not be interpreted as a complete unavailable schedule.
+
+Any future Jury result must retain enough source-result/session revision
+provenance to detect when its consumed finalized Accompanist result changes
+and mark the Jury result stale/superseded.
+
+## Scheduling Terminology
+
+Use **Availability Window** as the standard product and architectural term
+for a continuous period during which a person or resource is available
+for scheduling.
+
+Examples include:
+- Pianist Availability Windows
+- Student Availability Windows
+- Jury-Day Availability Windows
+- Faculty Availability Windows
+- Resource Availability Windows
+
+An Availability Window represents a continuous interval with a start time
+and end time. Module-specific rules determine how that availability is
+interpreted.
+
+Use this terminology consistently in:
+- user-facing UI
+- documentation
+- domain/service naming where appropriate
+- validation and import messages
+
+Do not unnecessarily replace this established term with alternatives such
+as:
+- availability range
+- availability period
+- time range
+- available block
+
+The term **Time Slot** has a different meaning and remains valid where the
+application actually operates on discrete scheduling units.
+
+Distinction:
+
+- **Availability Window** = a continuous human-facing availability
+  interval, such as "9:00 AM–12:00 PM."
+- **Time Slot** = a discrete scheduling unit used by an algorithm or
+  interface, such as a 30-minute 9:00–9:30 slot.
+
+Availability semantics may differ by module.
+
+For example:
+- Accompanist Scheduling may distinguish Available and Tentative
+  availability.
+- Performance Jury Scheduling uses binary, hard availability: a pianist
+  is available within the declared Jury-Day Availability Windows and
+  unavailable outside them.
+
+Do not force module-specific availability semantics into the shared
+Availability Window concept.

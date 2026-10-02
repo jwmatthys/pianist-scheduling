@@ -7,7 +7,7 @@ from pydantic import ValidationError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app import models, module_models
+from app import models, module_models, schemas
 from app.database import migrate_database
 from app.jury_schemas import JuryAvailabilityIn, JuryPanelFields
 from app.services.accompanist_results import (
@@ -17,19 +17,23 @@ from app.services.accompanist_results import (
 )
 from app.services.jury import (
     JuryDataError,
+    clear_availability,
     create_panel,
+    get_availability,
     readiness,
     save_availability,
     sync_roster_from_current_result,
-    update_configuration,
     update_lesson_entry,
+    update_lesson_jury_required,
+    update_panel,
 )
 from app.services.module_lifecycle import (
     bump_accompanist_revision,
     ensure_pianist_identity,
+    set_lesson_jury_required,
     synchronize_lesson_identity,
 )
-from app.routers.lessons import delete_lesson
+from app.routers.lessons import delete_lesson, update_lesson
 
 
 class JuryIntegrationTests(unittest.TestCase):
@@ -59,6 +63,7 @@ class JuryIntegrationTests(unittest.TestCase):
         teacher: str = "Synthetic Teacher",
         pianist: models.Pianist | None = None,
         pianist_required: bool = True,
+        jury_required: bool = False,
     ) -> tuple[models.Lesson, str]:
         lesson = models.Lesson(
             student=student,
@@ -78,6 +83,7 @@ class JuryIntegrationTests(unittest.TestCase):
             lesson,
             identity_fields_changed=True,
         )
+        set_lesson_jury_required(db, lesson.id, jury_required)
         return lesson, student_person_uuid
 
     def test_result_keeps_multiple_lesson_facts_and_pianists_distinct(self):
@@ -89,6 +95,7 @@ class JuryIntegrationTests(unittest.TestCase):
                 student="Alex Student",
                 instrument="Voice",
                 pianist=pianist_one,
+                jury_required=True,
             )
             second, second_student_uuid = self.add_lesson(
                 db,
@@ -97,6 +104,7 @@ class JuryIntegrationTests(unittest.TestCase):
                 instrument="Cello",
                 teacher="Different Teacher",
                 pianist=pianist_two,
+                jury_required=False,
             )
             self.assertEqual(student_uuid, second_student_uuid)
             result = finalize_accompanist_result(db, expected_source_revision=0)
@@ -110,6 +118,8 @@ class JuryIntegrationTests(unittest.TestCase):
             self.assertEqual(voice.student_person_uuid, cello.student_person_uuid)
             self.assertEqual(voice.teacher, "Synthetic Teacher")
             self.assertEqual(cello.teacher, "Different Teacher")
+            self.assertTrue(voice.jury_required)
+            self.assertFalse(cello.jury_required)
             self.assertEqual(str(voice.assigned_pianist.person_uuid), pianist_one_uuid)
             self.assertEqual(str(cello.assigned_pianist.person_uuid), pianist_two_uuid)
 
@@ -177,6 +187,7 @@ class JuryIntegrationTests(unittest.TestCase):
     def test_panel_defaults_and_validation(self):
         fields = JuryPanelFields(
             panel_name="Voice A",
+            jury_date=date(2027, 5, 1),
             earliest_start_minute=540,
             jury_length_minutes=60,
             break_needed=True,
@@ -194,6 +205,7 @@ class JuryIntegrationTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             JuryPanelFields(
                 panel_name="Invalid",
+                jury_date=date(2027, 5, 1),
                 earliest_start_minute=600,
                 preferred_start_minute=599,
                 jury_length_minutes=30,
@@ -201,6 +213,7 @@ class JuryIntegrationTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             JuryPanelFields(
                 panel_name="Invalid Meal",
+                jury_date=date(2027, 5, 1),
                 earliest_start_minute=600,
                 jury_length_minutes=30,
                 meal_break=True,
@@ -215,25 +228,28 @@ class JuryIntegrationTests(unittest.TestCase):
                 student="Synthetic Student One",
                 student_id="ROOM-1",
                 pianist_required=False,
+                jury_required=True,
             )
             self.add_lesson(
                 db,
                 student="Synthetic Student Two",
                 student_id="ROOM-2",
                 pianist_required=False,
+                jury_required=True,
             )
             result = finalize_accompanist_result(db, expected_source_revision=0)
             sync_roster_from_current_result(db)
-            update_configuration(db, date(2027, 5, 1))
             panel_one = create_panel(db, JuryPanelFields(
                 panel_name="Panel One",
                 room="Shared Room",
+                jury_date=date(2027, 5, 1),
                 earliest_start_minute=540,
                 jury_length_minutes=30,
             ))
             panel_two = create_panel(db, JuryPanelFields(
                 panel_name="Panel Two",
                 room="Shared Room",
+                jury_date=date(2027, 5, 2),
                 earliest_start_minute=540,
                 jury_length_minutes=60,
             ))
@@ -244,13 +260,11 @@ class JuryIntegrationTests(unittest.TestCase):
             update_lesson_entry(
                 db,
                 str(source_by_student["Synthetic Student One"].source_lesson_uuid),
-                jury_required=True,
                 panel_uuid=str(panel_one.panel_uuid),
             )
             update_lesson_entry(
                 db,
                 str(source_by_student["Synthetic Student Two"].source_lesson_uuid),
-                jury_required=True,
                 panel_uuid=str(panel_two.panel_uuid),
             )
             db.commit()
@@ -268,16 +282,18 @@ class JuryIntegrationTests(unittest.TestCase):
                 db,
                 student="Synthetic Student",
                 pianist=pianist,
+                jury_required=True,
             )
             result = finalize_accompanist_result(db, expected_source_revision=0)
             db.flush()
             entries = sync_roster_from_current_result(db)
             self.assertEqual(len(entries), 1)
             source_lesson_uuid = str(result.payload.entries[0].source_lesson_uuid)
-            configuration = update_configuration(db, jury_date)
+            session_uuid = db.query(models.SchedulingSession).one().session_uuid
             panel = create_panel(db, JuryPanelFields(
                 panel_name="Panel One",
                 room="Room A",
+                jury_date=jury_date,
                 earliest_start_minute=540,
                 jury_length_minutes=60,
                 break_needed=True,
@@ -286,7 +302,6 @@ class JuryIntegrationTests(unittest.TestCase):
             update_lesson_entry(
                 db,
                 source_lesson_uuid,
-                jury_required=True,
                 panel_uuid=str(panel.panel_uuid),
             )
             db.commit()
@@ -299,37 +314,247 @@ class JuryIntegrationTests(unittest.TestCase):
                 db,
                 pianist_uuid,
                 jury_date,
-                JuryAvailabilityIn(is_complete=True, windows=[]),
+                JuryAvailabilityIn(windows=[{"start_minute": 540, "end_minute": 600}]),
             )
             db.commit()
             ready = readiness(db)
             self.assertTrue(ready.ready, ready.issues)
 
             # A roster refresh to the same result must retain Jury-owned choices.
-            sync_roster_from_current_result(db)
+            refreshed_entries = sync_roster_from_current_result(db)
             db.commit()
-            row = db.get(module_models.JuryLessonEntry, (str(configuration.session_uuid), source_lesson_uuid))
-            self.assertTrue(row.jury_required)
+            row = db.get(module_models.JuryLessonEntry, (session_uuid, source_lesson_uuid))
             self.assertEqual(row.panel_uuid, str(panel.panel_uuid))
+            self.assertTrue(refreshed_entries[0].jury_required)
 
             next_date = date(2027, 5, 2)
-            update_configuration(db, next_date)
+            update_panel(db, str(panel.panel_uuid), JuryPanelFields(
+                panel_name=panel.panel_name,
+                room=panel.room,
+                jury_date=next_date,
+                earliest_start_minute=panel.earliest_start_minute,
+                preferred_start_minute=panel.preferred_start_minute,
+                jury_length_minutes=panel.jury_length_minutes,
+                break_needed=panel.break_needed,
+                break_every_x_juries=panel.break_every_x_juries,
+                break_length_minutes=panel.break_length_minutes,
+                meal_break=panel.meal_break,
+                meal_start_minute=panel.meal_start_minute,
+                meal_end_minute=panel.meal_end_minute,
+            ))
             db.commit()
             changed_date = readiness(db)
             self.assertFalse(changed_date.ready)
             self.assertIn("PIANIST_AVAILABILITY_INCOMPLETE", {issue.code for issue in changed_date.issues})
             self.assertIsNotNone(db.get(
                 module_models.JuryPianistAvailabilityDeclaration,
-                (str(configuration.session_uuid), pianist_uuid, jury_date),
+                (session_uuid, pianist_uuid, jury_date),
             ))
+
+    def test_clear_availability_removes_only_selected_pianist_and_date(self):
+        first_date = date(2027, 12, 14)
+        second_date = date(2027, 12, 15)
+        with Session(self.engine) as db:
+            pianist, pianist_uuid = self.add_pianist(db, "Synthetic Accompanist")
+            other_pianist, other_uuid = self.add_pianist(db, "Other Synthetic Pianist")
+            lesson, _ = self.add_lesson(
+                db,
+                student="Availability Clear Student",
+                pianist=pianist,
+                jury_required=True,
+            )
+            finalize_accompanist_result(db, expected_source_revision=0)
+            sync_roster_from_current_result(db)
+            first_panel = create_panel(db, JuryPanelFields(
+                panel_name="December 14 Panel",
+                jury_date=first_date,
+                earliest_start_minute=540,
+                jury_length_minutes=30,
+            ))
+            second_panel = create_panel(db, JuryPanelFields(
+                panel_name="December 15 Panel",
+                jury_date=second_date,
+                earliest_start_minute=540,
+                jury_length_minutes=30,
+            ))
+            source_lesson_uuid = str(db.query(module_models.AccompanistLessonIdentity).filter_by(
+                lesson_id=lesson.id
+            ).one().lesson_uuid)
+            update_lesson_entry(db, source_lesson_uuid, panel_uuid=str(first_panel.panel_uuid))
+            save_availability(db, pianist_uuid, first_date, JuryAvailabilityIn(windows=[
+                {"start_minute": 480, "end_minute": 540},
+                {"start_minute": 600, "end_minute": 660},
+            ]))
+            save_availability(db, pianist_uuid, second_date, JuryAvailabilityIn(windows=[
+                {"start_minute": 510, "end_minute": 570},
+            ]))
+            save_availability(db, other_uuid, first_date, JuryAvailabilityIn(windows=[
+                {"start_minute": 540, "end_minute": 600},
+            ]))
+            db.commit()
+            self.assertTrue(readiness(db).ready)
+            configuration = db.get(module_models.JuryConfiguration, db.query(models.SchedulingSession).one().session_uuid)
+            revision_before = configuration.input_revision
+
+            deleted = clear_availability(db, pianist_uuid, first_date)
+            db.commit()
+
+            self.assertEqual(deleted, 2)
+            self.assertIsNone(get_availability(db, pianist_uuid, first_date))
+            self.assertEqual(len(get_availability(db, pianist_uuid, second_date).windows), 1)
+            self.assertEqual(len(get_availability(db, other_uuid, first_date).windows), 1)
+            self.assertIsNotNone(db.get(models.Pianist, pianist.id))
+            self.assertEqual(db.query(module_models.JuryPanel).count(), 2)
+            self.assertEqual(db.query(module_models.JuryPanelDate).count(), 2)
+            self.assertEqual(configuration.input_revision, revision_before + 1)
+            report = readiness(db)
+            self.assertFalse(report.ready)
+            missing = next(issue for issue in report.issues if issue.code == "PIANIST_AVAILABILITY_INCOMPLETE")
+            self.assertEqual(
+                missing.message,
+                "Synthetic Accompanist has no Jury Availability Windows for December 14, 2027.",
+            )
+
+            self.assertEqual(clear_availability(db, pianist_uuid, first_date), 0)
+            db.commit()
+            self.assertEqual(configuration.input_revision, revision_before + 1)
+
+            with self.assertRaises(JuryDataError) as wrong_date:
+                clear_availability(db, pianist_uuid, date(2027, 12, 16))
+            self.assertEqual(wrong_date.exception.code, "JURY_DATE_MISMATCH")
+            self.assertIn("Jury Panel", str(wrong_date.exception))
+
+            with self.assertRaises(JuryDataError) as raised:
+                clear_availability(db, "00000000-0000-0000-0000-000000000000", first_date)
+            self.assertEqual(raised.exception.code, "PIANIST_NOT_FOUND")
+            self.assertIn("Pianist", str(raised.exception))
+
+    def test_no_pianist_jury_is_valid_and_nonjury_lesson_is_excluded(self):
+        with Session(self.engine) as db:
+            required, _ = self.add_lesson(
+                db,
+                student="Jury Without Piano",
+                student_id="NO-PIANO-JURY",
+                pianist_required=False,
+                jury_required=True,
+            )
+            excluded, _ = self.add_lesson(
+                db,
+                student="Recital Pianist Need Only",
+                student_id="NOT-A-JURY",
+                pianist_required=True,
+                jury_required=False,
+            )
+            result = finalize_accompanist_result(db, expected_source_revision=0)
+            entries = sync_roster_from_current_result(db)
+            self.assertEqual(
+                {entry.student_display_name: entry.jury_required for entry in entries},
+                {"Jury Without Piano": True, "Recital Pianist Need Only": False},
+            )
+            panel = create_panel(db, JuryPanelFields(
+                panel_name="Voice Panel",
+                jury_date=date(2027, 5, 1),
+                earliest_start_minute=540,
+                jury_length_minutes=30,
+            ))
+            source_by_name = {entry.student_display_name: entry for entry in result.payload.entries}
+            update_lesson_entry(
+                db,
+                str(source_by_name["Jury Without Piano"].source_lesson_uuid),
+                panel_uuid=str(panel.panel_uuid),
+            )
+            db.commit()
+
+            report = readiness(db)
+
+            self.assertTrue(report.ready, report.issues)
+            self.assertNotIn("FINALIZED_PIANIST_REQUIRED", {issue.code for issue in report.issues})
+            self.assertNotIn("PIANIST_AVAILABILITY_INCOMPLETE", {issue.code for issue in report.issues})
+            self.assertEqual(required.need_pianist, False)
+            self.assertEqual(excluded.need_pianist, True)
+
+    def test_required_fixed_pianist_without_finalized_assignment_blocks(self):
+        with Session(self.engine) as db:
+            _, _ = self.add_lesson(
+                db,
+                student="Missing Fixed Pianist",
+                student_id="MISSING-PIANIST",
+                pianist_required=True,
+                jury_required=True,
+            )
+            result = finalize_accompanist_result(db, expected_source_revision=0)
+            sync_roster_from_current_result(db)
+            panel = create_panel(db, JuryPanelFields(
+                panel_name="Panel One",
+                jury_date=date(2027, 5, 1),
+                earliest_start_minute=540,
+                jury_length_minutes=30,
+            ))
+            update_lesson_entry(
+                db,
+                str(result.payload.entries[0].source_lesson_uuid),
+                panel_uuid=str(panel.panel_uuid),
+            )
+            db.commit()
+
+            report = readiness(db)
+
+            self.assertFalse(report.ready)
+            self.assertIn("FINALIZED_PIANIST_REQUIRED", {issue.code for issue in report.issues})
+
+    def test_new_source_results_refresh_jury_required_and_preserve_panel(self):
+        with Session(self.engine) as db:
+            lesson, _ = self.add_lesson(
+                db,
+                student="Changing Jury Requirement",
+                student_id="CHANGING-JURY",
+                pianist_required=False,
+                jury_required=False,
+            )
+            first_result = finalize_accompanist_result(db, expected_source_revision=0)
+            first_entries = sync_roster_from_current_result(db)
+            source_uuid = str(first_result.payload.entries[0].source_lesson_uuid)
+            self.assertFalse(first_entries[0].jury_required)
+
+            update_lesson(lesson.id, schemas.LessonUpdate(jury_required=True), db)
+            second_result = finalize_accompanist_result(db, expected_source_revision=1)
+            second_entries = sync_roster_from_current_result(db)
+            self.assertTrue(second_entries[0].jury_required)
+            self.assertEqual(str(second_entries[0].source_lesson_uuid), source_uuid)
+            self.assertIsNone(second_entries[0].panel_uuid)
+
+            panel = create_panel(db, JuryPanelFields(
+                panel_name="Persistent Panel",
+                jury_date=date(2027, 5, 1),
+                earliest_start_minute=540,
+                jury_length_minutes=30,
+            ))
+            update_lesson_entry(db, source_uuid, panel_uuid=str(panel.panel_uuid))
+            update_lesson(lesson.id, schemas.LessonUpdate(instrument="Cello"), db)
+            third_result = finalize_accompanist_result(db, expected_source_revision=2)
+            third_entries = sync_roster_from_current_result(db)
+            self.assertEqual(third_result.payload.entries[0].instrument, "Cello")
+            self.assertTrue(third_entries[0].jury_required)
+            self.assertEqual(third_entries[0].panel_uuid, panel.panel_uuid)
+
+            update_lesson(lesson.id, schemas.LessonUpdate(jury_required=False), db)
+            fourth_result = finalize_accompanist_result(db, expected_source_revision=3)
+            fourth_entries = sync_roster_from_current_result(db)
+            self.assertFalse(fourth_result.payload.entries[0].jury_required)
+            self.assertFalse(fourth_entries[0].jury_required)
+            self.assertEqual(fourth_entries[0].panel_uuid, panel.panel_uuid)
 
     def test_availability_rejects_overlaps_and_wrong_date(self):
         with Session(self.engine) as db:
             _, pianist_uuid = self.add_pianist(db, "Synthetic Pianist")
             jury_date = date(2027, 5, 1)
-            update_configuration(db, jury_date)
+            create_panel(db, JuryPanelFields(
+                panel_name="Availability Date Panel",
+                jury_date=jury_date,
+                earliest_start_minute=540,
+                jury_length_minutes=30,
+            ))
             payload = JuryAvailabilityIn.model_validate({
-                "is_complete": True,
                 "windows": [
                     {"start_minute": 500, "end_minute": 600},
                     {"start_minute": 590, "end_minute": 650},
@@ -339,8 +564,101 @@ class JuryIntegrationTests(unittest.TestCase):
                 save_availability(db, pianist_uuid, jury_date, payload)
             self.assertEqual(raised.exception.code, "OVERLAPPING_AVAILABILITY")
             with self.assertRaises(JuryDataError) as raised:
-                save_availability(db, pianist_uuid, date(2027, 5, 2), JuryAvailabilityIn(is_complete=False))
+                save_availability(db, pianist_uuid, date(2027, 5, 2), JuryAvailabilityIn())
             self.assertEqual(raised.exception.code, "JURY_DATE_MISMATCH")
+
+    def test_jury_required_edit_updates_source_and_preserves_panel_selection(self):
+        with Session(self.engine) as db:
+            pianist, _ = self.add_pianist(db, "Synthetic Toggle Pianist")
+            lesson, _ = self.add_lesson(
+                db,
+                student="Synthetic Toggle Student",
+                pianist=pianist,
+                pianist_required=True,
+                jury_required=True,
+            )
+            lesson_uuid = db.get(module_models.AccompanistLessonIdentity, lesson.id).lesson_uuid
+            finalize_accompanist_result(db, expected_source_revision=0)
+            sync_roster_from_current_result(db)
+            panel = create_panel(db, JuryPanelFields(
+                panel_name="Retained Panel",
+                room="Room A",
+                jury_date=date(2027, 5, 1),
+                earliest_start_minute=540,
+                jury_length_minutes=60,
+            ))
+            update_lesson_entry(db, lesson_uuid, panel_uuid=str(panel.panel_uuid))
+            db.commit()
+
+            turned_off = update_lesson_jury_required(db, lesson_uuid, False)
+            db.commit()
+            self.assertFalse(turned_off.jury_required)
+            self.assertEqual(str(turned_off.panel_uuid), str(panel.panel_uuid))
+            requirement = db.get(module_models.AccompanistLessonJuryRequirement, lesson.id)
+            self.assertFalse(requirement.jury_required)
+            self.assertIn("ACCOMPANIST_RESULT_STALE", {issue.code for issue in readiness(db).issues})
+
+            turned_on = update_lesson_jury_required(db, lesson_uuid, True)
+            db.commit()
+            self.assertTrue(turned_on.jury_required)
+            self.assertEqual(str(turned_on.panel_uuid), str(panel.panel_uuid))
+            issue_codes = {issue.code for issue in readiness(db).issues}
+            self.assertIn("ACCOMPANIST_RESULT_STALE", issue_codes)
+            self.assertIn("PIANIST_AVAILABILITY_INCOMPLETE", issue_codes)
+
+    def test_readiness_does_not_require_availability_for_unassigned_panel_dates(self):
+        with Session(self.engine) as db:
+            pianist, pianist_uuid = self.add_pianist(db, "Date Scoped Pianist")
+            lesson, _ = self.add_lesson(
+                db,
+                student="Date Scoped Student",
+                pianist=pianist,
+                pianist_required=True,
+                jury_required=True,
+            )
+            lesson_uuid = db.get(module_models.AccompanistLessonIdentity, lesson.id).lesson_uuid
+            finalize_accompanist_result(db, expected_source_revision=0)
+            sync_roster_from_current_result(db)
+            assigned_panel = create_panel(db, JuryPanelFields(
+                panel_name="Assigned Date Panel",
+                jury_date=date(2027, 5, 1),
+                earliest_start_minute=540,
+                jury_length_minutes=60,
+            ))
+            create_panel(db, JuryPanelFields(
+                panel_name="Unused Date Panel",
+                jury_date=date(2027, 5, 2),
+                earliest_start_minute=540,
+                jury_length_minutes=60,
+            ))
+            update_lesson_entry(db, lesson_uuid, panel_uuid=str(assigned_panel.panel_uuid))
+            save_availability(db, pianist_uuid, date(2027, 5, 1), JuryAvailabilityIn(
+                windows=[{"start_minute": 540, "end_minute": 600}],
+            ))
+            db.commit()
+
+            result = readiness(db)
+            self.assertTrue(result.ready, result.issues)
+            self.assertNotIn("PIANIST_AVAILABILITY_INCOMPLETE", {issue.code for issue in result.issues})
+
+    def test_missing_panel_reports_panel_blocker_without_invalid_availability_entity(self):
+        with Session(self.engine) as db:
+            pianist, _ = self.add_pianist(db, "No Panel Pianist")
+            lesson, _ = self.add_lesson(
+                db,
+                student="No Panel Student",
+                pianist=pianist,
+                pianist_required=True,
+                jury_required=True,
+            )
+            finalize_accompanist_result(db, expected_source_revision=0)
+            sync_roster_from_current_result(db)
+
+            result = readiness(db)
+
+            issue_codes = {issue.code for issue in result.issues}
+            self.assertIn("PANEL_REQUIRED", issue_codes)
+            self.assertNotIn("PIANIST_AVAILABILITY_INCOMPLETE", issue_codes)
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,12 +1,12 @@
 # Jury Module Data Design
 
-**Status:** Approved design implemented for Jury Integration Milestone A. Jury optimization and Schedule UI remain out of scope.
+**Status:** Approved design implemented for Jury Integration Milestone A. The Schedule tab is a placeholder; Jury optimization and schedule generation remain out of scope.
 
 ## 1. Scope and Design Basis
 
 This milestone establishes stable identities, an immutable finalized Accompanist result, Jury-owned configuration and availability, dependency provenance, and readiness validation. It does not schedule juries. The accepted characterization explicitly rejects unbounded search and arithmetic failure: a future optimizer must terminate with every Jury-required lesson entry either validly scheduled or explicitly unscheduled with understandable reasons. Data and validation must give a future optimizer a finite Jury date and valid positive integer durations; the optimizer must still enforce its own bounded search and total-outcome invariant.
 
-The design started from schema version 3; the implemented current schema is version 6. Historical v1-v3 migrations remain unchanged. Accompanist retains `Pianist` and `Lesson` integer IDs and current availability behavior while adding UUID identity mappings, source revisions, and the finalized-result registry. Jury persistence is module-owned and lesson-based.
+The design started from schema version 3; the current schema is version 9. Historical migrations remain unchanged. Accompanist retains numeric `Pianist` and `Lesson` primary keys and current availability behavior while adding internal UUID identity mappings, source revisions, finalized-result history, and an Accompanist-owned per-lesson Jury Required extension. The legacy `pianist_code` column is not part of user-facing identity or import workflows. Jury persistence is module-owned and lesson-based.
 
 ## 2. Shared Person Identity
 
@@ -18,7 +18,7 @@ Each module retains its own profile and data around that identity. The existing 
 
 The migration must preserve current rows and must not merge people based only on names. Within one Scheduling Session, identical nonblank institutional Student ID values normally identify the same student. Trim surrounding whitespace for ID comparison, but preserve the source value as external metadata; never derive a Person UUID from that value.
 
-- Each existing `Pianist` row can be assigned a generated UUID independently and deterministically retained after migration; copy its current name to the shared identity's display name and keep all existing integer foreign keys and Accompanist behavior intact.
+- Each existing `Pianist` row can be assigned a generated UUID independently and deterministically retained after migration; copy its current name to the shared identity's display name and keep all existing integer foreign keys and Accompanist behavior intact. Schema v9 historically backfilled the unused legacy `pianist_code` column from the numeric primary key; new records do not generate or expose values in that column.
 - Create one UUID-backed Accompanist student profile for each nonblank Student ID within the session and link corresponding lessons to it when the ID group has no conflict signal. This is the normal path and does not require manual reconciliation. Preserve Student ID as external metadata, not as the key.
 - Blank-ID lesson rows are not merged by display name; assign separate UUIDs unless a user explicitly reconciles them. For a repeated nonblank ID, compare nonblank student display names after trimming, collapsing whitespace, and case-folding. Formatting-only differences are equivalent. Materially different normalized names flag the ID group for review and block downstream publication until resolved; do not automatically split the group or guess which row is correct. Keep raw source values available for review. This check is a conflict signal, not a claim that a student's name cannot change.
 - Add a generated UUID to each lesson source record for stable result provenance. Preserve its existing integer primary key as a module-local implementation detail.
@@ -35,11 +35,11 @@ The result envelope contains:
 - the source revision and input/result provenance used to create the snapshot;
 - an immutable payload of lesson-level Accompanist facts.
 
-Each relevant source lesson entry contains `source_lesson_uuid`, `student_person_uuid`, student display name, instrument, teacher, `pianist_required`, and either no assigned pianist or the finalized assigned pianist's Person UUID and display name. Instrument and teacher are source-lesson presentation/provenance fields: Jury may display them read-only, but does not edit them. Instrument is not a universal student property and must not be used to infer a Jury Panel. Preserve one result entry per source lesson; a student with multiple lessons can have different instruments, teachers, pianist requirements, and assigned pianists on those lessons.
+Each relevant source lesson entry in contract v2 contains `source_lesson_uuid`, `student_person_uuid`, student display name, instrument, teacher, `pianist_required`, `jury_required`, and either no assigned pianist or the finalized assigned pianist's Person UUID and display name. Instrument and teacher are source-lesson facts displayed read-only in Jury. Jury Required is also authoritative Accompanist source data, but both Accompanist Schedule and Jury Lesson Entries edit that same value by stable Lesson UUID; finalized payloads remain immutable. Instrument is not a universal student property and must not be used to infer a Jury Panel. Preserve one result entry per source lesson; a student with multiple lessons can have different Jury Required values, instruments, teachers, pianist requirements, and assigned pianists on those lessons.
 
-The standalone characterization consumes student name, instrument, pianist-required state, and the fixed pianist assignment. The integrated contract makes those authoritative at lesson level and adds stable student, lesson, and pianist identity. Teacher is included as read-only result presentation metadata and is not currently a Jury optimizer constraint. Do not aggregate lessons into one student-level pianist or instrument, and do not join by name.
+The standalone characterization consumes student name, instrument, pianist-required state, and the fixed pianist assignment. Contract v2 adds authoritative lesson-level Jury Required alongside stable student, lesson, and pianist identity. Teacher is included as read-only result presentation metadata and is not currently a Jury optimizer constraint. Do not aggregate lessons into one student-level Jury flag, pianist, or instrument, and do not join by name. Contract v1 remains immutable and decodable for historical results; new finalizations use v2.
 
-The payload excludes `Jury Required`, Jury Panel, Jury Date, Jury-Day availability, Jury schedule fields, and all other Jury-owned policy. It does not expose max-hours data, Accompanist availability, fit scoring, notes, or unrelated database fields.
+The payload excludes Jury Panel, Jury Date, Jury-Day availability, Jury schedule fields, and other Jury-owned policy. It does not expose max-hours data, Accompanist availability, fit scoring, notes, or unrelated database fields.
 
 ## 5. Finalization and Revision Semantics
 
@@ -57,15 +57,14 @@ When Accompanist source revision advances or its current finalized result change
 
 ## 7. Jury Lesson Participation Data
 
-Jury Required applies to a student's lesson/performance area, not globally to the person. Persist one Jury-owned `jury_lesson_entries` row per source lesson, keyed by `(session_uuid, source_lesson_uuid)`, containing:
+Jury Required is authoritative Accompanist source lesson data, not a Jury-owned copy. It is editable in both Accompanist Schedule and Jury Lesson Entries through the Accompanist source service. Persist one Jury-owned `jury_lesson_entries` row per source lesson, keyed by `(session_uuid, source_lesson_uuid)`, containing:
 
 - `student_person_uuid`;
-- `jury_required BOOLEAN NOT NULL DEFAULT false`;
 - `panel_uuid NULL` until a user selects a panel.
 
-The source lesson UUID and student UUID come from a resolved finalized Accompanist result; Jury persistence must not directly read or foreign-key into Accompanist ORM tables. Each lesson entry has its own Jury Required flag and panel selection. Therefore one student may have a Jury for one lesson but not another, separate panels for separate lessons, and different finalized pianist assignments for those lessons. `Jury Required` is independent of that lesson's `pianist_required`; no panel assignment is inferred from instrument, teacher, Area, program, or Accompanist assignment. Jury may display Accompanist lesson facts but cannot edit them. A Jury-required lesson whose pianist is not required needs no assigned pianist.
+The source lesson UUID and student UUID come from the typed result boundary; the current Jury Required value is read and written through the authoritative Accompanist service. Jury persistence must not store a second requirement Boolean. Jury otherwise edits only the lesson's Panel selection, which remains stored when Jury Required is false and is ignored by readiness in that state. Therefore one student may have a Jury for one lesson but not another, separate panels for separate lessons, and different finalized pianist assignments for those lessons. Jury Required is independent of that lesson's Needs pianist? Boolean and optional Specific pianist name; no panel assignment is inferred from instrument, teacher, Area, program, or Accompanist assignment. A Jury-required lesson with Needs pianist? = No needs no assigned pianist.
 
-The initial Jury participation roster is built from lesson entries in the finalized result. A Jury-only participant without an Accompanist source lesson is not representable by this lesson-based key; whether such a workflow is needed requires product input rather than an implicit person-only Jury row.
+The initial Jury participation roster is built from lesson entries in the current finalized result. Every Jury entry must reference an authoritative source Lesson UUID; Jury-only participants are out of scope and would require a future explicit design.
 
 ## 8. Jury Panel Model
 
@@ -87,15 +86,15 @@ Whether preferred-before-earliest should be rejected or normalized was open in t
 
 ## 9. Jury-Day Pianist Availability
 
-Jury availability belongs to Jury and is keyed by the Accompanist-provided `PersonIdentity` UUID. Do not create a second Jury pianist profile. Persist a per-session, per-pianist declaration record with `is_complete`, submitted/updated timestamps, and positive Available windows. Windows are local half-open intervals `[start, end)` within the single Jury Date; the UI presents binary Available/Unavailable semantics but persistence need not store Unavailable windows or status rows. There is no Tentative state.
+Jury availability belongs to Jury and is keyed by the Accompanist-provided `PersonIdentity` UUID. Do not create a second Jury pianist profile. Persist a per-session, per-pianist, per-date internal availability record with derived completeness, timestamps, and positive Available windows. The user-facing feature is named **Jury Availability Windows**; do not expose declaration or completeness terminology in the ordinary UI. Windows are local half-open intervals `[start, end)` within the applicable Panel date; the UI presents binary Available/Unavailable semantics but persistence need not store Unavailable windows or status rows. There is no Tentative state.
 
-Closed-world behavior is explicit: positive `Available` intervals define legal time; every other relevant time in a complete declaration is derived as `Unavailable`. A complete declaration with no Available windows means unavailable for the full day. An absent/incomplete declaration is unknown and blocks readiness; it must never be interpreted as a complete unavailable day. Reject out-of-day, zero/negative, or overlapping-invalid intervals and normalize overlapping/adjacent Available windows to their union. The Jury Date is configured once, so per-window date duplication is unnecessary.
+Closed-world behavior is explicit: positive `Available` intervals define legal time; every other relevant time in a complete record is derived as `Unavailable`. An internal record is complete when it contains at least one valid Availability Window. No windows means incomplete/unknown and blocks readiness when the pianist is required; it is not treated as a complete unavailable day. Reject out-of-day, zero/negative, or overlapping-invalid intervals and normalize overlapping/adjacent Available windows to their union. Records remain keyed by date so a pianist may have different Availability Windows on dates used by different Panels. Accompanist roster replacement removes all Jury availability records and windows for the active session in the same transaction; it never transfers availability to replacement people by name.
 
-The only declarations required for readiness are those of pianists referenced by a Jury-required lesson entry's finalized assignment where that lesson has `pianist_required=true`. A complete declaration is still required even if it declares no available interval.
+The only Jury Availability Windows required for readiness are those of pianists referenced by a Jury-required lesson entry's finalized assignment where that lesson's Needs pianist? Boolean is Yes; readiness checks the date of the Panel assigned to that lesson. Missing availability issues should say that the named Pianist has no Jury Availability Windows for the relevant date.
 
-## 10. Jury Date
+## 10. Panel Date
 
-Store one nullable `jury_date` on a session-scoped `jury_configuration` row, not on each panel or availability window. It applies to the integrated Jury run and all panels. A missing date blocks readiness. This deliberately models one scheduling run on one day; there is no multi-day abstraction, timezone, date override, or per-panel date in this milestone. A later product need for multiple Jury dates would require a separately designed module model.
+Each Panel has exactly one required `jury_date`; different Panels may occur on different dates. No Panel spans more than one day. A missing date blocks readiness. This supports multiple one-day Panels without introducing multi-day Panel schedules, timezone handling, or cross-panel booking logic. The legacy `jury_configurations.jury_date` column is retained only as the schema-v8 migration source for backfilling existing Panels and is no longer an active setting.
 
 ## 11. Readiness Validation
 
@@ -106,9 +105,9 @@ Blocking errors include:
 - no current finalized Accompanist result or a result from a different session/unsupported contract;
 - unresolved or ambiguous lesson/student identity/source projection;
 - a Jury-required lesson entry with no selected existing panel;
-- `Jury Required` plus `Pianist Required` on the same lesson entry with no finalized assigned pianist;
-- a referenced pianist identity missing from the source result or with no complete Jury-Day declaration;
-- missing Jury Date;
+- `Jury Required` plus Needs pianist? = Yes on the same lesson entry with no finalized assigned pianist;
+- a referenced pianist identity missing from the source result or with no Jury Availability Windows for the assigned Panel's date;
+- a Jury-required lesson's selected Panel has no Jury Date;
 - invalid panel fields, break parameters, meal interval, or preferred start earlier than earliest start;
 - an invalid or conflicting source identity that prevents an authoritative lesson-level result projection.
 
@@ -122,15 +121,17 @@ Names are conceptual; implementation should follow the existing SQLAlchemy and e
 | --- | --- |
 | `person_identities` | `person_uuid UUID PK`, `display_name`, optional institutional ID/email metadata, timestamps; no module behavior fields. |
 | `accompanist_students` | `person_uuid UUID PK/FK`, session-scoped external Student ID metadata and Accompanist-specific reconciliation fields; unique `(session_uuid, student_id)` for nonblank IDs, with conflicting source-name evidence flagged before publication. |
-| `pianists` | Existing columns retained; add `person_uuid UUID UNIQUE NOT NULL FK person_identities`. |
+| `pianists` | Existing columns retained, including the legacy `pianist_code` compatibility column, which is not used or exposed by normal workflows; application identity is provided through the internal `AccompanistPianistIdentity` to `PersonIdentity` mapping. Schema v9 historically backfilled legacy code values from the prior numeric primary key. |
 | `lessons` | Existing columns retained; add stable `lesson_uuid UUID UNIQUE NOT NULL` and `student_person_uuid UUID FK person_identities`. Do not remove integer IDs or raw `student_id` during this milestone. |
+| `accompanist_lesson_jury_requirements` | `lesson_id` PK scoped to the active database, `jury_required BOOLEAN NOT NULL DEFAULT false`; Accompanist-owned source lesson extension added in v7. |
 | `module_results` | Result UUID PK, session UUID, module ID, contract ID/version, source revision, state, created/finalized timestamps, typed payload JSON/text and payload schema version; index current results by session/module/state. Enforce immutable finalized payloads in the result service. |
 | `module_result_dependencies` | Dependent result UUID, source result UUID, source session UUID, source contract/version, source revision; typed registry relation, not a polymorphic SQL foreign key to arbitrary module tables. |
 | `accompanist_state` (or equivalent revision row) | Session UUID PK, current source revision and current finalized result UUID; incremented transactionally for result-affecting Accompanist edits. |
-| `jury_configuration` | Session UUID PK/FK, nullable `jury_date`, Jury input revision, timestamps. |
-| `jury_panels` | Panel UUID PK, session UUID, all panel fields in section 8; index by session/name. |
-| `jury_lesson_entries` | Composite PK `(session_uuid, source_lesson_uuid)`, student Person UUID, Jury Required Boolean, nullable panel UUID; FK to shared identity and session/panel. `source_lesson_uuid` resolves through the finalized result contract and is not a direct Accompanist-table dependency. |
-| `jury_pianist_availability_declarations` | Composite key `(session_uuid, pianist_person_uuid, jury_date)`, complete Boolean, timestamps; FK to shared identity/session. Completion applies only to this Jury Date. |
+| `jury_configuration` | Session UUID PK/FK, Jury input revision, timestamps. The previous session-wide date remains only for migration compatibility. |
+| `jury_panels` | Panel UUID PK, session UUID, all panel fields in section 8 except date; index by session/name. |
+| `jury_panel_dates` | Panel UUID PK/FK, session UUID, one required Jury Date; separate extension preserves the released v6 Panel table shape. |
+| `jury_lesson_entries` | Composite PK `(session_uuid, source_lesson_uuid)`, student Person UUID, nullable Panel UUID; no authoritative Jury Required Boolean. `source_lesson_uuid` resolves through the finalized result contract and is not a direct Accompanist-table dependency. The unused v6 Boolean is legacy-only and not read or written by current services. |
+| `jury_pianist_availability_declarations` | Composite key `(session_uuid, pianist_person_uuid, jury_date)`, derived complete Boolean, timestamps; FK to shared identity/session. Complete exactly when at least one valid Available window exists. |
 | `jury_pianist_available_windows` | Window UUID PK, declaration key including Jury Date, start/end minute representing only positive Available intervals; check `0 <= start < end <= 1440`. Other time is derived unavailable; no status field or Tentative value. |
 
 Use JSON only for versioned module-owned result payloads if that matches repository conventions; indexed lifecycle/provenance fields remain relational. Do not introduce a generic `owner_type + owner_id` relation for people or availability. Enforce one active session as the current product does, while retaining session UUID in module-owned records and results for future session isolation.
@@ -141,7 +142,7 @@ Keep FastAPI routes thin and define service interfaces around domain operations:
 
 - Accompanist service: edit/persist existing Accompanist data, advance source revision, validate projection, and `finalize_accompanist_result()`; its implementation may read Accompanist tables.
 - Result registry service: list/resolve only finalized typed contract versions and record/mark dependencies; it owns lifecycle/provenance, not optimizer logic.
-- Jury input service: create/update Jury settings, panels, Jury Date, and pianist declarations using UUID identities; it does not query Accompanist tables.
+- Jury input service: create/update Panels and their dates, lesson Panel assignments, and pianist declarations using UUID identities; it does not query Accompanist tables.
 - Jury readiness service: receive typed finalized-result data plus Jury-owned DTOs and return structured issues.
 - Future Jury optimizer adapter: only after this milestone, accepts validated typed DTOs and returns a complete scheduled/unscheduled outcome; no ORM, UI, Tauri, HTTP, or Python solver internals.
 
@@ -167,23 +168,27 @@ The contract is based on UUIDs, typed DTOs, versioned local result payloads, exp
 2. Add schema v4 for shared UUID identities, Accompanist student profile links, pianist identity links, lesson UUIDs, and source revision tracking. Backfill pianist UUIDs; group identical nonblank Student IDs within the session; flag clearly conflicting uses for review; keep blank-ID rows distinct regardless of name.
 3. Add schema v5 for typed result records/dependencies and Accompanist finalization/revision service. Keep current manual-edit operations; ensure every relevant edit advances revision and finalized snapshots are immutable.
 4. Add schema v6 for Jury configuration/date, lesson-based Jury entries, panels, and complete binary pianist availability.
-5. Add pure result projection and Jury readiness services plus thin local API routes. Do not add Schedule UI or call an optimizer.
-6. Verify session archive export/new/restore round trips and staged migration from v3 and older supported versions. Keep `.mpsession` format 1.
-7. Document the result contract and any accepted workflow decisions before separately authorizing optimizer design/integration.
+5. Add schema v7 for Accompanist-owned lesson Jury Required, defaulting existing lessons false; do not edit v1-v6 migrations.
+6. Publish immutable Accompanist result contract v2 with lesson Jury Required, retaining a v1 decoder for historical results.
+7. Keep Jury entry persistence Panel-only; both modules edit the same Accompanist Jury Required source field by Lesson UUID, and stale finalized snapshots block readiness until refreshed.
+8. Verify session archive export/new/restore round trips and staged migration from v3 and older supported versions. Keep `.mpsession` format 1.
+9. Document the contract and ownership decision before separately authorizing optimizer design/integration.
 
 Migration grouping may change during implementation, but versions remain explicit, ordered, transactional where SQLite permits, forward-only, and tested using synthetic fixtures. Do not change v1-v3 definitions.
 
 ## 18. Tests Required Before Optimization
 
+- Migration from schema v6 with existing lessons and v1 results; assert v7 defaults Jury Required false, preserves lesson data, supersedes the current v1 pointer without deleting history, and still decodes the old typed result.
 - Migration from schema v3 with multiple lessons, duplicate display names, blank/repeated external student IDs, existing manual assignments, pianist availability/completeness, and session metadata; assert identical nonblank IDs normally share one UUID, blank-ID rows remain distinct despite matching names, conflicting ID use is flagged, and no Accompanist data is lost.
 - Fresh and legacy-v0 migrations through the new latest schema; transactional failure rollback; rejection of newer unsupported schema; no changes to v1-v3 migration definitions.
 - UUID stability through reopen, new session, archive export/restore, and staged archive migration; all identity/result/Jury rows retained in a format-1 round trip.
 - Identity tests prove internal UUIDs are generated independently of Student ID; ordinary identical nonblank IDs need no manual reconciliation; clearly conflicting use blocks downstream publication pending review; blank IDs never merge on matching names.
 - Finalization produces immutable typed snapshots; manual Accompanist edits remain supported; relevant edits advance revision; non-relevant edits do not; old result remains addressable and is marked non-current after edits.
-- Result contract tests preserve lesson UUID, student UUID/name, instrument, teacher, pianist-required state, and that lesson's assigned-pianist UUID/name without aggregation across lessons.
-- Jury lesson entries persist independently; Jury Required is never inferred from Pianist Required; null panel is permitted until readiness; panel selection is explicit; one student's lessons may have different Jury Required values, panels, and pianist assignments.
+- Result contract v2 tests preserve lesson UUID, student UUID/name, instrument, teacher, both independent requirement Booleans, and that lesson's assigned-pianist UUID/name without aggregation across lessons; contract v1 history remains interpretable.
+- Jury lesson entries persist Panel only; editable Jury Required writes the Accompanist source field, and refresh keeps the Panel choice even when the flag is false. A stale finalized snapshot blocks readiness.
+- Lesson import tests cover yes/no, y/n, true/false, 1/0, case/whitespace variants, blank false defaults, old files without the column, and invalid nonblank value issues.
 - Panel validation boundaries, including 60-minute jury duration, default break length, positive break interval/count, meal endpoint pairing/order/day bounds, meal reset configuration, preferred-before-earliest, and descriptive room duplicates without warnings.
-- Availability accepts only Available/Unavailable, rejects Tentative, uses complete closed-world semantics (including complete zero-availability), and treats missing/incomplete submissions as blocking unknown.
+- Availability accepts only Available/Unavailable, rejects Tentative, uses complete closed-world semantics with completeness derived from one or more Available windows, and treats missing/incomplete submissions as blocking unknown.
 - Readiness emits deterministic structured blockers/warnings, catches missing fixed pianist and stale source revision, and never invokes any optimizer.
 - Local API/service tests prove Jury reads only finalized typed result contracts, not Accompanist ORM/SQLAlchemy state, React state, or solver internals.
 - No test in this milestone calls `build_schedule()` or asserts an optimizer implementation; future optimizer tests must separately prove finite termination and explicit unscheduled reasons for impossible availability, as well as arithmetic safety for 60-minute duration and configurable breaks.
@@ -191,17 +196,15 @@ Migration grouping may change during implementation, but versions remain explici
 Use synthetic/anonymized data only.
 
 ## 19. Unresolved Product Decisions
-
-- Should the product support a Jury-required entry with no Accompanist source lesson? The proposed lesson-keyed model intentionally requires a source lesson UUID.
-- What is the policy for changing Jury Date after availability declarations, and should old-date declarations be retained for audit or replaced?
+- Jury Availability Windows remain stored by date; changing a Panel date does not transfer or delete windows for its previous date. Clearing one Pianist/date does not affect other dates; replacing the Accompanist Pianist roster clears Jury availability for all dates in the active session.
 - Confirm whether Earliest Start and Preferred Start are both required, and accept the proposed blocking validation when Preferred Start is earlier.
 - What is the acceptable migration reconciliation UX and behavior when an identity is merged after Jury settings or finalized results exist? Preserve UUID lineage and mark affected results stale; do not silently rewrite historical result payloads.
 - Exact stale-result terminology and refresh workflow are deferred; they are not prerequisites for this data milestone.
 
 ## 20. Concepts That Remain Module-Specific
 
-- Accompanist owns lesson facts, pianist-required state, pianist profiles and assignments, Accompanist availability/workload/scoring, source revisions, and the finalized assignment-result projection.
-- Jury owns Jury Required, manual panel selection, panel timing/duration/break/meal configuration, one Jury Date, binary complete Jury-Day pianist availability, Jury readiness policy, and future Jury schedules/results.
+- Accompanist owns lesson facts, the Needs pianist? Boolean, optional Specific pianist name, Jury Required, pianist profiles and assignments, Accompanist availability/workload/scoring, source revisions, and the finalized assignment-result projection.
+- Jury owns manual Panel selection, each Panel's one-day Jury Date, panel timing/duration/break/meal configuration, binary date-keyed pianist Availability Windows, Jury readiness policy, and future Jury schedules/results. Jury Required remains Accompanist-owned source data editable in both modules.
 - Clinical Placement owns its placement requirements, sites, capacities, transport/history rules, optimizer, and result payload.
 - Shared infrastructure owns only stable person UUIDs, session metadata, result envelopes/dependency mechanics, time primitives, migration/session archive mechanics, and structured validation issue representation.
 
@@ -209,4 +212,4 @@ There is no universal Person profile, Student profile, Assignment, Schedule, Ava
 
 ## Explicitly Out of Scope
 
-This milestone does not integrate `build_schedule()`, port the legacy Jury solver, implement a Jury optimizer, build Schedule UI, implement manual schedule reordering, or add cross-panel pianist booking logic. It does not design multi-day Juries or automatic stale-result reconciliation. The future optimizer must separately guarantee bounded termination and an explicit scheduled/unscheduled outcome for every Jury-required student; data design alone cannot substitute for that algorithmic invariant.
+This milestone does not integrate `build_schedule()`, port the legacy Jury solver, implement a Jury optimizer or schedule generation, implement manual schedule reordering, or add cross-panel pianist booking logic. The Schedule tab remains a placeholder. It does not design multi-day Juries or automatic stale-result reconciliation. The future optimizer must separately guarantee bounded termination and an explicit scheduled/unscheduled outcome for every Jury-required student; data design alone cannot substitute for that algorithmic invariant.

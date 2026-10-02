@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import get_db
 from ..services import scheduling
-from ..services.module_lifecycle import bump_accompanist_revision
+from ..services.module_lifecycle import bump_accompanist_revision, lesson_response
 
 router = APIRouter(prefix="/api/assignments", tags=["assignments"])
 
@@ -60,7 +60,7 @@ def _persist_and_respond(db: Session, lessons, engine_lessons, hours_by_name, co
 
     unassigned_count = sum(1 for l in lessons if l.need_pianist and l.assigned_pianist_id is None)
     return schemas.RunAssignmentResult(
-        lessons=[schemas.LessonOut.model_validate(l) for l in lessons],
+        lessons=[lesson_response(db, lesson) for lesson in lessons],
         hours_by_pianist=hours_by_name,
         conflicts=conflicts,
         unassigned_count=unassigned_count,
@@ -116,7 +116,7 @@ def validate(db: Session = Depends(get_db)):
 
     unassigned_count = sum(1 for l in lessons if l.need_pianist and l.assigned_pianist_id is None)
     return schemas.ValidationResult(
-        lessons=[schemas.LessonOut.model_validate(l) for l in lessons],
+        lessons=[lesson_response(db, lesson) for lesson in lessons],
         hours_by_pianist=hours_by_name,
         conflicts=conflicts,
         unassigned_count=unassigned_count,

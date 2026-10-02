@@ -74,6 +74,7 @@ export function SchedulePage() {
       room: "",
       instrument: "",
       need_pianist: true,
+      jury_required: false,
     });
     refresh();
   }
@@ -173,7 +174,9 @@ export function SchedulePage() {
               <th>Student</th>
               <th>Room</th>
               <th>Instrument</th>
-              <th>Required</th>
+              <th>Needs pianist?</th>
+              <th>Jury required?</th>
+              <th>Specific pianist</th>
               <th>Assigned pianist</th>
               <th>Hours</th>
               <th>Fit</th>
@@ -241,7 +244,30 @@ export function SchedulePage() {
                   />
                 </td>
                 <td>
+                  <label className="lesson-pianist-required-control">
+                    <input
+                      type="checkbox"
+                      checked={lesson.need_pianist}
+                      aria-label={`Needs pianist? for ${lesson.student}`}
+                      onChange={(event) => patchLesson(lesson.id, { need_pianist: event.target.checked })}
+                    />
+                    <span>{lesson.need_pianist ? "Yes" : "No"}</span>
+                  </label>
+                </td>
+                <td>
+                  <label className="lesson-jury-required-control">
+                    <input
+                      type="checkbox"
+                      checked={lesson.jury_required}
+                      aria-label={`Jury Required for ${lesson.student}`}
+                      onChange={(event) => patchLesson(lesson.id, { jury_required: event.target.checked })}
+                    />
+                    <span>{lesson.jury_required ? "Yes" : "No"}</span>
+                  </label>
+                </td>
+                <td>
                   <input
+                    aria-label={`Specific pianist for ${lesson.student}`}
                     defaultValue={lesson.required_pianist_name}
                     placeholder="(none)"
                     onBlur={(e) =>
@@ -290,7 +316,7 @@ export function SchedulePage() {
             ))}
             {sortedLessons.length === 0 && (
               <tr>
-                <td colSpan={13} className="muted">
+                <td colSpan={14} className="muted">
                   No lessons yet. Import a file or add one manually.
                 </td>
               </tr>
