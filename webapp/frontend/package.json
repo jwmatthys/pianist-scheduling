@@ -20,6 +20,7 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "test": "node scripts/test-python.cjs",
+    "test:ui": "vitest run",
     "dist": "npm run build && npm run build:api && electron-builder",
     "dist:linux": "npm run dist -- --linux",
     "dist:linux:portable": "npm run dist -- --linux tar.gz",
@@ -39,14 +40,18 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.12.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^37.2.6",
     "electron-builder": "^26.0.12",
+    "jsdom": "^25.0.1",
     "typescript": "~5.7.2",
-    "vite": "^5.4.11"
+    "vite": "^5.4.11",
+    "vitest": "^2.1.9"
   },
   "build": {
     "appId": "edu.pianistscheduling.desktop",

@@ -9,6 +9,7 @@ import type {
   JuryPanelInput,
   JuryReadiness,
 } from "../lib/types";
+import { JurySchedulePage } from "./JurySchedulePage";
 import "./JurySetupPage.css";
 
 type SetupView = "overview" | "lessons" | "panels" | "availability" | "schedule";
@@ -521,7 +522,7 @@ export function JurySetupPage() {
           <p className="jury-eyebrow">PERFORMANCE JURIES · SETUP</p>
           <h2 id="jury-setup-title">Jury setup</h2>
         </div>
-        <span className="jury-scope-note">Schedule generation is not available in this milestone.</span>
+        <span className="jury-scope-note">Jury schedule</span>
       </div>
 
       {error && <div className="jury-alert jury-alert-error" role="alert">{error}</div>}
@@ -899,12 +900,7 @@ export function JurySetupPage() {
           )}
 
           {view === "schedule" && (
-            <section className="jury-section jury-schedule-placeholder">
-              <div className="jury-empty-state">
-                <strong>Schedule generation is not available</strong>
-                <p>Resolve readiness issues before a future scheduling workflow is added.</p>
-              </div>
-            </section>
+            <JurySchedulePage readiness={readiness} onReadinessChange={setReadiness} />
           )}
         </>
       )}
