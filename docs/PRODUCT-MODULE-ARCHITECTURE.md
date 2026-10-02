@@ -16,7 +16,7 @@ The portable `.mpsession` file should be a versioned archive with a manifest and
 
 The active desktop/runtime and SQLite schema are documented in [ARCHITECTURE.md](ARCHITECTURE.md). Accompanist behavior is characterized in [ACCOMPANIST-BEHAVIOR-CHARACTERIZATION.md](ACCOMPANIST-BEHAVIOR-CHARACTERIZATION.md). The standalone jury workbook tool remains separate; its behavior is documented in [JURY-SCHEDULER-CHARACTERIZATION.md](JURY-SCHEDULER-CHARACTERIZATION.md).
 
-Performance Juries now has setup/readiness, a pure-domain optimizer, readiness-gated generation, typed result persistence, and stale-result detection. Its Schedule UI and manual schedule editing/finalization are not implemented; see [JURY-OPTIMIZER-CONTRACT.md](JURY-OPTIMIZER-CONTRACT.md).
+Performance Juries now has setup/readiness, a pure-domain optimizer, readiness-gated generation, typed result persistence, stale-result detection, and a read-only Schedule UI; see [JURY-OPTIMIZER-CONTRACT.md](JURY-OPTIMIZER-CONTRACT.md). Manual schedule editing and finalization are not implemented.
 
 ## 3. Product Shell and Workflow
 

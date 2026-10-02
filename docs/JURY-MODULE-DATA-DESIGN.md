@@ -1,10 +1,10 @@
 # Jury Module Data Design
 
-**Status:** Jury data/readiness design implemented. The Phase 2 optimizer and Phase 3 generation service, typed result persistence, API, and stale-result detection are documented in [JURY-OPTIMIZER-CONTRACT.md](JURY-OPTIMIZER-CONTRACT.md). The Schedule tab remains a placeholder.
+**Status:** Jury data/readiness design implemented. Phase 2 optimizer and Phase 3 generation service, typed result persistence, API, stale-result detection, and read-only Schedule view are documented in [JURY-OPTIMIZER-CONTRACT.md](JURY-OPTIMIZER-CONTRACT.md). Manual schedule editing and finalization remain out of scope.
 
 ## 1. Scope and Design Basis
 
-This milestone establishes stable identities, an immutable finalized Accompanist result, Jury-owned configuration and availability, dependency provenance, and readiness validation. It does not schedule juries. The accepted characterization explicitly rejects unbounded search and arithmetic failure: a future optimizer must terminate with every Jury-required lesson entry either validly scheduled or explicitly unscheduled with understandable reasons. Data and validation must give a future optimizer a finite Jury date and valid positive integer durations; the optimizer must still enforce its own bounded search and total-outcome invariant.
+The original Jury data-design milestone established stable identities, an immutable finalized Accompanist result, Jury-owned configuration and availability, dependency provenance, and readiness validation; schedule generation was outside that milestone. Subsequent phases implemented the bounded optimizer, generation service, persistence/API, and read-only Schedule view. The optimizer must terminate with every Jury-required lesson entry either scheduled or explicitly unscheduled with understandable reasons.
 
 Phase 1 established the optimizer contract and DTOs; Phase 2 implemented the pure-domain core; Phase 3 integrates generation through readiness, result-registry persistence, API contracts, and revision-based stale detection. The optimizer itself remains separate from persistence, API, and UI workflows.
 
@@ -217,4 +217,4 @@ There is no universal Person profile, Student profile, Assignment, Schedule, Ava
 
 ## Explicitly Out of Scope
 
-This milestone does not integrate `build_schedule()`, port the legacy Jury solver, implement a Jury optimizer or schedule generation, implement manual schedule reordering, or add cross-panel pianist booking logic. The Schedule tab remains a placeholder. It does not design multi-day Juries or automatic stale-result reconciliation. The future optimizer must separately guarantee bounded termination and an explicit scheduled/unscheduled outcome for every Jury-required student; data design alone cannot substitute for that algorithmic invariant.
+The approved integration does not call or port `build_schedule()`, implement manual schedule reordering, add cross-panel room booking, or design multi-day Juries. The Schedule view is read-only; manual schedule edits and finalization remain deferred. The implemented optimizer separately guarantees bounded termination and an explicit scheduled/unscheduled outcome for every Jury-required lesson.

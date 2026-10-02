@@ -1,6 +1,6 @@
 # Jury Optimizer Contract
 
-**Status:** Phase 2 core and Phase 3 backend integration implemented. Schedule UI, manual editing, and finalization remain out of scope.
+**Status:** Phase 2 core, Phase 3 backend integration, and read-only Schedule UI implemented. Manual schedule editing and finalization remain out of scope.
 
 ## Responsibilities
 
@@ -98,4 +98,4 @@ Generated results start as `draft`; generating again creates a new immutable res
 
 Staleness is computed from the stored dependency against the current Accompanist result UUID/source revision and current Jury input revision. A stale result is not relinked or rewritten; current/history views report stale reasons and retain the original source reference.
 
-The typed schedule view exposes Panel timelines, scheduled and unscheduled entries, Meal/Periodic Break events, diagnostics, readiness warnings, and stale status through `GET /api/jury/results/current`, `GET /api/jury/results/history`, and `GET /api/jury/results/{result_id}`. `POST /api/jury/generate` is a thin service-backed operation. The UI remains a placeholder; no manual edit/finalization workflow is included.
+The read-only Schedule view consumes Panel timelines, scheduled and unscheduled entries, Meal/Periodic Break events, diagnostics, readiness warnings, and stale/lifecycle status from `GET /api/jury/results/current`, `GET /api/jury/results/history`, and `GET /api/jury/results/{result_id}`. `POST /api/jury/generate` is a thin service-backed operation. No manual edit/finalization workflow is included.

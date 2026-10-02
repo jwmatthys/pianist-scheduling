@@ -376,8 +376,9 @@ Do not infer panels from teacher, lesson area, program, or Accompanist
 assignment.
 
 Jury Setup navigation and keyboard order is Overview, Panels, Pianist
-Availability, Lessons, then Schedule. Overview is the initial view. Schedule
-is a placeholder until an optimizer is separately authorized.
+Availability, Lessons, then Schedule. Overview is the initial view. The
+Schedule view is read-only and consumes the backend schedule result APIs;
+manual schedule editing and finalization remain out of scope.
 
 If Jury Required and Needs pianist? are both Yes for the same source
 lesson but no finalized Accompanist pianist assignment exists, treat that
