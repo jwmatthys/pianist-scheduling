@@ -9,6 +9,7 @@ from ..services.module_lifecycle import (
     ensure_pianist_identity,
     remove_pianist_identity_mapping,
 )
+from ..services.jury_sync import sync_jury_with_accompanist
 
 router = APIRouter(prefix="/api/pianists", tags=["pianists"])
 
@@ -66,13 +67,10 @@ def delete_pianist(pianist_id: int, db: Session = Depends(get_db)):
     pianist = db.get(models.Pianist, pianist_id)
     if not pianist:
         raise HTTPException(404, "Pianist not found")
-    assigned = db.query(models.Lesson.id).filter(
-        models.Lesson.assigned_pianist_id == pianist_id
-    ).first() is not None
     remove_pianist_identity_mapping(db, pianist_id)
     db.delete(pianist)
-    if assigned:
-        bump_accompanist_revision(db)
+    bump_accompanist_revision(db)
+    sync_jury_with_accompanist(db)
     db.commit()
     return {"ok": True}
 

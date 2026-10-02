@@ -187,6 +187,7 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
       await onApplied();
       setSuccess(`Replaced ${result.pianists_removed} Pianist(s) with ${result.pianists_created} new Pianist(s), cleared ${result.assignments_cleared} Lesson assignments and ${result.jury_availability_windows_removed} Jury Availability Windows, and applied ${result.slots_created} Accompanist availability slots.`);
       setPreview(null);
+      dialogRef.current?.close();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not apply availability.");
     } finally {

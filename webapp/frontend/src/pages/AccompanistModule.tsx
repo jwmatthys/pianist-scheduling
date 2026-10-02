@@ -50,7 +50,7 @@ export const AccompanistModule = forwardRef<AccompanistModuleHandle>(function Ac
         ))}
       </nav>
       <div className="app-main accompanist-main">
-        {tab === "import" && <ImportPage onImported={() => {}} />}
+        {tab === "import" && <ImportPage onImported={() => setTab("schedule")} />}
         {tab === "pianists" && <PianistsPage ref={pianistsPageRef} />}
         {tab === "schedule" && <SchedulePage />}
         {tab === "reports" && <ReportsPage />}

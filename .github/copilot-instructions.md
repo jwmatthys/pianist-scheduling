@@ -310,13 +310,7 @@ Important architectural documentation lives in:
 - docs/ARCHITECTURE.md
 - docs/MODULE-ARCHITECTURE.md
 - docs/PRIVACY-ARCHITECTURE.md
-- docs/DISTRIBUTION.md
 - docs/BUILDING.md
-
-During the Electron-to-Tauri migration also follow:
-
-- docs/TAURI-MIGRATION-PLAN.md
-- docs/MIGRATION-ELECTRON-TO-TAURI.md
 - docs/PRODUCT-MODULE-ARCHITECTURE.md
 
 Keep documentation synchronized with significant architectural changes.
@@ -373,12 +367,16 @@ other, from Specific pianist, or from an assignment. The finalized
 Accompanist result publishes both Booleans per stable Lesson UUID.
 Accompanist Schedule and Jury Lesson Entries both edit the same Jury
 Required source field by stable Lesson UUID; do not create a Jury-owned copy.
-Jury owns manual Jury Panel selection per source lesson;
-turning Jury Required off does not delete its stored Panel selection. Do not
-infer panels from instrument, teacher, lesson area, or program.
+Jury owns per-lesson Jury Panel selection; turning Jury Required off does not
+delete its stored Panel selection. On Lesson Entries activation, an unassigned
+lesson may be assigned only when its full Instrument value matches exactly one
+Panel Name using case-insensitive equality. Never use partial matching, never
+replace an existing Panel assignment, and skip ambiguous Panel-name matches.
+Do not infer panels from teacher, lesson area, program, or Accompanist
+assignment.
 
-Jury Setup navigation and keyboard order is Panels, Lesson Entries, Pianist
-Availability, Schedule, then Overview. Panels is the initial view. Schedule
+Jury Setup navigation and keyboard order is Overview, Panels, Pianist
+Availability, Lessons, then Schedule. Overview is the initial view. Schedule
 is a placeholder until an optimizer is separately authorized.
 
 If Jury Required and Needs pianist? are both Yes for the same source

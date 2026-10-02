@@ -27,6 +27,7 @@ from .module_lifecycle import (
     ensure_pianist_identity,
     remove_pianist_identity_mapping,
 )
+from .jury_sync import sync_jury_with_accompanist
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_STAGED_UPLOADS = 20
@@ -558,6 +559,7 @@ def apply_import(
             else:
                 availability_state.is_complete = True
         bump_accompanist_revision(db)
+        sync_jury_with_accompanist(db)
         db.commit()
     except Exception as error:
         db.rollback()

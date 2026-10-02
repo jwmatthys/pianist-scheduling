@@ -2,6 +2,8 @@
 
 **Status:** Characterization and future design only. The standalone scheduler remains unchanged and is not integrated into the application.
 
+Phase 1's typed contract and Phase 2's independent pure-domain optimizer core are recorded in [JURY-OPTIMIZER-CONTRACT.md](JURY-OPTIMIZER-CONTRACT.md). The standalone workbook scheduler remains unchanged and unused by the integrated core.
+
 ## Current Script
 
 `generate_jury_schedule.py` is a pandas/openpyxl command-line program. `load_students` joins a Lessons workbook to a separate Accompanist assignment workbook by exact, case-sensitive student display name. `load_pianist_unavailability` reads `Pianist - <Name>` sheets. `build_schedule` creates all panel schedules in memory, and `write_excel` emits a summary, one worksheet per Area, and one per pianist. The output file is written beside the Lessons workbook.
@@ -78,7 +80,7 @@ At characterization time, the typed contract was intentionally left undefined. T
 ## Future Model Requirements
 
 - Students with Jury Required = No are excluded, regardless of Needs pianist?.
-- Every Jury-required student is manually assigned to a named Jury Panel; no inferred panel mapping or batch assignment is assumed.
+- Every Jury-required lesson must have a Panel assignment. Lesson Entries activation may assign an unassigned lesson only on a unique exact case-insensitive Instrument-to-Panel-Name match; existing choices and ambiguous/non-matching entries remain unchanged.
 - Jury-day pianist availability is Jury-owned, one-day, binary, and complete. Available windows are legal intervals; all other times are unavailable.
 - A pianist may not accompany overlapping juries in any panels/rooms. An existing finalized Accompanist assignment is not substitutable.
 - Missing required pianist assignment is a blocking readiness problem. Manual override policy remains undecided.

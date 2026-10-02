@@ -29,7 +29,7 @@ From `webapp/frontend`:
 - `npm run electron:dev` builds the packaged Python API executable and starts the retained Electron shell.
 - `npm run tauri:dev` starts the Tauri shell plus Vite development server; Rust launches `backend/.venv`'s `desktop_server.py` directly (or the configured Python interpreter if the virtualenv is absent).
 - `npm run build` typechecks and builds the React frontend.
-- `npm test` runs the Python `unittest` suites, including schema migrations, Accompanist behavior/revision paths, Jury identities/results/input/readiness, and `.mpsession` round trips. The script selects `webapp/backend/.venv` when available or uses `PYTHON`/the platform's Python command.
+- `npm test` runs the Python `unittest` suites, including schema migrations, Accompanist behavior/revision paths, Jury identities/results/input/readiness/generation/API/staleness, and `.mpsession` round trips. The script selects `webapp/backend/.venv` when available or uses `PYTHON`/the platform's Python command.
 
 Tauri starts its development or packaged API process itself on an ephemeral loopback port; do not start Uvicorn separately for `npm run tauri:dev`.
 

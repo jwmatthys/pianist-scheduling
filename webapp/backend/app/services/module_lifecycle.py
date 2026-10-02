@@ -47,6 +47,19 @@ def bump_jury_revision(db: Session) -> int:
         raise ValueError("The Jury configuration is unavailable.")
     configuration.input_revision += 1
     configuration.modified_at = datetime.utcnow()
+    revision = db.get(module_models.ModuleRevision, (session_uuid, "juries"))
+    if revision is None:
+        revision = module_models.ModuleRevision(
+            session_uuid=session_uuid,
+            module_id="juries",
+            source_revision=configuration.input_revision,
+            current_result_uuid=None,
+            modified_at=configuration.modified_at,
+        )
+        db.add(revision)
+    else:
+        revision.source_revision = configuration.input_revision
+        revision.modified_at = configuration.modified_at
     db.flush()
     return configuration.input_revision
 

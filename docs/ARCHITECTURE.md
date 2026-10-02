@@ -2,7 +2,7 @@
 
 ## Product and Module Boundaries
 
-The product is **Music Program Scheduler**. Startup opens the product-level dashboard for the active Scheduling Session; session actions live there. A built-in module registry routes into each module's own shell and navigation. Accompanist Scheduling is the first functional module. Its import, pianist availability, assignment, and report views remain inside that module. Clinical and Jury have lightweight module boundaries only; their workflows and algorithms remain out of scope.
+The product is **Music Program Scheduler**. Startup opens the product-level dashboard for the active Scheduling Session; session actions live there. A built-in module registry routes into each module's own shell and navigation. Accompanist Scheduling is the first functional module. Its import, pianist availability, assignment, and report views remain inside that module. Clinical remains a lightweight boundary. Jury setup/readiness and its backend schedule-generation service/API are implemented; the Schedule UI remains a placeholder.
 
 Academic terms, small people identities, time primitives, locations, and useful file/import infrastructure may be shared when actual reuse is demonstrated. Lesson requirements, pianist availability and workload, accompanist assignment scoring, jury rules, and clinical placement constraints remain module-owned. The accompanist optimizer is not a universal scheduling engine.
 
@@ -17,13 +17,13 @@ flowchart LR
     Tauri -->|spawn, health-check, terminate| API
 ```
 
-Tauri currently replaces Electron only as the desktop shell. During development Rust starts `desktop_server.py` with the backend virtualenv (or the configured Python interpreter); production starts the bundled PyInstaller service. Scheduling, imports, reports, and SQLite remain in Python. This is a transitional runtime, not the intended long-term application boundary.
+The desktop runtime uses Tauri 2. During development Rust starts `desktop_server.py` with the backend virtualenv (or the configured Python interpreter); production starts the bundled PyInstaller service. Scheduling, imports, reports, and SQLite remain in Python. This is a transitional runtime, not the intended long-term application boundary.
 
 The service binds only to `127.0.0.1`. Tauri reserves an ephemeral port, passes it to the service, waits for `/api/health`, and exposes `http://127.0.0.1:<port>` to React through the narrow `get_api_base` Tauri command. `src/lib/platform.ts` is the only frontend module that detects Tauri or invokes that command. Browser development continues to use `VITE_API_BASE`, then the legacy `apiBase` query parameter, then `http://localhost:8123`.
 
-FastAPI CORS allows only the Vite development origins, the Tauri WebView origins (`tauri://localhost` and `http://tauri.localhost`), and Electron's opaque `null` file origin. Credentials are not enabled; only the API methods and `Content-Type` header used by the app are allowed. CORS does not expose the service beyond its loopback listener.
+FastAPI CORS allows only the Vite development origins, the Tauri WebView origins (`tauri://localhost` and `http://tauri.localhost`), and the retained Electron build's opaque `null` file origin. Credentials are not enabled; only the API methods and `Content-Type` header used by the app are allowed. CORS does not expose the service beyond its loopback listener.
 
-The service's database path is set to Tauri's per-user application-data directory as `pianist_scheduling.db`. Electron remains available for comparison and continues to use Electron's `userData` path; the two shells therefore have separate local databases and do not concurrently open the same SQLite file. No data is uploaded or synchronized between them.
+The service's database path is set to Tauri's per-user application-data directory as `pianist_scheduling.db`. No data is uploaded or synchronized with remote services.
 
 ## SQLite Schema Migrations
 

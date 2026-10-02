@@ -2,8 +2,9 @@
 
 import hashlib
 import json
+from dataclasses import dataclass
 from datetime import datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -27,6 +28,15 @@ from .module_lifecycle import (
 )
 
 PAYLOAD_SCHEMA_VERSION = 2
+
+
+@dataclass(frozen=True)
+class AccompanistSourceIdentitySnapshot:
+    session_uuid: UUID
+    source_revision: int
+    current_result_uuid: UUID | None
+    lesson_identities: tuple[tuple[UUID, UUID], ...]
+    pianist_person_uuids: tuple[UUID, ...]
 
 
 class ResultPublicationError(ValueError):
@@ -224,3 +234,40 @@ def get_result_by_uuid(
     if result.contract_id != ACCOMPANIST_RESULT_CONTRACT:
         return None
     return _envelope(db, result)
+
+
+def get_current_source_identity_snapshot(db: Session) -> AccompanistSourceIdentitySnapshot:
+    """Project current Accompanist identity references for dependent-module cleanup."""
+    session_uuid = active_session_uuid(db)
+    state = module_revision(db)
+    lessons = db.query(
+        module_models.AccompanistLessonIdentity.lesson_uuid,
+        module_models.AccompanistLessonIdentity.student_person_uuid,
+    ).join(
+        models.Lesson,
+        models.Lesson.id == module_models.AccompanistLessonIdentity.lesson_id,
+    ).join(
+        module_models.AccompanistStudentProfile,
+        module_models.AccompanistStudentProfile.person_uuid == module_models.AccompanistLessonIdentity.student_person_uuid,
+    ).join(
+        module_models.PersonIdentity,
+        module_models.PersonIdentity.person_uuid == module_models.AccompanistLessonIdentity.student_person_uuid,
+    ).filter(
+        module_models.AccompanistStudentProfile.session_uuid == session_uuid,
+    ).order_by(module_models.AccompanistLessonIdentity.lesson_uuid).all()
+    pianists = db.query(
+        module_models.AccompanistPianistIdentity.person_uuid,
+    ).join(
+        models.Pianist,
+        models.Pianist.id == module_models.AccompanistPianistIdentity.pianist_id,
+    ).join(
+        module_models.PersonIdentity,
+        module_models.PersonIdentity.person_uuid == module_models.AccompanistPianistIdentity.person_uuid,
+    ).order_by(module_models.AccompanistPianistIdentity.person_uuid).all()
+    return AccompanistSourceIdentitySnapshot(
+        session_uuid=UUID(session_uuid),
+        source_revision=state.source_revision,
+        current_result_uuid=UUID(state.current_result_uuid) if state.current_result_uuid else None,
+        lesson_identities=tuple((UUID(lesson_uuid), UUID(person_uuid)) for lesson_uuid, person_uuid in lessons),
+        pianist_person_uuids=tuple(UUID(person_uuid) for (person_uuid,) in pianists),
+    )

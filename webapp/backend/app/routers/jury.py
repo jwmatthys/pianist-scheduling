@@ -8,7 +8,10 @@ from sqlalchemy.orm import Session
 from .. import jury_schemas
 from ..database import get_db
 from ..services import jury
+from ..services import jury_results
+from ..services import jury_sync
 from ..services.jury import JuryDataError
+from ..services.jury_results import JuryGenerationError
 
 router = APIRouter(prefix="/api/jury", tags=["jury inputs"])
 
@@ -93,9 +96,37 @@ def synchronize_roster(db: Session = Depends(get_db)):
         raise _jury_error(error) from error
 
 
+@router.post("/synchronize", response_model=jury_schemas.JurySynchronizationSummary)
+def synchronize_with_accompanist(db: Session = Depends(get_db)):
+    try:
+        summary = jury_sync.sync_jury_with_accompanist(db)
+        db.commit()
+        return summary
+    except JuryDataError as error:
+        db.rollback()
+        raise _jury_error(error) from error
+    except Exception:
+        db.rollback()
+        raise
+
+
 @router.get("/entries", response_model=list[jury_schemas.JuryLessonEntryOut])
 def list_entries(db: Session = Depends(get_db)):
     return jury.list_entries(db)
+
+
+@router.post("/entries/assign-panels-by-instrument", response_model=jury_schemas.JuryPanelAutoAssignmentOut)
+def assign_panels_by_instrument(db: Session = Depends(get_db)):
+    try:
+        entries, assigned_count = jury.assign_unassigned_panels_by_instrument(db)
+        db.commit()
+        return jury_schemas.JuryPanelAutoAssignmentOut(
+            assigned_count=assigned_count,
+            entries=entries,
+        )
+    except JuryDataError as error:
+        db.rollback()
+        raise _jury_error(error) from error
 
 
 @router.patch("/entries/{source_lesson_uuid}", response_model=jury_schemas.JuryLessonEntryOut)
@@ -190,3 +221,60 @@ def readiness(db: Session = Depends(get_db)):
         return jury.readiness(db)
     except JuryDataError as error:
         raise _jury_error(error) from error
+
+
+def _generation_error(error: JuryGenerationError) -> HTTPException:
+    status = 409 if error.code in {
+        "JURY_NOT_READY",
+        "JURY_INPUT_REVISION_CHANGED",
+        "INPUT_REVISION_CHANGED",
+        "OPTIMIZER_PROVENANCE_MISMATCH",
+    } else 422
+    detail = {"code": error.code, "message": str(error)}
+    if error.readiness is not None:
+        detail["readiness"] = error.readiness.model_dump(mode="json")
+    return HTTPException(status_code=status, detail=detail)
+
+
+@router.post("/generate", response_model=jury_schemas.JuryScheduleViewOut, status_code=201)
+def generate_schedule(
+    payload: jury_schemas.JuryGenerateRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        result = jury_results.generate_schedule(
+            db,
+            expected_jury_input_revision=payload.expected_jury_input_revision,
+        )
+        db.commit()
+        return result
+    except JuryGenerationError as error:
+        db.rollback()
+        raise _generation_error(error) from error
+
+
+@router.get("/results/current", response_model=jury_schemas.JuryScheduleViewOut)
+def current_schedule(db: Session = Depends(get_db)):
+    result = jury_results.get_current_schedule(db)
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "JURY_RESULT_NOT_FOUND", "message": "No Jury schedule has been generated."},
+        )
+    return result
+
+
+@router.get("/results/history", response_model=list[jury_schemas.JuryScheduleHistoryItemOut])
+def schedule_history(db: Session = Depends(get_db)):
+    return jury_results.list_schedule_history(db)
+
+
+@router.get("/results/{result_uuid}", response_model=jury_schemas.JuryScheduleViewOut)
+def schedule_by_id(result_uuid: UUID, db: Session = Depends(get_db)):
+    result = jury_results.get_schedule_by_uuid(db, str(result_uuid))
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "JURY_RESULT_NOT_FOUND", "message": "Jury schedule result was not found."},
+        )
+    return result

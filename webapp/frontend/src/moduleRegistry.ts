@@ -18,16 +18,16 @@ export const SCHEDULING_MODULES: SchedulingModule[] = [
     availability: "available",
   },
   {
-    key: "clinical",
-    name: "Clinical Placements",
-    description: "Plan Music Therapy student placements with clinical sites.",
-    availability: "shell",
-  },
-  {
     key: "juries",
     name: "Performance Juries",
     description: "Configure lesson-based jury participation, panels, and pianist availability.",
     availability: "available",
+  },
+  {
+    key: "clinical",
+    name: "Clinical Placements",
+    description: "Plan Music Therapy student placements with clinical sites.",
+    availability: "shell",
   },
 ];
 

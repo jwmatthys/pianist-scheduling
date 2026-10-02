@@ -11,6 +11,7 @@ from ..services.module_lifecycle import (
     set_lesson_jury_required,
     synchronize_lesson_identity,
 )
+from ..services.jury_sync import sync_jury_with_accompanist
 
 router = APIRouter(prefix="/api/import", tags=["import"])
 
@@ -69,6 +70,7 @@ def commit(payload: schemas.ImportCommit, db: Session = Depends(get_db)):
             db.add(models.ImportProfile(name=payload.save_profile_name, mapping_json=mapping_json))
 
     bump_accompanist_revision(db)
+    sync_jury_with_accompanist(db)
     db.commit()
     return schemas.ImportCommitResult(created=len(lesson_dicts), skipped=len(warnings), warnings=warnings)
 

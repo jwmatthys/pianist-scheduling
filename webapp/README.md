@@ -2,9 +2,8 @@
 
 A local-first desktop application for university music-program scheduling.
 Accompanist Scheduling is the first module. The current React workflow,
-FastAPI/SQLite service, and scheduling behavior are retained while Tauri 2
-replaces Electron as the primary desktop shell. Electron remains available for
-side-by-side validation; the two desktop shells use separate local databases.
+Tauri 2 shell, and local FastAPI/SQLite service provide the supported desktop
+workflow. Scheduling data stays in the user's local application data.
 
 1. **Import** lesson data from a CSV/XLSX file with a column-mapping wizard
    (or add lessons manually in the schedule grid).
@@ -30,7 +29,7 @@ side-by-side validation; the two desktop shells use separate local databases.
 - `backend/` — FastAPI + SQLAlchemy + SQLite. Tauri launches the existing
    Python service as a loopback-only child process and bundles it as a local
    executable for production. SQLite is stored in the OS per-user app-data
-   folder; Electron keeps its own user-data path.
+   folder.
    The scheduling algorithm is
    ported from `generate_pianist_schedule.py` into
    `backend/app/services/scheduling.py`, operating on database rows instead
@@ -38,21 +37,19 @@ side-by-side validation; the two desktop shells use separate local databases.
    Accompanist persistence placeholder. Each active database represents one
    Scheduling Session; this does not introduce account or multi-tenant storage.
 - `frontend/` — Vite + React + TypeScript single-page app, packaged by Tauri
-   for Windows, macOS, and Linux. Electron remains a comparison build.
+   for Windows, macOS, and Linux.
 
 ## Build Desktop Installers
 
 Install frontend and backend dependencies as described in
 [`docs/BUILDING.md`](../docs/BUILDING.md). From `webapp/frontend`, use
-`npm run tauri:build` for the Tauri installer. Electron remains available with
-`npm run dist:linux`, `npm run dist:mac`, or `npm run dist:win` while parity is
-being validated. Build native installers on their target operating systems;
-signing credentials are not required for development builds.
+`npm run tauri:build` for the desktop installer. Build native installers on
+their target operating systems; signing credentials are not required for
+development builds.
 
 Tauri development uses `npm run tauri:dev`; it starts the local Python service
 itself. `npm run dev` remains available for browser-based frontend work, with
-the backend started separately. `npm run electron:dev` starts the retained
-Electron shell.
+the backend started separately.
 
 ## Running locally
 

@@ -33,11 +33,11 @@ type PanelDraft = {
 };
 
 const VIEWS: { id: SetupView; label: string }[] = [
-  { id: "panels", label: "Panels" },
-  { id: "lessons", label: "Lesson Entries" },
-  { id: "availability", label: "Pianist availability" },
-  { id: "schedule", label: "Schedule" },
   { id: "overview", label: "Overview" },
+  { id: "panels", label: "Panels" },
+  { id: "availability", label: "Pianist availability" },
+  { id: "lessons", label: "Lessons" },
+  { id: "schedule", label: "Schedule" },
 ];
 
 const EMPTY_PANEL: PanelDraft = {
@@ -119,7 +119,7 @@ function errorText(error: unknown) {
 }
 
 export function JurySetupPage() {
-  const [view, setView] = useState<SetupView>("panels");
+  const [view, setView] = useState<SetupView>("overview");
   const [finalization, setFinalization] = useState<AccompanistFinalizationState | null>(null);
   const [panels, setPanels] = useState<JuryPanel[]>([]);
   const [entries, setEntries] = useState<JuryLessonEntry[]>([]);
@@ -157,10 +157,11 @@ export function JurySetupPage() {
     : null;
   const selectedAvailability = selectedAvailabilityKey ? availabilityDrafts[selectedAvailabilityKey] : undefined;
 
-  async function loadAll() {
+  async function loadAll(synchronizeRoster = false) {
     setLoading(true);
     setError(null);
     try {
+      if (synchronizeRoster) await api.synchronizeJuryWithAccompanist();
       const nextFinalization = await api.getAccompanistFinalizationState();
       const nextPanels = await api.getJuryPanels();
       const nextEntries = await api.getJuryEntries();
@@ -213,7 +214,7 @@ export function JurySetupPage() {
   }
 
   useEffect(() => {
-    void loadAll();
+    void loadAll(true);
   }, []);
 
   async function refreshReadiness() {
@@ -221,6 +222,27 @@ export function JurySetupPage() {
       setReadiness(await api.getJuryReadiness());
     } catch (requestError) {
       setError(errorText(requestError));
+    }
+  }
+
+  async function activateView(nextView: SetupView) {
+    setView(nextView);
+    if (nextView !== "lessons" || loading || busy || !finalization?.current_result_uuid) return;
+
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await api.assignJuryPanelsByInstrument();
+      setEntries(result.entries);
+      await refreshReadiness();
+      if (result.assigned_count > 0) {
+        setNotice(`Assigned ${result.assigned_count} lesson${result.assigned_count === 1 ? "" : "s"} to matching Panels.`);
+      }
+    } catch (requestError) {
+      setError(errorText(requestError));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -533,7 +555,8 @@ export function JurySetupPage() {
             type="button"
             className={view === item.id ? "is-active" : ""}
             aria-current={view === item.id ? "page" : undefined}
-            onClick={() => setView(item.id)}
+            disabled={loading || busy}
+            onClick={() => void activateView(item.id)}
           >
             {item.label}
             {item.id === "lessons" && <span>{entries.length}</span>}
@@ -562,6 +585,7 @@ export function JurySetupPage() {
                     {panels.map((panel) => (
                       <li key={panel.panel_uuid}>
                         <strong>{panel.panel_name}</strong>
+                        {" "}
                         <span>{panel.jury_date ? new Date(`${panel.jury_date}T12:00:00`).toLocaleDateString(undefined, { dateStyle: "long" }) : "Date required"}</span>
                       </li>
                     ))}

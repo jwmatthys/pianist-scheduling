@@ -10,6 +10,7 @@ from ..services.module_lifecycle import (
     set_lesson_jury_required,
     synchronize_lesson_identity,
 )
+from ..services.jury_sync import sync_jury_with_accompanist
 from .. import module_models
 
 router = APIRouter(prefix="/api/lessons", tags=["lessons"])
@@ -31,6 +32,7 @@ def create_lesson(payload: schemas.LessonCreate, db: Session = Depends(get_db)):
     synchronize_lesson_identity(db, lesson, identity_fields_changed=True)
     set_lesson_jury_required(db, lesson.id, jury_required)
     bump_accompanist_revision(db)
+    sync_jury_with_accompanist(db)
     db.commit()
     db.refresh(lesson)
     return lesson_response(db, lesson)
@@ -62,6 +64,7 @@ def update_lesson(lesson_id: int, payload: schemas.LessonUpdate, db: Session = D
         changed = set_lesson_jury_required(db, lesson.id, jury_required) or changed
     if changed:
         bump_accompanist_revision(db)
+        sync_jury_with_accompanist(db)
     db.commit()
     db.refresh(lesson)
     return lesson_response(db, lesson)
@@ -84,6 +87,7 @@ def delete_lesson(lesson_id: int, db: Session = Depends(get_db)):
     if student_person_uuid:
         refresh_student_identity_state(db, student_person_uuid)
     bump_accompanist_revision(db)
+    sync_jury_with_accompanist(db)
     db.commit()
     return {"ok": True}
 
@@ -101,5 +105,6 @@ def delete_all_lessons(db: Session = Depends(get_db)):
     db.query(models.Lesson).delete()
     if lesson_ids:
         bump_accompanist_revision(db)
+        sync_jury_with_accompanist(db)
     db.commit()
     return {"ok": True}

@@ -1,6 +1,6 @@
 # Module Architecture
 
-**Status:** Canonical product/module boundary rules. The detailed approved session, availability, reporting, and migration design is in [PRODUCT-MODULE-ARCHITECTURE.md](PRODUCT-MODULE-ARCHITECTURE.md); implementation sequencing is maintained in [TAURI-MIGRATION-PLAN.md](TAURI-MIGRATION-PLAN.md).
+**Status:** Canonical product/module boundary rules. Detailed session, availability, and reporting decisions are in [PRODUCT-MODULE-ARCHITECTURE.md](PRODUCT-MODULE-ARCHITECTURE.md); current runtime and schema details are in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Product and Session
 
@@ -19,7 +19,7 @@ Music Program Scheduler
       -> Performance Juries (lesson-based setup and readiness)
 ```
 
-The Accompanist module has its own header, return-to-dashboard control, and internal Import Lessons, Pianists & Availability, Schedule, and Reports navigation. Session actions do not remain in that module header. Performance Juries provides lesson-based setup and readiness tabs in Panels, Lesson Entries, Pianist Availability, Schedule, and Overview order; Panels is the initial view. Schedule generation remains unimplemented. Clinical Placements remains a minimal honest shell and must not display fake workflow state or statistics. Replacing/restoring a session returns the user to the dashboard. Export does not change navigation state.
+The Accompanist module has its own header, return-to-dashboard control, and internal Import Lessons, Pianists & Availability, Schedule, and Reports navigation. Session actions do not remain in that module header. Performance Juries provides lesson-based setup and readiness tabs in Overview, Panels, Pianist Availability, Lessons, and Schedule order; Overview is the initial view. Schedule generation is available through the backend module API; the Schedule UI remains a placeholder. Clinical Placements remains a minimal honest shell and must not display fake workflow state or statistics. Replacing/restoring a session returns the user to the dashboard. Export does not change navigation state.
 
 ## Module Ownership
 
@@ -29,7 +29,7 @@ Each module owns its inputs, persistence records/profiles, constraints, validati
 
 - **Accompanist Scheduling:** lessons, the authoritative Needs pianist? Boolean, optional Specific pianist name, source-owned Jury Required value, pianist profiles/availability, workload, fit/scoring, overlap and manual-assignment policy, assignments, and accompanist reports.
 - **Clinical Placements:** placement requirements/history, clinical sites and capacity, transportation, placement validation/scoring, and placement reports. Its optimizer must not be designed until detailed constraints and policies are gathered from the actual Music Therapy workflow owner.
-- **Performance Juries:** lesson-based entries/roster, manually assigned Panels, one Scheduling Date per Panel, duration/break/meal configuration, date-scoped pianist Availability Windows, readiness validation, and eventual Jury-specific optimizer/reports. Jury Required and Panel selection belong to each source lesson entry, not globally to a student. The standalone scheduler is characterized in [JURY-SCHEDULER-CHARACTERIZATION.md](JURY-SCHEDULER-CHARACTERIZATION.md); its optimizer is not integrated.
+- **Performance Juries:** lesson-based entries/roster, manually assigned Panels, one Scheduling Date per Panel, duration/break/meal configuration, date-scoped pianist Availability Windows, readiness validation, a pure-domain optimizer core, persisted typed schedule results, dependency/staleness tracking, and Jury-owned reports. Jury Required and Panel selection belong to each source lesson entry, not globally to a student. The standalone scheduler remains characterized and unused; the domain and integration boundaries are documented in [JURY-OPTIMIZER-CONTRACT.md](JURY-OPTIMIZER-CONTRACT.md). Schedule UI/manual editing/finalization remain unimplemented.
 
 Never create a universal optimizer, universal assignment/schedule type, giant universal Person/Student record, or one universal spreadsheet schema.
 
