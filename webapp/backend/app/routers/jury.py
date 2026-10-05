@@ -1,13 +1,15 @@
 from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
+from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import jury_schemas
 from ..database import get_db
-from ..services import jury, jury_results
+from ..services import jury, jury_panel_importer, jury_results
+from ..services.jury_panel_importer import JuryPanelImportError
 from ..services.jury import JuryDataError
 from ..services.jury_results import JuryGenerationError
 
@@ -56,6 +58,51 @@ def create_panel(payload: jury_schemas.JuryPanelFields, db: Session = Depends(ge
     except IntegrityError as error:
         db.rollback()
         raise HTTPException(status_code=409, detail={"code": "DUPLICATE_PANEL_NAME", "message": "A Panel with this name already exists."}) from error
+
+
+def _import_http_error(error: JuryPanelImportError) -> HTTPException:
+    status = 413 if error.code == "FILE_TOO_LARGE" else 400
+    return HTTPException(status, detail={"code": error.code, "message": str(error), "issues": error.issues})
+
+
+async def _read_upload(file: UploadFile) -> bytes:
+    content = await file.read(jury_panel_importer.MAX_UPLOAD_BYTES + 1)
+    if len(content) > jury_panel_importer.MAX_UPLOAD_BYTES:
+        raise JuryPanelImportError("FILE_TOO_LARGE", "Jury Panel files must be 25 MB or smaller.")
+    return content
+
+
+@router.post("/panels/import/inspect", response_model=jury_panel_importer.JuryPanelImportInspection)
+async def inspect_panel_import(file: UploadFile = File(...), sheet_name: str | None = Form(default=None)):
+    try:
+        return jury_panel_importer.inspect_file(file.filename or "", await _read_upload(file), sheet_name or None)
+    except JuryPanelImportError as error:
+        raise _import_http_error(error) from error
+
+
+@router.post("/panels/import/apply", response_model=jury_panel_importer.JuryPanelImportResult)
+async def apply_panel_import(
+    file: UploadFile = File(...),
+    mapping: str = Form(...),
+    sheet_name: str | None = Form(default=None),
+    db: Session = Depends(get_db),
+):
+    try:
+        try:
+            parsed = jury_panel_importer.JuryPanelImportMapping.model_validate_json(mapping)
+        except ValidationError as error:
+            raise JuryPanelImportError("INVALID_MAPPING", "The column mapping is not valid.") from error
+        result = jury_panel_importer.apply_import(
+            db, file.filename or "", await _read_upload(file), sheet_name or None, parsed
+        )
+        db.commit()
+        return result
+    except JuryPanelImportError as error:
+        db.rollback()
+        raise _import_http_error(error) from error
+    except Exception:
+        db.rollback()
+        raise
 
 
 @router.put("/panels/{panel_uuid}", response_model=jury_schemas.JuryPanelOut)

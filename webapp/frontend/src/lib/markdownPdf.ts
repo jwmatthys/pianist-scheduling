@@ -5,6 +5,7 @@ const BODY_FONT_SIZE = 10;
 
 type MarkdownBlock = {
   text: string;
+  boldPrefix: string;
   fontSize: number;
   bold: boolean;
   color: [number, number, number];
@@ -47,9 +48,10 @@ function markdownBlocks(markdown: string, extraPageBreakHeadings: Set<string>): 
       continue;
     }
 
-    const heading = /^(#{1,3})\s+(.+)$/.exec(line);
+    const heading = /^(#{1,4})\s+(.+)$/.exec(line);
     const bullet = /^[-*+]\s+(.+)$/.exec(line);
     let text = line;
+    let boldPrefix = "";
     let fontSize = BODY_FONT_SIZE;
     let bold = false;
     let color: [number, number, number] = [31, 41, 51];
@@ -62,21 +64,24 @@ function markdownBlocks(markdown: string, extraPageBreakHeadings: Set<string>): 
       text = plainText(heading[2]);
       const level = heading[1].length;
       fontSize = level === 1 ? 18 : level === 2 ? 14 : 11;
-      pageBreakBefore = level === 2 && (SECTION_PAGE_BREAKS.has(text) || extraPageBreakHeadings.has(text));
+      pageBreakBefore = level <= 2 && (SECTION_PAGE_BREAKS.has(text) || extraPageBreakHeadings.has(text));
       bold = true;
       color = [31, 78, 121];
       gapBefore = Math.max(gapBefore, level === 1 ? 8 : 10);
       gapAfter = level === 1 ? 8 : 5;
-    } else if (bullet) {
-      text = `- ${plainText(bullet[1])}`;
-      indent = 12;
-      gapAfter = 2;
     } else {
-      text = plainText(line);
+      const content = bullet ? bullet[1] : line;
+      const lead = /^\*\*(.+?)\*\*(.*)$/.exec(content);
+      if (lead) {
+        boldPrefix = plainText(lead[1]);
+        text = plainText(lead[2]).trim();
+      } else {
+        text = plainText(content);
+      }
       gapAfter = 2;
     }
 
-    blocks.push({ text, fontSize, bold, color, indent, gapBefore, gapAfter, pageBreakBefore });
+    blocks.push({ text, boldPrefix, fontSize, bold, color, indent, gapBefore, gapAfter, pageBreakBefore });
     pendingGap = 0;
     hasContent = true;
   }
@@ -108,14 +113,46 @@ export function renderMarkdownToPdf(markdown: string, pdf: jsPDF, options: Markd
     }
     const lineHeight = block.fontSize * 1.4;
     y += block.gapBefore;
-    const wrapped = pdf.splitTextToSize(block.text, textWidth - block.indent);
-    pdf.setFont("helvetica", block.bold ? "bold" : "normal");
     pdf.setFontSize(block.fontSize);
     pdf.setTextColor(...block.color);
+    const x = PAGE_MARGIN + block.indent;
+    const width = textWidth - block.indent;
+
+    if (block.boldPrefix) {
+      pdf.setFont("helvetica", "bold");
+      const prefixWidth = pdf.getTextWidth(`${block.boldPrefix} `);
+      let remaining = block.text;
+      const firstLine: string = remaining
+        ? (pdf.splitTextToSize(remaining, Math.max(width - prefixWidth, 20)) as string[])[0] ?? ""
+        : "";
+      remaining = remaining.slice(firstLine.length).trim();
+      ensurePage(lineHeight);
+      pdf.setFont("helvetica", "bold");
+      pdf.text(block.boldPrefix, x, y);
+      if (firstLine) {
+        pdf.setFont("helvetica", "normal");
+        pdf.text(firstLine, x + prefixWidth, y);
+      }
+      y += lineHeight;
+      pageHasContent = true;
+      if (remaining) {
+        pdf.setFont("helvetica", "normal");
+        for (const line of pdf.splitTextToSize(remaining, width)) {
+          ensurePage(lineHeight);
+          pdf.text(line, x, y);
+          y += lineHeight;
+        }
+      }
+      y += block.gapAfter;
+      continue;
+    }
+
+    const wrapped = pdf.splitTextToSize(block.text, width);
+    pdf.setFont("helvetica", block.bold ? "bold" : "normal");
 
     for (const line of wrapped) {
       ensurePage(lineHeight);
-      pdf.text(line, PAGE_MARGIN + block.indent, y);
+      pdf.text(line, x, y);
       y += lineHeight;
       pageHasContent = true;
     }

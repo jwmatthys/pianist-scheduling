@@ -8,7 +8,6 @@ The current production module schedules accompanists for student lessons.
 
 Planned future modules include:
 - Music Therapy Clinical Placements
-- Performance Jury Scheduling
 
 Other music-program scheduling modules may be added later.
 
@@ -17,7 +16,6 @@ Do not treat this application internally as only an "Accompanist Scheduler."
 The accompanist scheduler is a module within the larger Music Program Scheduler product.
 
 One Scheduling Session represents exactly one institution/program and one academic term. “Project” is a user-facing synonym, not a separate persisted entity. Initially, only one session/database is active at a time; do not build an in-app session history library.
-
 
 ## Core Architectural Principle
 
@@ -51,7 +49,6 @@ Shared concepts may include:
 
 Keep module-specific concepts inside their modules.
 
-
 ## Application Structure
 
 Prefer conceptually:
@@ -80,7 +77,6 @@ Major scheduling modules should be separate workflows/modules.
 Tabs may be used INSIDE modules.
 
 Do not model the major scheduling modules merely as tabs of one universal scheduler.
-
 
 ## Shared vs Module-Specific Data
 
@@ -117,7 +113,6 @@ Keep scheduling logic independent of:
 
 If implemented in Rust, prefer pure Tauri-independent solver/domain crates.
 
-
 ## Cross-Module Data
 
 Modules may consume finalized results from other modules.
@@ -132,10 +127,9 @@ Avoid tightly coupling one module's implementation directly to another module.
 
 Represent result lifecycle internally as draft/finalized/superseded while keeping user-facing labels simple. If a finalized result consumed by another module changes, mark dependent results potentially stale and surface that state. Use structured, versioned result contracts rather than spreadsheet handoffs.
 
-
 ## Sessions and Academic Terms
 
-Each Scheduling Session is scoped to one academic term and one institution/program display context. Session metadata includes an internal UUID, institution display name, program display name, term display label, optional year/start/end dates, and created/modified timestamps. Exact term dates and timezone are not required initially.
+Each Scheduling Session is scoped to one academic term and one institution/program display context. Session metadata includes an internal UUID, institution display name, program display name, term display label, and created/modified timestamps. Enter all term information, including the year if needed, in the term display label; session creation and editing do not collect a separate year or start/end dates.
 
 Examples:
 - Fall 2026
@@ -330,8 +324,7 @@ Performance Jury Scheduling is downstream of Accompanist Scheduling.
 
 Where applicable, Jury Scheduling should consume authoritative student,
 lesson, and finalized pianist-assignment information produced by the
-Accompanist module rather than requiring users to enter or import the same
-information again.
+Accompanist module rather than requiring users to enter or import the same information again.
 
 Accompanist Scheduling owns accompanist assignments.
 

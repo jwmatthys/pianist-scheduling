@@ -56,8 +56,7 @@ export function ReportsPage() {
     <div className="page reports-page">
       <h2>Reports</h2>
       <p className="muted">
-        Generate the same pianist / instructor / student Markdown schedule as
-        <code> generate_lesson_markdown.py</code>, based on the current assignments.
+        Generate a report from the current saved lesson roster.
       </p>
       <div className="reports-actions">
         <button className="primary-btn" onClick={generate} disabled={busy}>

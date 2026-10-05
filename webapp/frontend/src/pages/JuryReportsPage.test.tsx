@@ -5,6 +5,7 @@ import type { JuryScheduleResult } from "../lib/types";
 const mocks = vi.hoisted(() => ({
   getCurrentJurySchedule: vi.fn(),
   getJuryEntries: vi.fn(),
+  getJuryPanels: vi.fn(),
   createMarkdownPdf: vi.fn(),
   saveBinaryFile: vi.fn(),
   saveTextFile: vi.fn(),
@@ -14,6 +15,7 @@ vi.mock("../lib/api", () => ({
   api: {
     getCurrentJurySchedule: mocks.getCurrentJurySchedule,
     getJuryEntries: mocks.getJuryEntries,
+    getJuryPanels: mocks.getJuryPanels,
   },
 }));
 vi.mock("../lib/markdownPdf", () => ({ createMarkdownPdf: mocks.createMarkdownPdf }));
@@ -121,6 +123,10 @@ describe("Jury reports", () => {
     vi.resetAllMocks();
     mocks.getCurrentJurySchedule.mockResolvedValue(currentSchedule());
     mocks.getJuryEntries.mockResolvedValue(currentEntries);
+    mocks.getJuryPanels.mockResolvedValue([
+      { panel_uuid: "panel-voice", room: "Voice Studio" },
+      { panel_uuid: "panel-cello", room: "" },
+    ]);
     mocks.createMarkdownPdf.mockResolvedValue(new Blob(["pdf"], { type: "application/pdf" }));
     mocks.saveBinaryFile.mockResolvedValue(true);
     mocks.saveTextFile.mockResolvedValue(true);
@@ -148,9 +154,11 @@ describe("Jury reports", () => {
 
     await waitFor(() => expect(mocks.saveTextFile).toHaveBeenCalled());
     const markdown = mocks.saveTextFile.mock.calls[0][0] as string;
-    expect(markdown.indexOf("## Schedule by Pianist")).toBeGreaterThan(markdown.indexOf("## Cello Panel"));
-    expect(markdown).toContain("### Synthetic Pianist");
-    expect(markdown).toContain("### No Pianist Assigned");
+    expect(markdown.indexOf("# Schedule by Pianist")).toBeGreaterThan(markdown.indexOf("## Cello Panel"));
+    expect(markdown).toContain("## Synthetic Pianist\n\n### October 20, 2026\n\n- **9:00 AM-9:30 AM** - Synthetic Voice Student (A.B!) - Voice - Voice Studio");
+    expect(markdown).not.toContain("No Pianist Assigned");
+    expect(markdown).toContain("## Voice Panel - October 20, 2026 - Voice Studio");
+    expect(markdown).toContain("## Cello Panel - October 21, 2026\n");
     expect(markdown).toContain("Synthetic Voice Student (A.B!) - Voice - Pianist: Synthetic Pianist");
   });
 

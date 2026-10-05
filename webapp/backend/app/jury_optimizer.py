@@ -89,6 +89,7 @@ class DeterministicJuryOptimizer:
         diagnostics: list[OptimizerDiagnostic] = []
         conflicts: list[ConflictExplanation] = []
         bookings: dict[tuple[UUID, date], list[ScheduledLesson]] = {}
+        student_bookings: dict[tuple[UUID, date], list[ScheduledLesson]] = {}
 
         while any(state.lessons for state in panel_states):
             candidates = []
@@ -100,6 +101,7 @@ class DeterministicJuryOptimizer:
                         state,
                         windows_by_person_date,
                         bookings,
+                        student_bookings,
                     )
                     if isinstance(placement, _PlacementFailure):
                         unscheduled.append(self._unscheduled(fact, placement.reason))
@@ -114,6 +116,14 @@ class DeterministicJuryOptimizer:
                                 message=self._reason_message(placement.reason),
                                 source_lesson_uuids=(fact.source_lesson_uuid, *placement.blocking_lesson_uuids),
                                 person_uuid=fact.assigned_pianist.person_uuid if fact.assigned_pianist else None,
+                                panel_uuid=state.panel_uuid,
+                            ))
+                        if placement.reason == UnscheduledReasonCode.STUDENT_CONFLICT:
+                            conflicts.append(ConflictExplanation(
+                                code=placement.reason.value,
+                                message=self._reason_message(placement.reason),
+                                source_lesson_uuids=(fact.source_lesson_uuid, *placement.blocking_lesson_uuids),
+                                person_uuid=fact.student_person_uuid,
                                 panel_uuid=state.panel_uuid,
                             ))
                         state.lessons.remove(fact)
@@ -147,6 +157,7 @@ class DeterministicJuryOptimizer:
                 pianist_person_uuid=fact.assigned_pianist.person_uuid if fact.assigned_pianist else None,
             )
             schedule_entries.append(scheduled)
+            student_bookings.setdefault((scheduled.student_person_uuid, scheduled.jury_date), []).append(scheduled)
             if scheduled.pianist_person_uuid is not None:
                 bookings.setdefault((scheduled.pianist_person_uuid, scheduled.jury_date), []).append(scheduled)
             state.cursor_minute = placement.end_minute
@@ -193,17 +204,21 @@ class DeterministicJuryOptimizer:
         state: _PanelState,
         windows_by_person_date: dict[tuple[UUID, date], list[JuryAvailabilityWindow]],
         bookings: dict[tuple[UUID, date], list[ScheduledLesson]],
+        student_bookings: dict[tuple[UUID, date], list[ScheduledLesson]],
     ) -> _Placement | _PlacementFailure:
         duration = state.timing.jury_length_minutes
         pianist_uuid = fact.assigned_pianist.person_uuid if fact.assigned_pianist else None
         availability = windows_by_person_date.get((pianist_uuid, state.jury_date), ()) if pianist_uuid else ()
         pianist_bookings = bookings.get((pianist_uuid, state.jury_date), ()) if pianist_uuid else ()
+        own_bookings = student_bookings.get((fact.student_person_uuid, state.jury_date), ())
         candidate = state.cursor_minute
         juries_since_break = state.juries_since_break
         events: list[ScheduleEntry] = []
         meal_added = False
         had_pianist_conflict = False
+        had_student_conflict = False
         blocking_lessons: set[UUID] = set()
+        blocking_student_lessons: set[UUID] = set()
         crossed_day_bound = False
 
         while candidate + duration <= MINUTES_PER_DAY:
@@ -263,6 +278,16 @@ class DeterministicJuryOptimizer:
                     candidate = max(booking.end_minute for booking in overlapping)
                     continue
 
+            student_overlap = [
+                booking for booking in own_bookings
+                if candidate < booking.end_minute and booking.start_minute < candidate + duration
+            ]
+            if student_overlap:
+                had_student_conflict = True
+                blocking_student_lessons.update(booking.source_lesson_uuid for booking in student_overlap)
+                candidate = max(booking.end_minute for booking in student_overlap)
+                continue
+
             return _Placement(
                 start_minute=candidate,
                 end_minute=candidate + duration,
@@ -274,6 +299,11 @@ class DeterministicJuryOptimizer:
             crossed_day_bound = True
         if had_pianist_conflict:
             reason = UnscheduledReasonCode.FIXED_PIANIST_CONFLICT
+        elif had_student_conflict:
+            return _PlacementFailure(
+                UnscheduledReasonCode.STUDENT_CONFLICT,
+                tuple(sorted(blocking_student_lessons, key=lambda item: item.hex)),
+            )
         elif pianist_uuid is not None and not any(
             window.end_minute - max(window.start_minute, state.timing.earliest_start_minute) >= duration
             for window in availability
@@ -310,6 +340,7 @@ class DeterministicJuryOptimizer:
         return {
             UnscheduledReasonCode.NO_FEASIBLE_INTERVAL: "No interval satisfies this Panel's timing and break constraints.",
             UnscheduledReasonCode.FIXED_PIANIST_CONFLICT: "The assigned Pianist is occupied during every remaining legal interval on this Panel date.",
+            UnscheduledReasonCode.STUDENT_CONFLICT: "The Student is already scheduled for another Jury during every remaining legal interval on this Panel date.",
             UnscheduledReasonCode.AVAILABILITY_TOO_SHORT: "The assigned Pianist's Jury Availability Windows do not contain an interval long enough for this Jury.",
             UnscheduledReasonCode.DAY_BOUND_EXCEEDED: "No legal interval remains before the end of this Jury day.",
         }[reason]

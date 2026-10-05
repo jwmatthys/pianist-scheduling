@@ -56,6 +56,7 @@ The result carries source result/session identity and source/Jury input revision
 - Jury duration equals the configured positive integer duration, including 60 minutes.
 - No scheduled entry or break extends beyond minute 1440. Do not schedule after the Jury day.
 - Only inputs approved by Jury readiness are accepted.
+- A student (by `student_person_uuid`) is never scheduled for overlapping Juries on the same date, across Panels. A lesson that cannot avoid this is unscheduled with reason `student_conflict`.
 
 ### Outcome Constraints
 

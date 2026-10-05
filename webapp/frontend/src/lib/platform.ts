@@ -1,8 +1,19 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { homeDir } from "@tauri-apps/api/path";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readFile, writeFile } from "@tauri-apps/plugin-fs";
 
 let apiBasePromise: Promise<string> | undefined;
+
+async function dialogStart(fileName?: string): Promise<string | undefined> {
+  try {
+    const home = (await homeDir()).replace(/[\\/]+$/, "");
+    if (!fileName) return home;
+    return `${home}${home.includes("\\") ? "\\" : "/"}${fileName}`;
+  } catch {
+    return fileName;
+  }
+}
 
 export function getApiBase(): Promise<string> {
   if (!apiBasePromise) {
@@ -24,6 +35,7 @@ export async function chooseLocalFile(
   if (isTauri()) {
     const selected = await open({
       multiple: false,
+      defaultPath: await dialogStart(),
       filters: [{ name: description, extensions }],
     });
     if (!selected || Array.isArray(selected)) return null;
@@ -47,6 +59,7 @@ export async function chooseSessionArchive(): Promise<Uint8Array | null> {
   if (isTauri()) {
     const selected = await open({
       multiple: false,
+      defaultPath: await dialogStart(),
       filters: [{ name: "Music Program Scheduler Session", extensions: ["mpsession"] }],
     });
     if (!selected || Array.isArray(selected)) return null;
@@ -70,7 +83,7 @@ export async function chooseSessionArchive(): Promise<Uint8Array | null> {
 export async function saveSessionArchive(contents: Uint8Array): Promise<void> {
   if (isTauri()) {
     const destination = await save({
-      defaultPath: "music-program-session.mpsession",
+      defaultPath: await dialogStart("music-program-session.mpsession"),
       filters: [{ name: "Music Program Scheduler Session", extensions: ["mpsession"] }],
     });
     if (destination) await writeFile(destination, contents);
@@ -109,7 +122,7 @@ export async function saveBinaryFile(
 ): Promise<boolean> {
   if (isTauri()) {
     const destination = await save({
-      defaultPath: suggestedName,
+      defaultPath: await dialogStart(suggestedName),
       filters: [{ name: description, extensions: [extension] }],
     });
     if (!destination) return false;

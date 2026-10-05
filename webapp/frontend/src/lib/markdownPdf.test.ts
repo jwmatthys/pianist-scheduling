@@ -19,6 +19,7 @@ function fakePdf(pageWidth = 612, pageHeight = 792) {
       pages[currentPage] = [];
     }),
     setFont: vi.fn(),
+    getTextWidth: (text: string) => text.length * 5,
     setFontSize: vi.fn(),
     setTextColor: vi.fn(),
     splitTextToSize: (text: string, width: number) => {

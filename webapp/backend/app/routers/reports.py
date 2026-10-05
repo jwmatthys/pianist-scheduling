@@ -14,4 +14,4 @@ def markdown_report(db: Session = Depends(get_db)):
     lessons = db.query(models.Lesson).all()
     pianists = db.query(models.Pianist).all()
     pianists_by_id = {p.id: p for p in pianists}
-    return reports.build_markdown(lessons, pianists_by_id, source_name="Pianist Scheduling Webapp")
+    return reports.build_markdown(lessons, pianists_by_id)

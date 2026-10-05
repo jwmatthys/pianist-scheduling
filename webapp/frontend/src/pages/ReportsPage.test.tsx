@@ -33,6 +33,11 @@ describe("Accompanist report exports", () => {
     mocks.createMarkdownPdf.mockResolvedValue(new Blob(["synthetic PDF bytes"], { type: "application/pdf" }));
   });
 
+  it("describes the report using the saved lesson roster", () => {
+    render(<ReportsPage />);
+    expect(screen.getByText("Generate a report from the current saved lesson roster.")).toBeTruthy();
+  });
+
   it("opens the Markdown save flow with the generated Markdown and suggested filename", async () => {
     render(<ReportsPage />);
     await generateReport();

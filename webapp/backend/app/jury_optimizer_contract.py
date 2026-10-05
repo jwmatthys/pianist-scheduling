@@ -232,6 +232,7 @@ class JuryOptimizerInput:
 class UnscheduledReasonCode(StrEnum):
     NO_FEASIBLE_INTERVAL = "no_feasible_interval"
     FIXED_PIANIST_CONFLICT = "fixed_pianist_conflict"
+    STUDENT_CONFLICT = "student_conflict"
     AVAILABILITY_TOO_SHORT = "availability_too_short"
     DAY_BOUND_EXCEEDED = "day_bound_exceeded"
 

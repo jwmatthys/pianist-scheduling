@@ -127,6 +127,25 @@ class JuryOptimizerBehaviorContractTests(unittest.TestCase):
         self.assertEqual(len(result.conflict_explanations), 1)
         self.assertEqual(result.conflict_explanations[0].person_uuid, fixture.pianist_uuids[0])
 
+    def test_same_student_is_never_scheduled_in_two_places_at_once(self):
+        fixture = make_fixture("multiple-panels")
+        student_uuid = fixture.inputs.accompanist_assignments[0].student_person_uuid
+        inputs = replace(
+            fixture.inputs,
+            accompanist_assignments=tuple(
+                replace(fact, student_person_uuid=student_uuid, pianist_required=False, assigned_pianist=None)
+                for fact in fixture.inputs.accompanist_assignments
+            ),
+            jury_lesson_entries=tuple(
+                replace(entry, student_person_uuid=student_uuid) for entry in fixture.inputs.jury_lesson_entries
+            ),
+        )
+        result = self.optimize(inputs)
+
+        self.assertEqual(len(result.scheduled_lessons), 2)
+        first, second = sorted(result.scheduled_lessons, key=lambda entry: entry.start_minute)
+        self.assertFalse(_overlaps(first.start_minute, first.end_minute, second.start_minute, second.end_minute))
+
     def test_panel_assignment_and_date_are_authoritative(self):
         fixture = make_fixture("multiple-panels")
         result = self.optimize(fixture.inputs)

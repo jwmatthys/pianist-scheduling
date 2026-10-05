@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { JuryPanelImportDialog } from "../components/JuryPanelImportDialog";
 import { api } from "../lib/api";
 import type {
   JuryAvailability,
@@ -552,7 +553,10 @@ export function JurySetupPage() {
                   <h3>Jury Panels</h3>
                   <p>Define start preferences, Jury duration, periodic breaks, and meal intervals.</p>
                 </div>
-                <button type="button" className="primary-btn" onClick={openNewPanel}>Add Jury Panel</button>
+                <div className="jury-panel-actions" style={{ display: "flex", gap: "0.5rem" }}>
+                  <JuryPanelImportDialog onApplied={async (message) => { await loadAll(); setNotice(message); }} />
+                  <button type="button" className="primary-btn" onClick={openNewPanel}>Add Jury Panel</button>
+                </div>
               </div>
               {panels.length === 0 ? (
                 <div className="jury-empty-state">

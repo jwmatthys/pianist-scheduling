@@ -6,6 +6,7 @@
   "permissions": [
     "dialog:allow-open",
     "dialog:allow-save",
+    "core:path:allow-resolve-directory",
     "fs:allow-read-file",
     "fs:allow-write-file"
   ]

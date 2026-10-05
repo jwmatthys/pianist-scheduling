@@ -33,8 +33,5 @@ export const SCHEDULING_MODULES: SchedulingModule[] = [
 
 export function formatSessionIdentity(session: SchedulingSession | null): string {
   if (!session) return "Loading active session";
-  const term = session.year && !session.term_label.includes(String(session.year))
-    ? `${session.term_label} ${session.year}`
-    : session.term_label;
-  return `${session.institution_name} · ${session.program_name} · ${term}`;
+  return `${session.institution_name} · ${session.program_name} · ${session.term_label}`;
 }

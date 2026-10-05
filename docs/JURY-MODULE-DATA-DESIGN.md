@@ -94,6 +94,8 @@ The only declarations required for readiness are those of pianists referenced by
 
 ## 10. Panel Date
 
+Panels may be imported locally from CSV/XLSX/XLS ("Import jury panels"; `services/jury_panel_importer.py`). The user maps file columns to Schedule Date, Panel Name, Room, Earliest Start, Preferred Start, Jury Length, Break Needed, Break Every X Juries, Break Length, Meal Break Needed, Meal Start, and Meal End. After a destructive-action confirmation, one atomic transaction deletes all existing Panels and clears every lesson Panel assignment, then creates the imported Panels; any invalid row aborts the import with no change. Break/meal values are ignored when their "needed" flag is No.
+
 Each Panel has exactly one required `jury_date`; different Panels may occur on different dates. No Panel spans more than one day. A missing date blocks readiness. This supports multiple one-day Panels without introducing multi-day Panel schedules, timezone handling, or cross-panel booking logic. The legacy `jury_configurations.jury_date` column is retained only as the schema-v8 migration source for backfilling existing Panels and is no longer an active setting.
 
 ## 11. Readiness Validation

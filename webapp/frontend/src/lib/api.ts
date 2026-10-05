@@ -15,6 +15,9 @@ import type {
   JuryLessonEntry,
   JuryPanel,
   JuryPanelInput,
+  JuryPanelImportInspection,
+  JuryPanelImportMapping,
+  JuryPanelImportResult,
   JuryReadiness,
   JuryScheduleHistoryItem,
   JuryScheduleResult,
@@ -38,7 +41,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       detail = typeof body.detail === "string"
         ? body.detail
         : body.detail?.message
-          ? `${body.detail.code ?? "Request failed"}: ${body.detail.message}`
+          ? `${body.detail.code ?? "Request failed"}: ${body.detail.message}${
+              Array.isArray(body.detail.issues) && body.detail.issues.length ? `\n${body.detail.issues.join("\n")}` : ""
+            }`
           : JSON.stringify(body.detail ?? body);
     } catch {
       /* ignore */
@@ -173,6 +178,19 @@ export const api = {
     }),
   deleteJuryPanel: (panelUuid: string) =>
     request<void>(`/api/jury/panels/${encodeURIComponent(panelUuid)}`, { method: "DELETE" }),
+  inspectJuryPanelFile: (file: File, sheetName?: string | null) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (sheetName) form.append("sheet_name", sheetName);
+    return request<JuryPanelImportInspection>("/api/jury/panels/import/inspect", { method: "POST", body: form });
+  },
+  applyJuryPanelImport: (file: File, sheetName: string | null, mapping: JuryPanelImportMapping) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (sheetName) form.append("sheet_name", sheetName);
+    form.append("mapping", JSON.stringify(mapping));
+    return request<JuryPanelImportResult>("/api/jury/panels/import/apply", { method: "POST", body: form });
+  },
   synchronizeJuryRoster: () =>
     request<JuryLessonEntry[]>("/api/jury/roster/synchronize", { method: "POST" }),
   synchronizeJuryWithAccompanist: () =>

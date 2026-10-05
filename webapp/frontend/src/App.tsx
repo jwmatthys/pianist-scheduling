@@ -35,14 +35,10 @@ function App() {
     event.preventDefault();
     if (!editingSession && !window.confirm("Replace the active session? A local recovery snapshot will be created before replacement.")) return;
     const form = new FormData(event.currentTarget);
-    const year = String(form.get("year") ?? "").trim();
     const data: SchedulingSessionInput = {
       institution_name: String(form.get("institution_name") ?? "").trim(),
       program_name: String(form.get("program_name") ?? "").trim(),
       term_label: String(form.get("term_label") ?? "").trim(),
-      year: year ? Number(year) : null,
-      start_date: String(form.get("start_date") ?? "") || null,
-      end_date: String(form.get("end_date") ?? "") || null,
     };
     setBusy(true);
     setSessionError(null);
@@ -148,20 +144,6 @@ function App() {
             Term label
             <input name="term_label" required maxLength={100} placeholder="Fall 2027" defaultValue={editingSession ? session?.term_label : undefined} />
           </label>
-          <label>
-            Year <span>(optional)</span>
-            <input name="year" type="number" min={1000} max={9999} defaultValue={editingSession ? session?.year ?? undefined : undefined} />
-          </label>
-          <div className="session-date-fields">
-            <label>
-              Start date <span>(optional)</span>
-              <input name="start_date" type="date" defaultValue={editingSession ? session?.start_date ?? "" : ""} />
-            </label>
-            <label>
-              End date <span>(optional)</span>
-              <input name="end_date" type="date" defaultValue={editingSession ? session?.end_date ?? "" : ""} />
-            </label>
-          </div>
           <p className="dialog-note">
             {editingSession
               ? "Session identity and scheduling data will be preserved."

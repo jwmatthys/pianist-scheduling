@@ -34,8 +34,10 @@ function eventMarkdown(event: JuryScheduleEvent, entriesByLesson: Map<string, { 
 function reportMarkdown(
   result: JuryScheduleResult,
   entries: Awaited<ReturnType<typeof api.getJuryEntries>>,
+  panels: Awaited<ReturnType<typeof api.getJuryPanels>>,
 ) {
   const entriesByLesson = new Map(entries.map((entry) => [entry.source_lesson_uuid, entry]));
+  const roomByPanel = new Map(panels.map((panel) => [panel.panel_uuid, panel.room.trim()]));
   const lines = [
     "# Jury Schedule",
     "",
@@ -46,7 +48,8 @@ function reportMarkdown(
   lines.push("");
 
   for (const [index, panel] of result.panel_timelines.entries()) {
-    const heading = `${panel.panel_name} - ${formatDate(panel.jury_date)}`;
+    const room = roomByPanel.get(panel.panel_uuid);
+    const heading = `${panel.panel_name} - ${formatDate(panel.jury_date)}${room ? ` - ${room}` : ""}`;
     lines.push(`## ${heading}`, "");
     if (index > 0) pageBreakBeforeHeadings.push(heading);
     if (panel.events.length === 0) {
@@ -54,31 +57,47 @@ function reportMarkdown(
       continue;
     }
     for (const event of panel.events) {
-      lines.push(eventMarkdown(event, entriesByLesson));
+      if (event.kind === "jury") {
+        lines.push(eventMarkdown(event, entriesByLesson));
+      } else {
+        lines.push("", "", eventMarkdown(event, entriesByLesson), "", "");
+      }
     }
     lines.push("");
   }
 
-  const pianistSchedules = new Map<string, string[]>();
+  const pianistSchedules = new Map<string, { date: string; start: number; line: string }[]>();
   for (const panel of result.panel_timelines) {
+    const room = roomByPanel.get(panel.panel_uuid);
     for (const event of panel.events) {
-      if (event.kind !== "jury") continue;
-      const pianistName = event.pianist_display_name || "No Pianist Assigned";
-      const eventLine = `- **${formatTime(event.start_minute)}-${formatTime(event.end_minute)}** - ${event.student_display_name || "Unnamed student"} - ${event.instrument || "Instrument not supplied"} - ${panel.panel_name} - ${formatDate(panel.jury_date)}`;
+      if (event.kind !== "jury" || !event.pianist_display_name) continue;
+      const pianistName = event.pianist_display_name;
+      const eventLine = `- **${formatTime(event.start_minute)}-${formatTime(event.end_minute)}** - ${event.student_display_name || "Unnamed student"} - ${event.instrument || "Instrument not supplied"}${room ? ` - ${room}` : ""}`;
       const events = pianistSchedules.get(pianistName) ?? [];
-      events.push(eventLine);
+      events.push({ date: panel.jury_date, start: event.start_minute, line: eventLine });
       pianistSchedules.set(pianistName, events);
     }
   }
 
   const pianistHeading = "Schedule by Pianist";
   pageBreakBeforeHeadings.push(pianistHeading);
-  lines.push(`## ${pianistHeading}`, "");
+  lines.push(`# ${pianistHeading}`, "");
   if (pianistSchedules.size === 0) {
     lines.push("No scheduled Jury entries.", "");
   } else {
     for (const [pianistName, events] of [...pianistSchedules.entries()].sort(([left], [right]) => left.localeCompare(right))) {
-      lines.push(`### ${pianistName}`, ...events, "");
+      const ordered = [...events].sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
+      lines.push(`## ${pianistName}`, "");
+      let currentDate = "";
+      for (const item of ordered) {
+        if (item.date !== currentDate) {
+          if (currentDate) lines.push("");
+          currentDate = item.date;
+          lines.push(`### ${formatDate(item.date)}`, "");
+        }
+        lines.push(item.line);
+      }
+      lines.push("");
     }
   }
 
@@ -112,11 +131,12 @@ export function JuryReportsPage() {
     setError(null);
     setNotice(null);
     try {
-      const [result, entries] = await Promise.all([
+      const [result, entries, panels] = await Promise.all([
         api.getCurrentJurySchedule(),
         api.getJuryEntries(),
+        api.getJuryPanels(),
       ]);
-      const report = reportMarkdown(result, entries);
+      const report = reportMarkdown(result, entries, panels);
       setMarkdown(report.markdown);
       setPanelPageBreaks(report.pageBreakBeforeHeadings);
     } catch (cause) {

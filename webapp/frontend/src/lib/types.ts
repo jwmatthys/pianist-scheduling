@@ -159,9 +159,6 @@ export interface SchedulingSessionInput {
   institution_name: string;
   program_name: string;
   term_label: string;
-  year: number | null;
-  start_date: string | null;
-  end_date: string | null;
 }
 
 export interface AccompanistFinalizationState {
@@ -177,6 +174,35 @@ export interface JuryConfiguration {
   roster_source_result_uuid: string | null;
   created_at: string;
   modified_at: string;
+}
+
+export interface JuryPanelImportMapping {
+  schedule_date: string | null;
+  panel_name: string | null;
+  room: string | null;
+  earliest_start: string | null;
+  preferred_start: string | null;
+  jury_length: string | null;
+  break_needed: string | null;
+  break_every: string | null;
+  break_length: string | null;
+  meal_break: string | null;
+  meal_start: string | null;
+  meal_end: string | null;
+}
+
+export interface JuryPanelImportInspection {
+  sheets: string[];
+  selected_sheet: string | null;
+  columns: string[];
+  sample_rows: Record<string, string>[];
+  suggested_mapping: JuryPanelImportMapping;
+}
+
+export interface JuryPanelImportResult {
+  panels_removed: number;
+  assignments_cleared: number;
+  panels_created: number;
 }
 
 export interface JuryPanelInput {
