@@ -294,6 +294,32 @@ def update_lesson_entry(
     return _entry_out(session_uuid, row, source)
 
 
+def assign_panels_by_instrument(db: Session) -> tuple[int, list[JuryLessonEntryOut]]:
+    """Assign unassigned Jury-required entries whose Instrument equals exactly one Panel Name (case-insensitive)."""
+    entries = list_entries(db)
+    session_uuid = active_session_uuid(db)
+    panels_by_name: dict[str, list[str]] = {}
+    for panel in list_panels(db):
+        panels_by_name.setdefault(panel.panel_name.strip().casefold(), []).append(str(panel.panel_uuid))
+
+    assigned = 0
+    for entry in entries:
+        if entry.panel_uuid is not None or not entry.jury_required:
+            continue
+        matches = panels_by_name.get(entry.instrument.strip().casefold(), [])
+        if len(matches) != 1:
+            continue
+        row = db.get(module_models.JuryLessonEntry, (session_uuid, str(entry.source_lesson_uuid)))
+        if row is None or row.panel_uuid is not None:
+            continue
+        row.panel_uuid = matches[0]
+        assigned += 1
+    if assigned:
+        bump_jury_revision(db)
+        db.flush()
+    return assigned, list_entries(db)
+
+
 def update_lesson_jury_required(
     db: Session,
     source_lesson_uuid: str,

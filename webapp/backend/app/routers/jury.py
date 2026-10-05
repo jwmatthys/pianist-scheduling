@@ -99,6 +99,13 @@ def list_entries(db: Session = Depends(get_db)):
     return jury.list_entries(db)
 
 
+@router.post("/entries/assign-panels-by-instrument", response_model=jury_schemas.JuryPanelAutoAssignmentOut)
+def assign_panels_by_instrument(db: Session = Depends(get_db)):
+    assigned_count, entries = jury.assign_panels_by_instrument(db)
+    db.commit()
+    return jury_schemas.JuryPanelAutoAssignmentOut(assigned_count=assigned_count, entries=entries)
+
+
 @router.patch("/entries/{source_lesson_uuid}", response_model=jury_schemas.JuryLessonEntryOut)
 def update_entry(
     source_lesson_uuid: UUID,

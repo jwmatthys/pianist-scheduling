@@ -212,6 +212,21 @@ export function JurySetupPage() {
     void loadAll();
   }, []);
 
+  useEffect(() => {
+    if (view !== "lessons" || loading) return;
+    void (async () => {
+      try {
+        const result = await api.assignJuryPanelsByInstrument();
+        if (result.assigned_count > 0) {
+          setEntries(result.entries);
+          setReadiness(await api.getJuryReadiness());
+        }
+      } catch (requestError) {
+        setError(errorText(requestError));
+      }
+    })();
+  }, [view, loading]);
+
   async function refreshReadiness() {
     try {
       setReadiness(await api.getJuryReadiness());
@@ -542,7 +557,7 @@ export function JurySetupPage() {
               {panels.length === 0 ? (
                 <div className="jury-empty-state">
                   <strong>No Jury Panels defined</strong>
-                  <p>Jury Panels are assigned explicitly to individual lessons.</p>
+                  <p>Jury Panels are assigned to individual lessons, automatically when a lesson's instrument exactly matches a Panel name.</p>
                 </div>
               ) : (
                 <div className="jury-panel-list">

@@ -50,7 +50,7 @@ The result carries source result/session identity and source/Jury input revision
 - No overlapping Jury entries for the same Pianist on the same date, across all Panels and rooms.
 - A Jury using a Pianist is wholly contained in one of that Pianist's declared Availability Windows for the Panel date.
 - A finalized Accompanist assignment is fixed. Never replace it with another Pianist; a missing required assignment is not an invitation to schedule without one.
-- The manually assigned Panel is authoritative; do not infer or change it.
+- The assigned Panel is authoritative; do not infer or change it.
 - The assigned Panel's Jury Date is authoritative.
 - Meal Break and configured Periodic Break intervals are respected; the Meal Break resets the periodic count.
 - Jury duration equals the configured positive integer duration, including 60 minutes.

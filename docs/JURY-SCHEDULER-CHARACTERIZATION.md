@@ -54,7 +54,7 @@ The pianist availability loader treats only the exact string `Available` as avai
 ### Replace
 
 - Excel handoff and student-name joins become structured inputs and stable identity references.
-- Area becomes an explicitly defined Jury Panel with manual student-to-panel assignment; no inference from instrument, teacher, lesson, or program.
+- Area becomes an explicitly defined Jury Panel with student-to-panel assignment that is manual, except that opening the Lesson Roster auto-assigns unassigned Jury-required lessons whose Instrument exactly matches one Panel Name (case-insensitive); no other inference from teacher, lesson, or program.
 - The old Jury flag becomes Jury Required, independent of the Needs pianist? Boolean. Jury-exempt students are excluded.
 - A required pianist with no finalized assignment is a blocking readiness issue, not a student with no pianist requirement.
 - Ambiguous Start Time becomes hard Earliest Start plus soft Preferred Start. The current delay heuristic informs objectives but does not define the final weight.
@@ -80,7 +80,7 @@ At characterization time, the typed contract was intentionally left undefined. T
 ## Future Model Requirements
 
 - Students with Jury Required = No are excluded, regardless of Needs pianist?.
-- Every Jury-required lesson must have a Panel assignment. Lesson Entries activation may assign an unassigned lesson only on a unique exact case-insensitive Instrument-to-Panel-Name match; existing choices and ambiguous/non-matching entries remain unchanged.
+- Every Jury-required lesson must have a Panel assignment. Lesson Entries activation assigns an unassigned Jury-required lesson only on a unique exact case-insensitive Instrument-to-Panel-Name match; existing choices and ambiguous/non-matching entries remain unchanged.
 - Jury-day pianist availability is Jury-owned, one-day, binary, and complete. Available windows are legal intervals; all other times are unavailable.
 - A pianist may not accompany overlapping juries in any panels/rooms. An existing finalized Accompanist assignment is not substitutable.
 - Missing required pianist assignment is a blocking readiness problem. Manual override policy remains undecided.
