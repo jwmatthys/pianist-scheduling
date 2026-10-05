@@ -47,6 +47,18 @@ class EngineLesson:
     fit_quality: str = ""
     notes: str = ""
     hours: float = 0.0
+    student_name: str = ""
+
+
+def _clock(minutes: int) -> str:
+    hour = (minutes // 60) % 12 or 12
+    return f"{hour}:{minutes % 60:02d}"
+
+
+def describe_lesson(lesson: "EngineLesson") -> str:
+    """User-facing lesson label: 'Student at 11:20-12:10' (falls back to the lesson number)."""
+    who = lesson.student_name.strip() or f"Lesson #{lesson.id}"
+    return f"{who} at {_clock(lesson.start_min)}-{_clock(lesson.end_min)}"
 
 
 @dataclass
@@ -313,11 +325,11 @@ def assign_lessons(
                     assigned, previous, over_cap = overlap_candidate
                     fit_score = FIT_OVERLAP
                     flags.append(
-                        f"\u2139 OVERLAP FIT: shares accompanist with lesson #{previous.id}"
+                        f"\u2139 OVERLAP FIT: shares accompanist with {describe_lesson(previous)}"
                     )
                     previous.fit_quality = FIT_LABELS[FIT_OVERLAP]
                     previous_note = (
-                        f"\u2139 OVERLAP FIT: shares accompanist with lesson #{lesson.id}"
+                        f"\u2139 OVERLAP FIT: shares accompanist with {describe_lesson(lesson)}"
                     )
                     if previous_note not in previous.notes:
                         previous.notes = f"{previous.notes} | {previous_note}".strip(" |")
@@ -409,13 +421,13 @@ def recompute_hours_and_conflicts(lessons: list["EngineLesson"], pianists: list[
                 if overlap > 0 and not allowed_overlap:
                     conflicts.append(
                         f"\u26a0 {name_by_id.get(pid, pid)} is double-booked on {a.day}: "
-                        f"lessons #{a.id} and #{b.id} overlap"
+                        f"{describe_lesson(a)} and {describe_lesson(b)}"
                     )
                     conflict_notes.setdefault(a.id, []).append(
-                        f"\u26a0 CONFLICT: overlaps lesson #{b.id} on {a.day}"
+                        f"\u26a0 CONFLICT: overlaps {describe_lesson(b)} on {a.day}"
                     )
                     conflict_notes.setdefault(b.id, []).append(
-                        f"\u26a0 CONFLICT: overlaps lesson #{a.id} on {b.day}"
+                        f"\u26a0 CONFLICT: overlaps {describe_lesson(a)} on {b.day}"
                     )
 
     for lesson in lessons:

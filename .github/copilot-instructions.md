@@ -442,3 +442,10 @@ For example:
 
 Do not force module-specific availability semantics into the shared
 Availability Window concept.
+
+## User-Facing Messaging
+
+Lesson numbers (database IDs such as "lesson #66") are internal-only.
+Do not mention them in user-facing feedback, warnings, notes, errors, or
+reports. Identify lessons by student name and time instead, for example
+"Johnny Miller at 11:20-12:10".

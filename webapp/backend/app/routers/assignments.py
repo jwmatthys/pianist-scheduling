@@ -34,6 +34,7 @@ def _build_engine_state(db: Session):
             fit_quality=l.fit_quality,
             notes=l.notes,
             hours=l.hours,
+            student_name=l.student,
         )
         for l in lessons
     ]
