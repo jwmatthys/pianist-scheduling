@@ -33,7 +33,7 @@ flowchart TD
     Dashboard --> Jury[Performance Juries]
 ```
 
-A session dashboard should summarize its institution/program, academic term, and modules with usable data/results. It links into Accompanist Scheduling and the implemented Performance Juries setup workflow. Clinical Placements remains a shell until its workflow is designed; do not represent it with fake workflow state.
+A session dashboard should summarize its institution/program, academic term, and modules with usable data/results. It links into Accompanist Scheduling and the implemented Performance Juries setup workflow. Clinical Placements has an approved workflow and domain specification in [CLINICAL-PLACEMENT-MODULE-SPEC.md](CLINICAL-PLACEMENT-MODULE-SPEC.md), but remains a shell pending implementation; do not represent it with fake workflow state.
 
 The existing Accompanist UI becomes the first module workflow with minimal movement: its Import, Pianists/Availability, Schedule, and Reports views remain internal Accompanist views. Product navigation owns session selection and the module dashboard; Accompanist navigation and terminology stay inside that module.
 
@@ -56,8 +56,8 @@ AccompanistModule
   reports: accompanist-defined reports
 
 ClinicalPlacementModule
-  input: student requirements + clinical sites + availability/history
-  validate: placement eligibility/capacity/transport constraints
+  input: Clinical students + recurring availability + tag states + Placement Opportunities
+  validate: tag eligibility + availability/travel feasibility + opportunity capacity
   optimize: ClinicalPlacementOptimizer
   output: ClinicalPlacementResult
   reports: clinical-placement-defined reports
@@ -84,11 +84,11 @@ Each optimizer remains module-specific. A common time-window/conflict primitive 
 ### Keep module-specific
 
 - Accompanist lesson rows, instruments, pianist requirements, lesson-level Jury Required, workload caps, fit tiers, overlap eligibility, manual locks, schedule consolidation, and assignment scoring.
-- Clinical placement requirements, population/service capabilities, capacity, placement history, transport/car access, travel feasibility, equity scoring, and student-to-site allocation.
+- Clinical-owned student profiles and recurring Availability Windows; Required, Preferred, and Restricted student tag states; Clinical Tags; Placement Opportunities and total automatic-assignment capacity; travel/session feasibility; manual placement and Manually unplaced decisions; and Clinical-specific validation, optimization, placement results, and reports. The complete approved domain and optimizer contract is maintained in [CLINICAL-PLACEMENT-MODULE-SPEC.md](CLINICAL-PLACEMENT-MODULE-SPEC.md); do not add unspecified placement-history, transport/car-access, equity-scoring, or population/service-capability policies.
 - Jury areas/panels, jury durations, room sequencing, breaks, jury-day pianist unavailability, jury conflict rules, and jury schedule output.
 - Each module's import target fields, validation policy, report catalog, and result payload.
 
-A shared `Person` should contain only identity/display/contact properties and an application-generated UUID. Accompanist-specific pianism/availability belongs to an Accompanist profile; clinical history/transportation belongs to a Clinical profile; repertoire/duration/panel requirements belong to a Jury profile. Institutional identifiers are optional and may be scoped by institution. Never merge records automatically based only on matching display names. A single `Assignment`, `Schedule`, or universal optimizer is explicitly rejected.
+A shared `Person` should contain only identity/display/contact properties and an application-generated UUID. Accompanist-specific pianism/availability belongs to an Accompanist profile; Clinical student data and availability belong to a Clinical-owned profile; repertoire/duration/panel requirements belong to a Jury profile. Institutional identifiers are optional and may be scoped by institution. Never merge records automatically based only on matching display names. A single `Assignment`, `Schedule`, or universal optimizer is explicitly rejected.
 
 ## 6. Shared AvailabilityWindow Concept
 
@@ -196,7 +196,7 @@ Export should use SQLite's online backup/snapshot mechanism or a quiesced, check
 
 **Open/Restore Session** validates and replaces the current active session. Before replacement, the application automatically creates a local recovery snapshot and asks the user to confirm. Then it stages extraction to a private temporary directory, rejects path traversal/unknown required payloads/oversized archives, verifies checksums and SQLite integrity, migrates the staged payload, and atomically switches/replaces the active store. If any step fails, keep the previous active session untouched and return a structured error. The recovery snapshot is local and is not a historical session library.
 
-A later **Import Data From Previous Session** is a separate feature with module-specific selection and reconciliation rules (for example importing clinical history into a new term). It is not part of Open/Restore and is not required now.
+A later **Import Data From Previous Session** is a separate feature with module-specific selection and reconciliation rules. It is not part of Open/Restore and is not required now.
 
 ## 10. Versioning and Session Migration
 
@@ -257,12 +257,13 @@ Keep product and module contracts independent of Tauri and HTTP. A browser versi
 
 ## 15. Ongoing Module Work
 
-The Accompanist and Jury boundaries are implemented and documented in [MODULE-ARCHITECTURE.md](MODULE-ARCHITECTURE.md), [ACCOMPANIST-BEHAVIOR-CHARACTERIZATION.md](ACCOMPANIST-BEHAVIOR-CHARACTERIZATION.md), and [JURY-OPTIMIZER-CONTRACT.md](JURY-OPTIMIZER-CONTRACT.md). Clinical data-entry requirements must come from the Music Therapy workflow owner; do not design its optimizer before those policies are known.
+The Accompanist and Jury boundaries are implemented and documented in [MODULE-ARCHITECTURE.md](MODULE-ARCHITECTURE.md), [ACCOMPANIST-BEHAVIOR-CHARACTERIZATION.md](ACCOMPANIST-BEHAVIOR-CHARACTERIZATION.md), and [JURY-OPTIMIZER-CONTRACT.md](JURY-OPTIMIZER-CONTRACT.md). Clinical Placement workflow and optimizer policies have been approved with input from the Music Therapy director and are authoritative in [CLINICAL-PLACEMENT-MODULE-SPEC.md](CLINICAL-PLACEMENT-MODULE-SPEC.md). Clinical implementation must follow that specification; update it through explicit review if policy changes.
 
 ## 16. Canonical References
 
 - Current runtime, schema, platform permissions, and session archive behavior: [ARCHITECTURE.md](ARCHITECTURE.md).
 - Module ownership and cross-module boundaries: [MODULE-ARCHITECTURE.md](MODULE-ARCHITECTURE.md).
 - Jury data, optimizer, generation, and result lifecycle: [JURY-MODULE-DATA-DESIGN.md](JURY-MODULE-DATA-DESIGN.md) and [JURY-OPTIMIZER-CONTRACT.md](JURY-OPTIMIZER-CONTRACT.md).
+- Clinical Placement workflow, domain rules, optimizer contract, persistence, and test requirements: [CLINICAL-PLACEMENT-MODULE-SPEC.md](CLINICAL-PLACEMENT-MODULE-SPEC.md).
 - Build and test commands: [BUILDING.md](BUILDING.md).
 - Privacy requirements: [PRIVACY-ARCHITECTURE.md](PRIVACY-ARCHITECTURE.md).

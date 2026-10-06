@@ -15,11 +15,11 @@ Music Program Scheduler
   -> Active-session dashboard (session identity + Edit/New/Open/Export)
   -> Implemented Scheduling Modules
        -> Accompanist Scheduling
-       -> Clinical Placements (module shell)
+       -> Clinical Placements (approved workflow; implementation pending)
       -> Performance Juries (lesson-based setup and readiness)
 ```
 
-The Accompanist module has its own header, return-to-dashboard control, and internal Import Lessons, Pianists & Availability, Schedule, and Reports navigation. Session actions do not remain in that module header. Performance Juries provides lesson-based setup and readiness tabs in Panels, Lesson Entries, Pianist Availability, Schedule, and Overview order; Panels is the initial view. Schedule generation remains unimplemented. Clinical Placements remains a minimal honest shell and must not display fake workflow state or statistics. Replacing/restoring a session returns the user to the dashboard. Export does not change navigation state.
+The Accompanist module has its own header, return-to-dashboard control, and internal Import Lessons, Pianists & Availability, Schedule, and Reports navigation. Session actions do not remain in that module header. Performance Juries provides lesson-based setup and readiness tabs in Panels, Lesson Entries, Pianist Availability, Schedule, and Overview order; Panels is the initial view. Schedule generation remains unimplemented. Clinical Placements is still a shell pending implementation; its approved workflow and domain policy are specified in [CLINICAL-PLACEMENT-MODULE-SPEC.md](CLINICAL-PLACEMENT-MODULE-SPEC.md). Until implemented, do not display fake workflow state or statistics. Replacing/restoring a session returns the user to the dashboard. Export does not change navigation state.
 
 ## Module Ownership
 
@@ -28,7 +28,7 @@ Modules are statically registered built-in workflows, not dynamically loaded plu
 Each module owns its inputs, persistence records/profiles, constraints, validation policy, optimizer, workflow, output model, and report definitions:
 
 - **Accompanist Scheduling:** lessons, source-owned Jury Required and Pianist Required values, pianist-specific profiles/availability, workload, fit/scoring, overlap and manual-assignment policy, assignments, and accompanist reports.
-- **Clinical Placements:** placement requirements/history, clinical sites and capacity, transportation, placement validation/scoring, and placement reports. Its optimizer must not be designed until detailed constraints and policies are gathered from the actual Music Therapy workflow owner.
+- **Clinical Placements:** module-owned students and recurring availability, student tag requirements/preferences/restrictions, Clinical Tags, Placement Opportunities and capacity, manual and automatic placement decisions, validation, a typed Clinical placement result, and Clinical reports. The director-informed, approved domain rules and lexicographic optimizer contract are defined in [CLINICAL-PLACEMENT-MODULE-SPEC.md](CLINICAL-PLACEMENT-MODULE-SPEC.md). Implement a Clinical-specific optimizer; do not reuse or coerce the Accompanist or Jury optimizer.
 - **Performance Juries:** lesson-based entries/roster, user-selected Panels (unassigned lessons auto-assigned on exact Instrument/Panel Name match when the Lesson Roster opens), one Scheduling Date per Panel, duration/break/meal configuration, date-scoped pianist Availability Windows, readiness validation, and eventual Jury-specific optimizer/reports. Jury Required and Panel selection belong to each source lesson entry, not globally to a student. The standalone scheduler is characterized in [JURY-SCHEDULER-CHARACTERIZATION.md](JURY-SCHEDULER-CHARACTERIZATION.md); its optimizer is not integrated.
 
 Never create a universal optimizer, universal assignment/schedule type, giant universal Person/Student record, or one universal spreadsheet schema.
@@ -63,4 +63,4 @@ The application must work offline and keep student data on-device. Desktop-vs-br
 
 ## Implementation Order
 
-Follow the approved order in [PRODUCT-MODULE-ARCHITECTURE.md](PRODUCT-MODULE-ARCHITECTURE.md): versioned migrations and session archives; shared availability and reporting; product dashboard; Jury characterization (complete) and Jury data integration through finalized Accompanist results/readiness (complete); later Jury optimizer and UI milestones; Clinical data workflow; Clinical optimizer only after owner requirements are gathered.
+Follow the approved order in [PRODUCT-MODULE-ARCHITECTURE.md](PRODUCT-MODULE-ARCHITECTURE.md): versioned migrations and session archives; shared availability and reporting; product dashboard; Jury characterization (complete) and Jury data integration through finalized Accompanist results/readiness (complete); later Jury optimizer and UI milestones; then Clinical implementation following the phase sequence and approved policies in [CLINICAL-PLACEMENT-MODULE-SPEC.md](CLINICAL-PLACEMENT-MODULE-SPEC.md). The Clinical optimizer is no longer gated on gathering initial domain policy; the approved director-informed spec is authoritative.

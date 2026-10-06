@@ -207,7 +207,7 @@ Use synthetic/anonymized data only.
 
 - Accompanist owns lesson facts, Pianist Required, Jury Required, pianist profiles and assignments, Accompanist availability/workload/scoring, source revisions, and the finalized assignment-result projection.
 - Jury owns Panel selection (manual, plus exact Instrument-to-Panel-Name auto-assignment of unassigned lessons), each Panel's one-day Jury Date, panel timing/duration/break/meal configuration, binary date-keyed pianist Availability Windows, Jury readiness policy, and future Jury schedules/results. Jury Required remains Accompanist-owned source data editable in both modules.
-- Clinical Placement owns its placement requirements, sites, capacities, transport/history rules, optimizer, and result payload.
+- Clinical Placement owns its Clinical students and recurring Availability Windows, tag requirements/preferences/restrictions, Clinical Tags, Placement Opportunities and capacities, placement validation and optimizer, and result payload as specified in [CLINICAL-PLACEMENT-MODULE-SPEC.md](CLINICAL-PLACEMENT-MODULE-SPEC.md).
 - Shared infrastructure owns only stable person UUIDs, session metadata, result envelopes/dependency mechanics, time primitives, migration/session archive mechanics, and structured validation issue representation.
 
 There is no universal Person profile, Student profile, Assignment, Schedule, Availability policy, or optimizer. Jury consumes Accompanist's typed finalized contract; it does not own or edit Accompanist assignment data.
