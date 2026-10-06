@@ -12,6 +12,8 @@ use std::{
 
 use tauri::{Manager, RunEvent, State, WindowEvent};
 
+const SERVICE_STARTUP_TIMEOUT: Duration = Duration::from_secs(60);
+
 struct BackendProcess {
     port: u16,
     child: Mutex<Child>,
@@ -143,7 +145,7 @@ fn terminate_process_tree(child: &mut Child) {
 }
 
 fn wait_for_service(child: &mut Child, port: u16) -> io::Result<()> {
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + SERVICE_STARTUP_TIMEOUT;
     loop {
         if let Some(status) = child.try_wait()? {
             return Err(io::Error::other(format!(
@@ -156,7 +158,10 @@ fn wait_for_service(child: &mut Child, port: u16) -> io::Result<()> {
         if Instant::now() >= deadline {
             return Err(io::Error::new(
                 io::ErrorKind::TimedOut,
-                "Scheduling service did not become ready within 10 seconds",
+                format!(
+                    "Scheduling service did not become ready within {} seconds",
+                    SERVICE_STARTUP_TIMEOUT.as_secs()
+                ),
             ));
         }
         thread::sleep(Duration::from_millis(150));
