@@ -45,6 +45,16 @@ The Tauri `beforeBuildCommand` builds the frontend and PyInstaller executable, t
 
 The Tauri identifier is currently the placeholder `com.example.musicprogramscheduler`. It MUST be replaced with the final organization-owned reverse-domain identifier before public beta. The development version remains `0.0.0`. A provisional Music Program Scheduler icon is generated from `src-tauri/icons/source.svg`; it is separate from the Vite favicon and should receive product-design review before public beta.
 
+### Updating the Tauri app icon
+
+Edit `src-tauri/icons/source.svg` for the app icon artwork. Keep the source square and at least 512 × 512 pixels. From `webapp/frontend`, regenerate the platform icon files with the Tauri CLI:
+
+```sh
+npx tauri icon src-tauri/icons/source.svg --output src-tauri/icons
+```
+
+This generates the PNG, ICNS, and ICO assets in `src-tauri/icons`. The Tauri bundle currently uses `32x32.png`, `128x128.png`, `128x128@2x.png`, `icon.png`, `icon.icns`, and `icon.ico`, as listed in `src-tauri/tauri.conf.json`; keep those filenames unless updating the bundle configuration as well. The browser/Vite favicon is independent: update `public/favicon.svg` separately if it should match the new app icon.
+
 ## Local Data and Network
 
 Tauri stores `pianist_scheduling.db` under its per-user application-data directory. Electron continues to use Electron's `userData` directory, so test data and database changes are not shared between the two shells. Recovery archives live in the database directory's `recovery/` subdirectory; only the latest three are retained. The temporary backend binds only to `127.0.0.1`; its selected endpoint is passed to React through a Rust command. Tauri's official dialog and filesystem plugins are limited to open/save dialogs and file operations on dialog-selected paths. No external services are configured.
