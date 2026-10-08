@@ -8,6 +8,7 @@ The current production module schedules accompanists for student lessons.
 
 Planned future modules include:
 - Music Therapy Clinical Placements
+- Music Tutor Scheduling
 
 Other music-program scheduling modules may be added later.
 
@@ -63,8 +64,9 @@ Music Program Scheduler
     |
     +-- Scheduling Modules
     |     +-- Accompanists
-    |     +-- Clinical Placements
     |     +-- Juries
+    |     +-- Clinical Placements
+    |     +-- Tutors
     |
     +-- Shared Infrastructure
     |

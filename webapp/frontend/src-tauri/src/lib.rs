@@ -13,6 +13,8 @@ use std::{
 use tauri::{Manager, RunEvent, State, WindowEvent};
 
 const SERVICE_STARTUP_TIMEOUT: Duration = Duration::from_secs(60);
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 struct BackendProcess {
     port: u16,
@@ -75,6 +77,11 @@ impl BackendProcess {
             use std::os::unix::process::CommandExt;
             command.process_group(0);
         }
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
         let mut child = command
             .arg("--port")
             .arg(port.to_string())
@@ -127,7 +134,9 @@ fn terminate_process_tree(child: &mut Child) {
         .map(|root| root.join("System32/taskkill.exe"))
         .unwrap_or_else(|| PathBuf::from("taskkill.exe"));
     let pid = child.id().to_string();
+    use std::os::windows::process::CommandExt;
     let terminated = Command::new(taskkill)
+        .creation_flags(CREATE_NO_WINDOW)
         .args(["/PID", &pid, "/T", "/F"])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
