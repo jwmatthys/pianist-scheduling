@@ -429,6 +429,28 @@ class PersistenceCharacterizationTests(unittest.TestCase):
         self.assertIn("CONFLICT", first.notes)
         self.assertIn("CONFLICT", second.notes)
 
+    def test_unassigning_manual_lesson_releases_it_to_the_solver(self):
+        pianist = models.Pianist(name="Ari Lee")
+        self.db.add(pianist)
+        self.db.flush()
+        lesson = models.Lesson(student="Student One", day="Monday", start_minute=540, end_minute=600)
+        self.db.add(lesson)
+        self.db.add_all(
+            models.AvailabilitySlot(pianist_id=pianist.id, day="Monday", slot_start_minute=m, status="Available")
+            for m in (540, 570)
+        )
+        self.db.commit()
+
+        lessons.update_lesson(lesson.id, schemas.LessonUpdate(assigned_pianist_id=pianist.id), self.db)
+        self.assertTrue(lesson.manually_edited)
+        lessons.update_lesson(lesson.id, schemas.LessonUpdate(clear_assigned_pianist=True), self.db)
+
+        self.assertFalse(lesson.manually_edited)
+        self.assertIsNone(lesson.assigned_pianist_id)
+        assignments.run_assignment(self.db)
+        self.db.refresh(lesson)
+        self.assertEqual(lesson.assigned_pianist_id, pianist.id)
+
 
 if __name__ == "__main__":
     unittest.main()

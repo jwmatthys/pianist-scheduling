@@ -54,8 +54,15 @@ def update_lesson(lesson_id: int, payload: schemas.LessonUpdate, db: Session = D
     if clear:
         lesson.assigned_pianist_id = None
     if "assigned_pianist_id" in data or clear:
-        lesson.manually_edited = True
-        lesson.fit_quality = "Manual"
+        if lesson.assigned_pianist_id is None:
+            # Unassigned lessons return to the optimizer instead of staying locked.
+            lesson.manually_edited = False
+            lesson.fit_quality = ""
+            lesson.notes = ""
+            lesson.hours = 0.0
+        else:
+            lesson.manually_edited = True
+            lesson.fit_quality = "Manual"
     identity_changed = any(key in data for key in ("student", "student_id"))
     if identity_changed:
         db.flush()
