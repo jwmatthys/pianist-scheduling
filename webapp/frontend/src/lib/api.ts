@@ -271,6 +271,10 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ tag_ids: tagIds }),
     }),
+  clearClinicalOpportunities: () =>
+    request<{ removed_count: number; removed_placement_count: number }>("/api/clinical/opportunities", {
+      method: "DELETE",
+    }),
   deleteClinicalOpportunity: (id: string) =>
     request<{ removed_placement_count: number }>(
       `/api/clinical/opportunities/${encodeURIComponent(id)}`,
@@ -376,6 +380,10 @@ export const api = {
       `/api/clinical/students/${encodeURIComponent(id)}/availability`,
       { method: "PUT", body: JSON.stringify({ windows }) }
     ),
+  clearClinicalStudents: () =>
+    request<{ removed_count: number; removed_placement_count: number }>("/api/clinical/students", {
+      method: "DELETE",
+    }),
   deleteClinicalStudent: (id: string) =>
     request<void>(`/api/clinical/students/${encodeURIComponent(id)}`, { method: "DELETE" }),
   inspectClinicalStudentsFile: (file: File, sheetName?: string | null) => {

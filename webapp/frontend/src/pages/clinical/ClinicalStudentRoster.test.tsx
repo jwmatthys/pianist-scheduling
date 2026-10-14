@@ -19,6 +19,7 @@ vi.mock("../../lib/api", () => ({
     updateClinicalStudent: vi.fn(),
     setClinicalStudentTagStates: vi.fn(),
     deleteClinicalStudent: vi.fn(),
+    clearClinicalStudents: vi.fn(),
     inspectClinicalStudentsFile: vi.fn(),
     previewClinicalStudentsImport: vi.fn(),
     applyClinicalStudentsImport: vi.fn(),
@@ -139,6 +140,21 @@ describe("Student Roster page", () => {
     expect(await within(dialog).findByText(/already exists/)).toBeTruthy();
   });
 
+  it("deletes all students only after confirmation", async () => {
+    vi.mocked(api.clearClinicalStudents).mockResolvedValue({ removed_count: 1, removed_placement_count: 0 });
+    const user = userEvent.setup();
+    render(<ClinicalStudentRosterPage />);
+    await user.click(await screen.findByRole("button", { name: "Delete all students" }));
+    const first = screen.getByRole("dialog", { name: "Delete all students?", hidden: true });
+    await user.click(within(first).getByRole("button", { name: "Cancel", hidden: true }));
+    expect(api.clearClinicalStudents).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Delete all students" }));
+    const confirm = screen.getByRole("dialog", { name: "Delete all students?", hidden: true });
+    await user.click(within(confirm).getByRole("button", { name: "Delete all students", hidden: true }));
+    await waitFor(() => expect(api.clearClinicalStudents).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("Deleted 1 student.")).toBeTruthy();
+  });
+
   it("deletes a student after confirmation", async () => {
     vi.mocked(api.deleteClinicalStudent).mockResolvedValue(undefined);
     const user = userEvent.setup();
@@ -153,9 +169,9 @@ describe("Student Roster page", () => {
 const inspection: ClinicalStudentsImportInspection = {
   sheets: [],
   selected_sheet: null,
-  columns: ["ID", "Who", "Mail"],
+  columns: ["ID", "Who", "Mail", "Mon", "Tue"],
   sample_rows: [],
-  suggested_mapping: { student_id: "ID", name: null, email: "Mail" },
+  suggested_mapping: { student_id: "ID", name: null, email: "Mail", days: { Monday: "Mon", Tuesday: "Tue" } },
 };
 
 const previewOf = (errors: string[]): ClinicalStudentsImportPreview => ({
@@ -163,12 +179,21 @@ const previewOf = (errors: string[]): ClinicalStudentsImportPreview => ({
   total_rows: 2,
   valid_rows: errors.length ? 1 : 2,
   invalid_rows: errors.length ? 1 : 0,
+  students_to_create: 1,
+  students_to_update: 1,
+  availability_mapped: true,
   rows: [
-    { row_number: 2, student_id: "S1", name: "Ada", email: "", errors: [] },
-    { row_number: 3, student_id: "S2", name: "Ben", email: "", errors },
+    {
+      row_number: 2, student_id: "S1", name: "Ada", email: "", action: "update",
+      student_change: "Update email", availability_change: "Replace 5 availability windows with 8",
+      warnings: [], errors: [],
+    },
+    {
+      row_number: 3, student_id: "S2", name: "Ben", email: "", action: "create",
+      student_change: "Create student", availability_change: "Clear availability",
+      warnings: [], errors,
+    },
   ],
-  existing_student_count: 4,
-  existing_placement_count: 3,
   can_apply: errors.length === 0,
 });
 
@@ -177,7 +202,6 @@ async function openMapping(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByRole("button", { name: "Import Student Roster" }));
   await user.click(screen.getByRole("button", { name: "Choose spreadsheet" }));
   await screen.findByRole("heading", { name: "Column mapping" });
-  await user.selectOptions(screen.getByLabelText("Name"), "Who");
 }
 
 describe("Student Roster import dialog", () => {
@@ -189,61 +213,86 @@ describe("Student Roster import dialog", () => {
     vi.mocked(chooseLocalFile).mockResolvedValue(new File(["x"], "roster.csv"));
   });
 
-  it("suggests an editable mapping and gates Preview on required fields", async () => {
-    const user = userEvent.setup();
+  it("no longer offers a standalone Import Availability button", async () => {
     render(<ClinicalStudentRosterPage />);
-    await user.click(await screen.findByRole("button", { name: "Import Student Roster" }));
-    await user.click(screen.getByRole("button", { name: "Choose spreadsheet" }));
-    await screen.findByRole("heading", { name: "Column mapping" });
-    expect((screen.getByLabelText("Student ID") as HTMLSelectElement).value).toBe("ID");
-    const preview = screen.getByRole("button", { name: "Preview Import" }) as HTMLButtonElement;
-    expect(preview.disabled).toBe(true);
-    await user.selectOptions(screen.getByLabelText("Name"), "Who");
-    expect(preview.disabled).toBe(false);
+    await screen.findByRole("button", { name: "Import Student Roster" });
+    expect(screen.queryByRole("button", { name: "Import Availability" })).toBeNull();
   });
 
-  it("renders preview rows and row-level validation, blocking import", async () => {
+  it("maps identity and weekday columns in one dialog, gating Preview on Student ID only", async () => {
+    const user = userEvent.setup();
+    await openMapping(user);
+    expect((screen.getByLabelText("Student ID") as HTMLSelectElement).value).toBe("ID");
+    expect((screen.getByLabelText("Monday") as HTMLSelectElement).value).toBe("Mon");
+    expect((screen.getByLabelText("Wednesday") as HTMLSelectElement).value).toBe("");
+    const preview = screen.getByRole("button", { name: "Preview Import" }) as HTMLButtonElement;
+    expect(preview.disabled).toBe(false);
+    await user.selectOptions(screen.getByLabelText("Student ID"), "");
+    expect(preview.disabled).toBe(true);
+  });
+
+  it("sends the unified mapping including weekday columns", async () => {
+    vi.mocked(api.previewClinicalStudentsImport).mockResolvedValue(previewOf([]));
+    const user = userEvent.setup();
+    await openMapping(user);
+    await user.selectOptions(screen.getByLabelText("Name"), "Who");
+    await user.click(screen.getByRole("button", { name: "Preview Import" }));
+    await screen.findByRole("region", { name: "Import preview" });
+    expect(api.previewClinicalStudentsImport).toHaveBeenCalledWith(expect.anything(), null, {
+      student_id: "ID", name: "Who", email: "Mail", days: { Monday: "Mon", Tuesday: "Tue" },
+    });
+  });
+
+  it("renders roster and availability effects plus row-level validation, blocking import", async () => {
     vi.mocked(api.previewClinicalStudentsImport).mockResolvedValue(previewOf(["Student ID is duplicated in this file (also on row 2)."]));
     const user = userEvent.setup();
     await openMapping(user);
     await user.click(screen.getByRole("button", { name: "Preview Import" }));
     const region = await screen.findByRole("region", { name: "Import preview" });
     expect(within(region).getByText("2 rows: 1 valid, 1 with errors.")).toBeTruthy();
+    expect(within(region).getByText("Update email")).toBeTruthy();
+    expect(within(region).getByText("Replace 5 availability windows with 8")).toBeTruthy();
+    expect(within(region).getByText("Create student")).toBeTruthy();
+    expect(within(region).getByText("Clear availability")).toBeTruthy();
     expect(within(region).getByText(/duplicated in this file/)).toBeTruthy();
     expect((within(region).getByRole("button", { name: "Import Student Roster" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("shows the replacement warning, can be cancelled, then imports on confirmation", async () => {
+  it("shows a non-destructive confirmation, can be cancelled, then imports", async () => {
     vi.mocked(api.previewClinicalStudentsImport).mockResolvedValue(previewOf([]));
     vi.mocked(api.applyClinicalStudentsImport).mockResolvedValue({
-      students_removed: 4,
-      placements_removed: 3,
-      students_created: 2,
+      students_created: 1,
+      students_updated: 1,
+      availability_updated: 2,
+      windows_imported: 8,
     });
     const user = userEvent.setup();
     await openMapping(user);
     await user.click(screen.getByRole("button", { name: "Preview Import" }));
     const region = await screen.findByRole("region", { name: "Import preview" });
     await user.click(within(region).getByRole("button", { name: "Import Student Roster" }));
-    const confirm = screen.getByRole("dialog", { name: "Replace Student Roster?", hidden: true });
+    const confirm = screen.getByRole("dialog", { name: "Import Student Roster?", hidden: true });
     for (const text of [
-      /Delete all existing Clinical Students \(4 currently\)/,
-      "Delete all student availability",
-      "Delete all Required / Preferred / Restricted selections",
-      /Delete all Clinical Placements \(3 currently\)/,
-      "Replace the roster with imported Students",
-      "Preserve Clinical Sites",
-      "Preserve Clinical Tag registry",
+      "Create 1 new student(s)",
+      "Update 1 existing student(s) matched by Student ID",
+      "Replace weekly availability for the students listed in the file",
+      "Preserve students not listed in the file",
+      "Preserve Clinical Sites and the Clinical Tag registry",
+      "Preserve tag selections and placements",
+      "Mark any generated schedule as out of date",
     ]) {
       expect(within(confirm).getByText(text)).toBeTruthy();
     }
+    expect(within(confirm).queryByText(/Delete/)).toBeNull();
     await user.click(within(confirm).getByRole("button", { name: "Cancel" }));
     expect(api.applyClinicalStudentsImport).not.toHaveBeenCalled();
 
     await user.click(within(region).getByRole("button", { name: "Import Student Roster" }));
-    const again = screen.getByRole("dialog", { name: "Replace Student Roster?", hidden: true });
-    await user.click(within(again).getByRole("button", { name: "Replace Student Roster" }));
+    const again = screen.getByRole("dialog", { name: "Import Student Roster?", hidden: true });
+    await user.click(within(again).getByRole("button", { name: "Import Student Roster" }));
     await waitFor(() => expect(api.applyClinicalStudentsImport).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText(/Imported 2 students; replaced 4 and removed 3 placement\(s\)/)).toBeTruthy();
+    expect(
+      await screen.findByText(/Imported 2 students \(1 created, 1 updated\); replaced availability for 2 students\./),
+    ).toBeTruthy();
   });
 });

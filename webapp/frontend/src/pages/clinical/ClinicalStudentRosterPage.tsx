@@ -189,6 +189,7 @@ export function ClinicalStudentRosterPage() {
   const [editing, setEditing] = useState<ClinicalStudent | "new" | null>(null);
   const [deleting, setDeleting] = useState<ClinicalStudent | null>(null);
   const [importing, setImporting] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [availabilityFor, setAvailabilityFor] = useState<ClinicalStudent | null>(null);
 
   const refresh = useCallback(async () => {
@@ -207,6 +208,17 @@ export function ClinicalStudentRosterPage() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  async function confirmClearAll() {
+    setClearing(false);
+    try {
+      const result = await api.clearClinicalStudents();
+      await refresh();
+      setNotice(`Deleted ${result.removed_count} ${result.removed_count === 1 ? "student" : "students"}.`);
+    } catch (caught) {
+      setError(errorText(caught));
+    }
+  }
 
   async function confirmDelete() {
     if (!deleting) return;
@@ -230,6 +242,14 @@ export function ClinicalStudentRosterPage() {
         <div className="dialog-actions">
           <button type="button" onClick={() => setImporting(true)}>
             Import Student Roster
+          </button>
+          <button
+            type="button"
+            className="danger-btn"
+            disabled={students.length === 0}
+            onClick={() => setClearing(true)}
+          >
+            Delete all students
           </button>
           <button type="button" className="primary-btn" onClick={() => setEditing("new")}>
             Add Student
@@ -325,6 +345,15 @@ export function ClinicalStudentRosterPage() {
             await refresh();
             setNotice(message);
           }}
+        />
+      )}
+      {clearing && (
+        <ConfirmDialog
+          title="Delete all students?"
+          message="Every student with their tag selections, availability, and all placements will be removed. Clinical Sites and the Clinical Tag registry are kept. This cannot be undone."
+          confirmLabel="Delete all students"
+          onConfirm={() => void confirmClearAll()}
+          onCancel={() => setClearing(false)}
         />
       )}
       {deleting && (

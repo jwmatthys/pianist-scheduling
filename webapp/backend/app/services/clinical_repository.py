@@ -96,10 +96,22 @@ class ClinicalReplaceResult:
 
 
 @dataclass(frozen=True)
-class ClinicalStudentReplaceResult:
-    students_removed: int
-    placements_removed: int
+class RosterImportRow:
+    """One validated roster-import row. ``windows`` is None when availability is not imported."""
+
+    student_id: str
+    name: str
+    email: str
+    clinical_student_id: str | None
+    windows: Sequence[AvailabilityWindow] | None
+
+
+@dataclass(frozen=True)
+class ClinicalRosterImportResult:
     students_created: int
+    students_updated: int
+    availability_updated: int
+    windows_imported: int
 
 
 class ClinicalRepository:
@@ -420,6 +432,37 @@ class ClinicalRepository:
         self.record_source_change()
         return removed
 
+    def clear_opportunities(self) -> tuple[int, int]:
+        """Delete every Placement Opportunity and the placements that reference one.
+
+        Manually unplaced decisions have no site, so they and the tag registry are kept.
+        Returns (opportunities removed, placements removed) and records one source change.
+        """
+        removed_placements = self.db.query(ClinicalPlacement).filter(
+            ClinicalPlacement.placement_opportunity_id.isnot(None)
+        ).delete(synchronize_session=False)
+        self.db.query(PlacementOpportunityTag).delete(synchronize_session=False)
+        removed = self.db.query(PlacementOpportunity).delete(synchronize_session=False)
+        self.db.expire_all()
+        if removed:
+            self.record_source_change()
+        return removed, removed_placements
+
+    def clear_students(self) -> tuple[int, int]:
+        """Delete every Clinical student with their tag states, availability, and placements.
+
+        Clinical Sites and the tag registry are kept. Returns (students removed, placements
+        removed) and records one source change.
+        """
+        removed_placements = self.db.query(ClinicalPlacement).delete(synchronize_session=False)
+        self.db.query(ClinicalStudentTagState).delete(synchronize_session=False)
+        self.db.query(ClinicalStudentAvailabilityWindow).delete(synchronize_session=False)
+        removed = self.db.query(ClinicalStudent).delete(synchronize_session=False)
+        self.db.expire_all()
+        if removed:
+            self.record_source_change()
+        return removed, removed_placements
+
     # --- students -----------------------------------------------------
 
     def _clean_student_values(
@@ -514,39 +557,61 @@ class ClinicalRepository:
         self.db.flush()
         self.record_source_change()
 
-    def replace_students(self, students: Iterable[tuple[str, str, str]]) -> "ClinicalStudentReplaceResult":
-        """Full replacement of the roster (all-or-nothing within the caller's transaction).
+    def roster_import_snapshot(self) -> dict[str, tuple[str, str, str, int]]:
+        """Case-folded Student ID -> (internal id, name, email, stored window count) for import matching."""
+        counts = self.student_availability_counts()
+        return {
+            student.student_id.casefold(): (student.id, student.name, student.email, counts.get(student.id, 0))
+            for student in self.list_students()
+        }
 
-        Removes every student with their availability, tag states, and placements; keeps
-        Placement Opportunities and the tag registry; bumps the revision once.
+    def apply_roster_import(self, rows: Sequence[RosterImportRow]) -> ClinicalRosterImportResult:
+        """Create/update students and optionally replace their availability as one source-data change.
+
+        All-or-nothing within the caller's transaction. Students absent from ``rows``, sites,
+        tags, tag states, and placements are untouched; the revision is bumped exactly once.
         """
-        prepared: list[tuple[str, str, str]] = []
         seen: set[str] = set()
-        for student_id, name, email in students:
-            cleaned_id, cleaned_name, cleaned_email = (student_id or "").strip(), (name or "").strip(), (email or "").strip()
-            if not cleaned_id:
-                raise ClinicalValidationError("INVALID_STUDENT_ID", "Student ID is required.")
-            if not cleaned_name:
-                raise ClinicalValidationError("INVALID_STUDENT_NAME", "Name is required.")
-            if cleaned_id.lower() in seen:
-                raise ClinicalValidationError("DUPLICATE_STUDENT_ID", "Student IDs must be unique in the roster.")
-            seen.add(cleaned_id.lower())
-            prepared.append((cleaned_id, cleaned_name, cleaned_email))
-        students_removed = self.db.query(func.count(ClinicalStudent.id)).scalar() or 0
-        placements_removed = self.clear_all_placements()
-        self.db.query(ClinicalStudentTagState).delete()
-        self.db.query(ClinicalStudentAvailabilityWindow).delete()
-        self.db.query(ClinicalStudent).delete()
-        self.db.flush()
-        for student_id, name, email in prepared:
-            self.db.add(ClinicalStudent(student_id=student_id, name=name, email=email))
-        self.db.flush()
-        self.record_source_change()
-        return ClinicalStudentReplaceResult(
-            students_removed=students_removed,
-            placements_removed=placements_removed,
-            students_created=len(prepared),
-        )
+        created = updated = availability_updated = windows_imported = 0
+        for row in rows:
+            key = (row.student_id or "").strip().casefold()
+            if key in seen:
+                raise ClinicalValidationError("DUPLICATE_STUDENT_ID", "Student IDs must be unique in the import.")
+            seen.add(key)
+            windows: list[AvailabilityWindow] | None = None
+            if row.windows is not None:
+                windows, issues = normalize_windows(list(row.windows))
+                if any(issue.severity == "error" for issue in issues):
+                    raise ClinicalValidationError(
+                        "INVALID_AVAILABILITY_WINDOW",
+                        "Availability Windows must be valid and must not overlap with a different status.",
+                    )
+            if row.clinical_student_id is None:
+                cleaned_id, cleaned_name, cleaned_email = self._clean_student_values(
+                    row.student_id, row.name, row.email, require_name=True
+                )
+                student = ClinicalStudent(student_id=cleaned_id, name=cleaned_name, email=cleaned_email)
+                self.db.add(student)
+                self.db.flush()
+                created += 1
+            else:
+                student = self._require(
+                    ClinicalStudent, row.clinical_student_id, "STUDENT_NOT_FOUND", "The student no longer exists."
+                )
+                # Matching is case-insensitive; the stored Student ID spelling is kept.
+                _, student.name, student.email = self._clean_student_values(
+                    student.student_id, row.name, row.email, require_name=True, exclude_id=student.id
+                )
+                student.updated_at = _now()
+                self.db.flush()
+                updated += 1
+            if windows is not None:
+                self.replace_student_availability(student.id, windows, record_change=False)
+                availability_updated += 1
+                windows_imported += len(windows)
+        if rows:
+            self.record_source_change()
+        return ClinicalRosterImportResult(created, updated, availability_updated, windows_imported)
 
     def delete_student(self, clinical_student_id: str) -> None:
         student = self._require(

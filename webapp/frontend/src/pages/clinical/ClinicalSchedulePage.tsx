@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../../lib/api";
 import { formatMinutes, parseTwelveHourTime } from "../../lib/time";
 import type {
@@ -110,14 +110,12 @@ function PlacementRow({
   busy,
   onMove,
   onUnplace,
-  children,
 }: {
   entry: ClinicalScheduleEntry;
   opportunities: PlacementOpportunity[];
   busy: boolean;
   onMove: (opportunityId: string, startMinute: number) => Promise<boolean>;
   onUnplace: () => Promise<boolean>;
-  children: ReactNode;
 }) {
   const [opportunityId, setOpportunityId] = useState(entry.opportunity_id ?? "");
   const [startTime, setStartTime] = useState(entry.start_minute === null ? "" : formatMinutes(entry.start_minute));
@@ -179,11 +177,6 @@ function PlacementRow({
           <option value={MANUALLY_UNPLACED_OPTION}>Manually unplaced</option>
         </select>
         <div className="muted">{entry.tags.length ? `Tags: ${entry.tags.join(", ")}` : "No tags"}</div>
-        <div className="muted">
-          {entry.tentative_minutes === null
-            ? "Tentative time: Not verified"
-            : `Tentative time: ${entry.tentative_minutes} minutes`}
-        </div>
       </td>
       <td>{opportunity?.day_of_week ?? entry.day}</td>
       <td>
@@ -214,7 +207,7 @@ function PlacementRow({
       <td>
         {hasWarnings ? (
           <>
-            <strong>Placement conflict</strong>
+            <strong>{entry.warnings.every((w) => w.code === "TENTATIVE_AVAILABILITY") ? "Placement warning" : "Placement conflict"}</strong>
             <ul className="clinical-placement-warnings">
               {entry.warnings.map((warning) => <li key={warning.code}>{warning.message}</li>)}
             </ul>
@@ -225,7 +218,6 @@ function PlacementRow({
           "Needs review"
         )}
       </td>
-      {children}
     </tr>
   );
 }
@@ -393,12 +385,11 @@ export function ClinicalSchedulePage() {
                     <th>Start Time</th>
                     <th>Placement Type</th>
                     <th>Status</th>
-                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {placedEntries.length === 0 ? (
-                    <tr><td colSpan={7}>No placements assigned.</td></tr>
+                    <tr><td colSpan={6}>No placements assigned.</td></tr>
                   ) : placedEntries.map((entry) => (
                     <PlacementRow
                       key={`${entry.student_id}-${entry.opportunity_id}-${entry.start_minute}-${entry.kind}`}
@@ -407,15 +398,7 @@ export function ClinicalSchedulePage() {
                       busy={busy}
                       onMove={(opportunityId, startMinute) => saveManual(entry.student_id, opportunityId, startMinute, true)}
                       onUnplace={() => run(() => api.markClinicalStudentManuallyUnplaced(entry.student_id))}
-                    >
-                      <td className="clinical-placement-actions">
-                        {entry.kind === "manual" && (
-                          <button type="button" onClick={() => void run(() => api.removeClinicalPlacementOverride(entry.student_id))}>
-                            Remove Override
-                          </button>
-                        )}
-                      </td>
-                    </PlacementRow>
+                    />
                   ))}
                 </tbody>
               </table>

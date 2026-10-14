@@ -369,6 +369,7 @@ export function ClinicalSitesPage() {
   const [deleting, setDeleting] = useState<PlacementOpportunity | null>(null);
   const [managingTags, setManagingTags] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [notice, setNotice] = useState("");
 
   const refresh = useCallback(async () => {
@@ -403,6 +404,20 @@ export function ClinicalSitesPage() {
     }
   }
 
+  async function confirmClearAll() {
+    setClearing(false);
+    try {
+      const result = await api.clearClinicalOpportunities();
+      await refresh();
+      setNotice(
+        `Deleted ${result.removed_count} ${result.removed_count === 1 ? "Clinical Site" : "Clinical Sites"}` +
+          (result.removed_placement_count ? ` and ${result.removed_placement_count} placement(s).` : "."),
+      );
+    } catch (caught) {
+      setError(errorText(caught));
+    }
+  }
+
   // Keep the open edit dialog bound to the latest persisted data.
   const editingOpportunity =
     editing && editing !== "new" ? (opportunities.find((item) => item.id === editing.id) ?? editing) : null;
@@ -414,6 +429,14 @@ export function ClinicalSitesPage() {
         <div className="dialog-actions">
           <button type="button" onClick={() => setImporting(true)}>
             Import Clinical Sites
+          </button>
+          <button
+            type="button"
+            className="danger-btn"
+            disabled={opportunities.length === 0}
+            onClick={() => setClearing(true)}
+          >
+            Delete all Clinical Sites
           </button>
           <button type="button" onClick={() => setManagingTags(true)}>
             Manage Tags
@@ -508,6 +531,15 @@ export function ClinicalSitesPage() {
       )}
       {managingTags && (
         <TagManagerDialog tags={tags} onChanged={refresh} onClose={() => setManagingTags(false)} />
+      )}
+      {clearing && (
+        <ConfirmDialog
+          title="Delete all Clinical Sites?"
+          message="All Placement Opportunities and every placement assigned to them will be removed. The Clinical Tag registry and the Student Roster are kept. This cannot be undone."
+          confirmLabel="Delete all Clinical Sites"
+          onConfirm={() => void confirmClearAll()}
+          onCancel={() => setClearing(false)}
+        />
       )}
       {deleting && (
         <ConfirmDialog

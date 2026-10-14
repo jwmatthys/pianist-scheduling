@@ -36,21 +36,14 @@ function compareByStudent(left: ClinicalScheduleEntry, right: ClinicalScheduleEn
   return compareText(left.student_name, right.student_name) || compareText(left.student_number, right.student_number);
 }
 
-function placementType(kind: ClinicalScheduleEntry["kind"]) {
-  if (kind === "automatic") return "Automatic";
-  if (kind === "manual") return "Manual";
-  if (kind === "manuallyUnplaced") return "Manually Unplaced";
-  return "Unplaced";
-}
-
 function timeRange(entry: ClinicalScheduleEntry) {
   if (entry.start_minute === null || entry.end_minute === null) return "Time not set";
   return `${formatMinutes(entry.start_minute)}-${formatMinutes(entry.end_minute)}`;
 }
 
-function studentLabel(entry: ClinicalScheduleEntry, email: string | undefined) {
+function studentLabel(entry: ClinicalScheduleEntry, email: string | undefined, includeId = true) {
   const parts = [entry.student_name];
-  if (entry.student_number) parts.push(`ID ${entry.student_number}`);
+  if (includeId && entry.student_number) parts.push(`ID ${entry.student_number}`);
   if (email) parts.push(email);
   return parts.join(" - ");
 }
@@ -92,12 +85,17 @@ export function buildClinicalReport(
   } else {
     for (const entry of [...placed].sort(compareByStudent)) {
       const opportunity = entry.opportunity_id ? opportunitiesById.get(entry.opportunity_id) : undefined;
-      const address = opportunity?.site_address ? ` - ${opportunity.site_address}` : "";
       lines.push(
-        `- **${studentLabel(entry, emailByStudent.get(entry.student_id))}** - ${entry.site_name ?? "Site unavailable"}${address} - ${entry.day ?? ""} ${timeRange(entry)} - ${placementType(entry.kind)}`,
+        `- **${studentLabel(entry, emailByStudent.get(entry.student_id))}** - ${entry.day ?? ""} ${timeRange(entry)}`,
       );
-      const contact = siteContact(opportunity);
-      if (contact) lines.push(`  - ${contact}`);
+      const site = [
+        entry.site_name ?? "Site unavailable",
+        opportunity?.site_address,
+        opportunity?.contact_name,
+        opportunity?.contact_email,
+        opportunity?.contact_phone,
+      ].filter(Boolean);
+      lines.push(`  - ${site.join(", ")}`);
     }
     lines.push("");
   }
@@ -141,7 +139,7 @@ export function buildClinicalReport(
         );
         for (const entry of ordered) {
           lines.push(
-            `- **${timeRange(entry)}** - ${studentLabel(entry, emailByStudent.get(entry.student_id))} - ${placementType(entry.kind)}`,
+            `- **${timeRange(entry)}** - ${studentLabel(entry, emailByStudent.get(entry.student_id), false)}`,
           );
         }
         lines.push("");

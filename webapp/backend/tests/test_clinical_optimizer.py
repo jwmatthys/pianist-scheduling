@@ -214,6 +214,8 @@ class SchedulePersistenceTests(ClinicalTestCase):
         entry = next(e for e in self.repo.schedule_review()[0] if e.student_id == self.a.id)
         self.assertTrue(entry.verified)
         self.assertEqual(entry.tentative_minutes, 90)
+        self.assertEqual([w.code.value for w in entry.warnings], ["TENTATIVE_AVAILABILITY"])
+        self.assertIn("90 minutes", entry.warnings[0].message)
         summary = self.repo.schedule_summary()
         self.assertEqual(summary.preferred_tag_matches, 1)
         self.assertEqual(summary.tentative_minutes, 90)

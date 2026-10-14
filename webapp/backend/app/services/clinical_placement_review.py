@@ -191,6 +191,16 @@ def review_schedule(
             for tag_id, preference in student_input.tag_preferences.items()
             if preference is TagPreference.PREFERRED and tag_id in opportunity.tag_ids
         )
+        entry_warnings = warnings
+        if tentative_minutes:
+            # Informational only: tentative time is allowed, so it never affects verification.
+            entry_warnings = (
+                *warnings,
+                PlacementWarning(
+                    PlacementWarningCode.TENTATIVE_AVAILABILITY,
+                    f"Placement falls during tentative availability ({tentative_minutes} minutes, including travel).",
+                ),
+            )
         entry = ScheduleEntry(
             student_id=student_input.id,
             student_name=student_input.label,
@@ -206,7 +216,7 @@ def review_schedule(
             preferred_tag_match_count=preferred_count,
             tentative_minutes=tentative_minutes,
             verified=is_verified,
-            warnings=warnings,
+            warnings=entry_warnings,
             unplaced_reason=None,
         )
         entries.append(entry)

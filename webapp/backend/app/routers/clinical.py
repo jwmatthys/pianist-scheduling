@@ -21,6 +21,7 @@ from ..services.clinical_readiness import analyze_readiness
 from ..services.clinical_repository import (
     ClinicalRepository,
     ClinicalValidationError,
+    RosterImportRow,
     PlacementOpportunityInput,
 )
 
@@ -160,6 +161,19 @@ def set_opportunity_tags(
         db.rollback()
         raise _http_error(error) from error
     return _opportunity_out(repo, opportunity)
+
+
+class ClinicalClearResult(BaseModel):
+    removed_count: int
+    removed_placement_count: int
+
+
+@router.delete("/opportunities", response_model=ClinicalClearResult)
+def clear_opportunities(db: Session = Depends(get_db)):
+    """Delete all Clinical Sites (and their placements). The tag registry and students are kept."""
+    removed, placements = ClinicalRepository(db).clear_opportunities()
+    _commit(db)
+    return ClinicalClearResult(removed_count=removed, removed_placement_count=placements)
 
 
 @router.delete("/opportunities/{opportunity_id}", response_model=schemas.PlacementOpportunityDeleteOut)
@@ -446,6 +460,14 @@ def set_student_availability(
     return _availability_response(repo, student_pk)
 
 
+@router.delete("/students", response_model=ClinicalClearResult)
+def clear_students(db: Session = Depends(get_db)):
+    """Delete the whole Student Roster with tag states, availability, and placements. Sites are kept."""
+    removed, placements = ClinicalRepository(db).clear_students()
+    _commit(db)
+    return ClinicalClearResult(removed_count=removed, removed_placement_count=placements)
+
+
 @router.delete("/students/{student_pk}", status_code=204)
 def delete_student(student_pk: str, db: Session = Depends(get_db)):
     try:
@@ -460,9 +482,10 @@ def delete_student(student_pk: str, db: Session = Depends(get_db)):
 
 
 class ClinicalStudentsImportResult(BaseModel):
-    students_removed: int
-    placements_removed: int
     students_created: int
+    students_updated: int
+    availability_updated: int
+    windows_imported: int
 
 
 def _parse_students_mapping(raw: str) -> students_importer.ClinicalStudentsImportMapping:
@@ -470,6 +493,13 @@ def _parse_students_mapping(raw: str) -> students_importer.ClinicalStudentsImpor
         return students_importer.ClinicalStudentsImportMapping.model_validate_json(raw)
     except ValidationError as error:
         raise ClinicalImportError("INVALID_MAPPING", "The column mapping is not valid.") from error
+
+
+def _roster_snapshot(repo: ClinicalRepository) -> dict[str, students_importer.ExistingStudent]:
+    return {
+        key: students_importer.ExistingStudent(pk, name, email, count)
+        for key, (pk, name, email, count) in repo.roster_import_snapshot().items()
+    }
 
 
 @router.post("/students/import/inspect", response_model=students_importer.ClinicalStudentsImportInspection)
@@ -490,14 +520,15 @@ async def preview_students_import(
     """Phase A: parse and validate only. Nothing is written."""
     try:
         parsed = students_importer.parse_students(
-            file.filename or "", await _read_upload(file), sheet_name or None, _parse_students_mapping(mapping)
+            file.filename or "",
+            await _read_upload(file),
+            sheet_name or None,
+            _parse_students_mapping(mapping),
+            _roster_snapshot(ClinicalRepository(db)),
         )
     except ClinicalImportError as error:
         raise _import_http_error(error) from error
-    repo = ClinicalRepository(db)
-    return students_importer.build_preview(
-        parsed, len(repo.list_students()), db.query(ClinicalPlacement).count()
-    )
+    return students_importer.build_preview(parsed)
 
 
 @router.post("/students/import/apply", response_model=ClinicalStudentsImportResult)
@@ -508,14 +539,19 @@ async def apply_students_import(
     confirmed: bool = Form(default=False),
     db: Session = Depends(get_db),
 ):
-    """Phase B: re-parse the file, then atomically replace the whole Student Roster."""
+    """Phase B: re-parse against the current roster, then atomically create/update students and availability."""
     try:
         if not confirmed:
             raise ClinicalImportError(
-                "CONFIRMATION_REQUIRED", "Confirm the replacement before importing the Student Roster."
+                "CONFIRMATION_REQUIRED", "Confirm the import before importing the Student Roster."
             )
+        repo = ClinicalRepository(db)
         parsed = students_importer.parse_students(
-            file.filename or "", await _read_upload(file), sheet_name or None, _parse_students_mapping(mapping)
+            file.filename or "",
+            await _read_upload(file),
+            sheet_name or None,
+            _parse_students_mapping(mapping),
+            _roster_snapshot(repo),
         )
         invalid = [row for row in parsed.rows if row.errors]
         if invalid:
@@ -526,9 +562,10 @@ async def apply_students_import(
             )
         if not parsed.rows:
             raise ClinicalImportError("EMPTY_IMPORT", "The selected file contains no students.")
-        result = ClinicalRepository(db).replace_students(
-            (row.student_id, row.name, row.email) for row in parsed.rows
-        )
+        result = repo.apply_roster_import([
+            RosterImportRow(row.student_id, row.name, row.email, row.clinical_student_id, row.windows)
+            for row in parsed.rows
+        ])
         db.commit()
         return ClinicalStudentsImportResult(**result.__dict__)
     except ClinicalImportError as error:

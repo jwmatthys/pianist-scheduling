@@ -153,18 +153,26 @@ An imported student will normally occupy multiple rows. During a **single import
 
 The user may add, edit, or delete students manually after import, and may edit their availability.
 
-### 6.2 Student roster re-import is full replacement
+### 6.1.1 Unified Student Roster import with weekly availability (implemented)
 
-Clinical Student Roster import is deliberately destructive and follows the replacement behavior used elsewhere in the product:
+Student Roster has a single **Import Student Roster** action (`clinical_students_importer.py`, routes `/api/clinical/students/import/{inspect,preview,apply}`) that creates/updates students and imports their recurring weekly Availability Windows in one operation. There is no standalone availability import. Weekly cell parsing is a pure shared subcomponent (`clinical_availability_importer.py`); persistence is `ClinicalRepository.apply_roster_import`.
 
-- Before commit, explicitly warn that importing will delete/replace the current Clinical student roster.
-- On confirmation, clear the existing Clinical student data for this module and replace it with the imported roster.
-- Do **not** preserve student tag states by Student ID.
-- Existing Required, Preferred, and Restricted selections are cleared as part of roster replacement.
-- Clear **all existing Clinical placements**, including automatic placements, manual placements, and Manually unplaced decisions. Placements belonging to the roster being replaced must not survive as dangling schedule records.
-- Do not attempt to reconcile the new roster against the previous one.
+The two-phase model applies: Phase A (inspect, map, preview) writes nothing; Phase B requires explicit confirmation, re-reads, re-parses, and re-validates the file against the current roster (never trusting browser preview data), and commits in one transaction.
 
-The confirmation must explicitly state that replacing the roster deletes the current Clinical student roster, student availability, student Required/Preferred/Restricted tag selections, and all Clinical placements. Clinical Site/Placement Opportunity data is not changed.
+- Columns: **Student ID** (required), Name, Email, and optional weekday columns Monday–Sunday (Mon–Sun accepted). The user maps them in one dialog.
+- Students are matched by Student ID (case-insensitive; the stored ID spelling is kept). Unknown IDs create a student (Name then required); known IDs are updated. Email, when mapped, is authoritative (blank clears it); a blank or unmapped Name keeps the existing name. Duplicate IDs in a file are row errors.
+- When at least one weekday column is mapped, each listed student's availability is **replaced**; blank cells mean no availability, so all-blank mapped days clear it. When none is mapped, availability is left unchanged (including for new students, who start with none).
+- A weekday cell holds `;`-separated ranges such as `8:00-10:00; T 1:00 PM-4:00 PM`. Entries are Available unless prefixed `T`/`Tentative`; an optional `Available` prefix is accepted. Times use the shared `time_parsing` parser; bare hours (`8`) are accepted, and unmarked hours before 7:00 (the grid's first hour) are read as afternoon, so `T 1:00-4:00` means 1:00-4:00 PM. Same-status overlaps merge; conflicting-status overlaps and invalid/reversed ranges are row errors.
+- Preview shows per row: Student ID, Name, Create/Update, student change (`Create student`, `Update name and email`, `Update name`, `Update email`, `No student change`), and availability change (`Replace 5 availability windows with 8`, `Add N …`, `Clear availability (N windows)`, `No availability change`).
+- Any row error rejects the entire import. Roster-only, availability-only, and combined imports each increment `source_data_revision` exactly once and flag an existing schedule stale.
+
+### 6.2 Student roster import is an upsert
+
+Student Roster import is non-destructive. It creates students whose Student ID is new and updates those that match; it never deletes anything.
+
+- Students absent from the file are preserved, along with their availability, Required/Preferred/Restricted tag states, and placements (automatic, manual, and Manually unplaced).
+- Clinical Sites, the Clinical Tag registry, and existing placements are preserved; a generated schedule is flagged out of date through the normal source-data revision.
+- The confirmation lists the effects above and does not warn of deletion. Removing a student remains an explicit per-student Delete action.
 
 ### 6.3 Shared weekly Availability Window editor
 
@@ -434,7 +442,7 @@ Add module-specific automated tests at the pure-domain/service level before depe
 - whitespace trimming and uppercase/case-insensitive tag normalization;
 - duplicate normalized tags collapse;
 - deleting a student-used tag requires warning/confirmation behavior;
-- roster re-import fully replaces students and clears tag states.
+- roster import upserts by Student ID (preserving absent students, tag states, and placements) and optionally replaces listed students' availability.
 
 ### Availability editor/model
 

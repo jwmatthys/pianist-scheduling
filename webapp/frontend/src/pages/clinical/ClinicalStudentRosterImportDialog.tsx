@@ -11,9 +11,11 @@ import { ConfirmDialog, Modal } from "./ClinicalDialogs";
 
 const FIELDS: { key: ClinicalStudentsImportField; label: string; required: boolean }[] = [
   { key: "student_id", label: "Student ID", required: true },
-  { key: "name", label: "Name", required: true },
+  { key: "name", label: "Name", required: false },
   { key: "email", label: "Email", required: false },
 ];
+
+const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -74,6 +76,13 @@ export function ClinicalStudentRosterImportDialog({
     setPreview(null);
   }
 
+  function updateDay(day: string, value: string) {
+    if (!mapping) return;
+    setMapping({ ...mapping, days: { ...mapping.days, [day]: value || null } });
+    setPreview(null);
+  }
+
+  const mappedDays = mapping ? WEEKDAYS.filter((day) => mapping.days[day]) : [];
   const missingRequired = !mapping || FIELDS.some((field) => field.required && !mapping[field.key]);
 
   async function runPreview() {
@@ -97,11 +106,14 @@ export function ClinicalStudentRosterImportDialog({
     setError("");
     try {
       const result = await api.applyClinicalStudentsImport(file, inspection.selected_sheet, mapping);
-      await onImported(
-        `Imported ${result.students_created} ${
-          result.students_created === 1 ? "student" : "students"
-        }; replaced ${result.students_removed} and removed ${result.placements_removed} placement(s).`,
-      );
+      const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
+      const parts = [
+        `Imported ${plural(result.students_created + result.students_updated, "student")} (${result.students_created} created, ${result.students_updated} updated)`,
+      ];
+      if (mappedDays.length > 0) {
+        parts.push(`replaced availability for ${plural(result.availability_updated, "student")}`);
+      }
+      await onImported(`${parts.join("; ")}.`);
       onClose();
     } catch (cause) {
       setError(errorText(cause));
@@ -165,8 +177,30 @@ export function ClinicalStudentRosterImportDialog({
                   </label>
                 ))}
               </div>
+              <h4>Weekly availability (optional)</h4>
+              <div className="clinical-import-mapping">
+                {WEEKDAYS.map((day) => (
+                  <label key={day}>
+                    {day}
+                    <select
+                      aria-label={day}
+                      value={mapping.days[day] ?? ""}
+                      onChange={(event) => updateDay(day, event.target.value)}
+                    >
+                      <option value="">Not in file</option>
+                      {inspection.columns.map((column) => (
+                        <option key={column} value={column}>
+                          {column}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+              </div>
               <p className="dialog-note">
-                All other columns, including availability columns, are ignored. Availability is not imported yet.
+                Name is required only for new students. Map at least one weekday column to replace each listed
+                student&apos;s Availability Windows (blank cells mean no availability); with none mapped, availability
+                is left unchanged. All other columns are ignored.
               </p>
             </section>
 
@@ -203,7 +237,8 @@ export function ClinicalStudentRosterImportDialog({
                         <th>Row</th>
                         <th>Student ID</th>
                         <th>Name</th>
-                        <th>Email</th>
+                        <th>Student</th>
+                        <th>Availability</th>
                         <th>Issues</th>
                       </tr>
                     </thead>
@@ -213,10 +248,16 @@ export function ClinicalStudentRosterImportDialog({
                           <td>{row.row_number}</td>
                           <td>{row.student_id}</td>
                           <td>{row.name}</td>
-                          <td>{row.email}</td>
+                          <td>{row.student_change}</td>
+                          <td>{row.availability_change}</td>
                           <td>
                             {row.errors.map((message) => (
                               <div key={message}>{message}</div>
+                            ))}
+                            {row.warnings.map((message) => (
+                              <div key={message} className="muted">
+                                Warning: {message}
+                              </div>
                             ))}
                           </td>
                         </tr>
@@ -241,21 +282,25 @@ export function ClinicalStudentRosterImportDialog({
       </div>
       {confirming && (
         <ConfirmDialog
-          title="Replace Student Roster?"
+          title="Import Student Roster?"
           message=""
-          confirmLabel="Replace Student Roster"
+          confirmLabel="Import Student Roster"
           onConfirm={() => void commit()}
           onCancel={() => setConfirming(false)}
         >
-          <p className="dialog-note">Importing a new Student Roster will:</p>
+          <p className="dialog-note">Importing this file will:</p>
           <ul className="dialog-note">
-            <li>Delete all existing Clinical Students ({preview?.existing_student_count ?? 0} currently)</li>
-            <li>Delete all student availability</li>
-            <li>Delete all Required / Preferred / Restricted selections</li>
-            <li>Delete all Clinical Placements ({preview?.existing_placement_count ?? 0} currently)</li>
-            <li>Replace the roster with imported Students</li>
-            <li>Preserve Clinical Sites</li>
-            <li>Preserve Clinical Tag registry</li>
+            <li>Create {preview?.students_to_create ?? 0} new student(s)</li>
+            <li>Update {preview?.students_to_update ?? 0} existing student(s) matched by Student ID</li>
+            {preview?.availability_mapped ? (
+              <li>Replace weekly availability for the students listed in the file</li>
+            ) : (
+              <li>Leave student availability unchanged</li>
+            )}
+            <li>Preserve students not listed in the file</li>
+            <li>Preserve Clinical Sites and the Clinical Tag registry</li>
+            <li>Preserve tag selections and placements</li>
+            <li>Mark any generated schedule as out of date</li>
           </ul>
         </ConfirmDialog>
       )}

@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { api } from "../../lib/api";
 import type { ClinicalTag, PlacementOpportunity } from "../../lib/types";
 import { ClinicalSitesPage } from "./ClinicalSitesPage";
 
@@ -39,6 +40,11 @@ vi.mock("../../lib/api", () => {
       setClinicalOpportunityTags: vi.fn(async (id: string, tagIds: string[]) => {
         find(id).tags = store.tags.filter((t) => tagIds.includes(t.id)).map((t) => ({ id: t.id, name: t.name }));
         return find(id);
+      }),
+      clearClinicalOpportunities: vi.fn(async () => {
+        const count = store.opportunities.length;
+        store.opportunities = [];
+        return { removed_count: count, removed_placement_count: 0 };
       }),
       deleteClinicalOpportunity: vi.fn(async (id: string) => {
         store.opportunities = store.opportunities.filter((o) => o.id !== id);
@@ -147,6 +153,21 @@ describe("ClinicalSitesPage", () => {
     const confirm = screen.getByRole("dialog", { hidden: true });
     await user.click(within(confirm).getByRole("button", { name: "Delete Placement Opportunity" }));
     await screen.findByText(/No Placement Opportunities yet/);
+  });
+
+  it("deletes all Clinical Sites only after confirmation", async () => {
+    store.opportunities = [opportunity()];
+    const user = userEvent.setup();
+    render(<ClinicalSitesPage />);
+    await user.click(await screen.findByRole("button", { name: "Delete all Clinical Sites" }));
+    const cancel = screen.getByRole("dialog", { hidden: true });
+    await user.click(within(cancel).getByRole("button", { name: "Cancel" }));
+    expect(api.clearClinicalOpportunities).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Delete all Clinical Sites" }));
+    const confirm = screen.getByRole("dialog", { hidden: true });
+    await user.click(within(confirm).getByRole("button", { name: "Delete all Clinical Sites" }));
+    await screen.findByText(/No Placement Opportunities yet/);
+    expect(api.clearClinicalOpportunities).toHaveBeenCalledTimes(1);
   });
 
   it("states the placement count when deleting an in-use opportunity", async () => {

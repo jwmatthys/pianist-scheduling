@@ -68,7 +68,7 @@ function schedule(entries: ClinicalScheduleEntry[], overrides: Partial<ClinicalS
 describe("buildClinicalReport", () => {
   const entries = [
     placed("s1", "Zed Student", mercy, 9 * 60 + 60),
-    placed("s2", "Amy Student", mercy, 9 * 60),
+    { ...placed("s2", "Amy Student", mercy, 9 * 60), student_number: "A-77" },
     placed("s3", "Bo Student", mercyMon, 13 * 60, "manual"),
     entry("s4", "Dee Student", { unplaced_reason: "CAPACITY_LIMIT" }),
   ];
@@ -87,6 +87,15 @@ describe("buildClinicalReport", () => {
     expect(report.markdown).toContain("3 students placed, 1 unplaced.");
   });
 
+  it("lists student, ID, email and placement time, then site, address and contact details", () => {
+    const lines = report.markdown.split("\n");
+    const index = lines.findIndex((line) => line.startsWith("- **Amy Student"));
+    expect(lines[index]).toBe("- **Amy Student - ID A-77 - s2@example.test** - Tuesday 9:00 AM-10:00 AM");
+    expect(lines[index + 1]).toBe(
+      "  - Mercy Clinic, 1 Mercy Clinic Way, Casey Contact, contact@example.test, 555-0100",
+    );
+  });
+
   it("orders students by name and sites by site, weekday, start, then session start", () => {
     const md = report.markdown;
     const studentSection = md.slice(md.indexOf("## Student Placement Roster"), md.indexOf("# Site Placement Roster"));
@@ -97,6 +106,8 @@ describe("buildClinicalReport", () => {
     expect(siteSection.indexOf("Monday")).toBeLessThan(siteSection.indexOf("Tuesday"));
     expect(siteSection.indexOf("Amy Student")).toBeLessThan(siteSection.indexOf("Zed Student"));
     expect(siteSection).toContain("2 of 2 seats filled");
+    expect(siteSection).toContain("Amy Student - s2@example.test");
+    expect(siteSection).not.toContain("A-77");
   });
 
   it("is deterministic and requests page breaks before site and unplaced sections", () => {

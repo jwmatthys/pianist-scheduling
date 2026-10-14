@@ -117,6 +117,43 @@ class StudentRepositoryTests(ClinicalTestCase):
         self.assertEqual(self.db.query(ClinicalStudentTagState).count(), 0)
         self.assertIsNone(self.repo.get_placement(student.id))
 
+    def test_clear_students_keeps_sites_and_tags_and_bumps_once(self):
+        site = self.repo.create_opportunity(opportunity_input())
+        tag = self.repo.create_tag("kids")
+        for index in range(2):
+            student = self.repo.create_student(
+                f"S{index}", f"Pat {index}", availability=[AvailabilityWindow("Monday", 60, 120, "Available")],
+                require_name=True,
+            )
+            self.repo.set_student_tag_states(student.id, {tag.id: "required"})
+            self.repo.set_placement(student.id, PlacementType.AUTOMATIC, site.id, 480)
+        before = self.repo.get_state().source_data_revision
+        self.assertEqual(self.repo.clear_students(), (2, 2))
+        self.assertEqual(self.repo.list_students(), [])
+        self.assertEqual(self.db.query(ClinicalStudentTagState).count(), 0)
+        self.assertEqual(self.repo.student_availability_counts(), {})
+        self.assertEqual(len(self.repo.list_opportunities()), 1)
+        self.assertEqual(len(self.repo.list_tags()), 1)
+        self.assertEqual(self.repo.get_state().source_data_revision, before + 1)
+        self.assertEqual(self.repo.clear_students(), (0, 0))
+        self.assertEqual(self.repo.get_state().source_data_revision, before + 1)
+
+    def test_clear_opportunities_keeps_students_tags_and_unplaced_decisions(self):
+        tag = self.repo.create_tag("kids")
+        site = self.repo.create_opportunity(opportunity_input(), tag_ids=[tag.id])
+        placed = self.repo.create_student("S1", "Pat", require_name=True)
+        unplaced = self.repo.create_student("S2", "Sam", require_name=True)
+        self.repo.set_placement(placed.id, PlacementType.AUTOMATIC, site.id, 480)
+        self.repo.set_placement(unplaced.id, PlacementType.MANUALLY_UNPLACED)
+        before = self.repo.get_state().source_data_revision
+        self.assertEqual(self.repo.clear_opportunities(), (1, 1))
+        self.assertEqual(self.repo.list_opportunities(), [])
+        self.assertEqual(len(self.repo.list_students()), 2)
+        self.assertEqual(len(self.repo.list_tags()), 1)
+        self.assertIsNone(self.repo.get_placement(placed.id))
+        self.assertIsNotNone(self.repo.get_placement(unplaced.id))
+        self.assertEqual(self.repo.get_state().source_data_revision, before + 1)
+
     def test_availability_counts(self):
         student = self.repo.create_student(
             "S1", "Pat", availability=[AvailabilityWindow("Monday", 60, 120, "Available")], require_name=True
@@ -186,17 +223,20 @@ class StudentImportParsingTests(unittest.TestCase):
         with self.assertRaises(importer.ClinicalImportError):
             parse(GOOD, name="ID")
         inspection = importer.inspect_file("r.csv", csv_bytes(GOOD, ["Student ID", "Name", "Email", "x"]), None)
-        self.assertEqual(inspection.suggested_mapping, {"student_id": "Student ID", "name": "Name", "email": "Email"})
+        self.assertEqual(
+            inspection.suggested_mapping.model_dump(exclude={"days"}),
+            {"student_id": "Student ID", "name": "Name", "email": "Email"},
+        )
 
     def test_preview(self):
-        preview = importer.build_preview(parse(GOOD + [["", "Bad", "", ""]]), 3, 4)
+        preview = importer.build_preview(parse(GOOD + [["", "Bad", "", ""]]))
         self.assertEqual((preview.total_rows, preview.valid_rows, preview.invalid_rows), (3, 2, 1))
-        self.assertEqual((preview.existing_student_count, preview.existing_placement_count), (3, 4))
+        self.assertEqual((preview.students_to_create, preview.students_to_update), (2, 0))
         self.assertFalse(preview.can_apply)
-        self.assertTrue(importer.build_preview(parse(GOOD), 0, 0).can_apply)
+        self.assertTrue(importer.build_preview(parse(GOOD)).can_apply)
 
 
-class StudentReplacementTests(ClinicalTestCase):
+class StudentRosterUpsertTests(ClinicalTestCase):
     def seed(self):
         tag = self.repo.create_tag("kids")
         site = self.repo.create_opportunity(opportunity_input(site_name="Keep Site"), tag_ids=[tag.id])
@@ -216,22 +256,27 @@ class StudentReplacementTests(ClinicalTestCase):
             )
         )
 
-    def test_full_replacement(self):
+    def test_import_adds_students_and_preserves_existing_data(self):
         self.seed()
         before = self.repo.get_state().source_data_revision
         result = self.apply()
-        self.assertEqual((result.students_removed, result.placements_removed, result.students_created), (2, 2, 2))
-        self.assertEqual([s.student_id for s in self.repo.list_students()], ["S100", "S200"])
-        self.assertEqual(self.repo.student_tag_states(), {})
-        self.assertEqual(self.repo.student_availability_counts(), {})
-        self.assertEqual(self.db.query(clinical.ClinicalPlacement).count(), 0)
+        self.assertEqual((result.students_created, result.students_updated), (2, 0))
+        self.assertEqual({s.student_id for s in self.repo.list_students()}, {"OLD1", "OLD2", "S100", "S200"})
+        self.assertEqual(len(self.repo.student_tag_states()), 1)
+        self.assertEqual(sum(self.repo.student_availability_counts().values()), 1)
+        self.assertEqual(self.db.query(clinical.ClinicalPlacement).count(), 2)
         self.assertEqual([o.site_name for o in self.repo.list_opportunities()], ["Keep Site"])
-        self.assertEqual([t.name for t in self.repo.list_tags()], ["KIDS"])
-        self.assertEqual([t.name for t in self.repo.list_opportunities()[0].tags], ["KIDS"])
         state = self.repo.get_state()
         self.assertEqual(state.source_data_revision, before + 1)
-        self.assertEqual(state.schedule_revision, 0)
-        self.assertFalse(state.is_schedule_stale)
+        self.assertTrue(state.is_schedule_stale)
+
+    def test_import_updates_matching_student_case_insensitively(self):
+        self.seed()
+        result = self.apply([["old1", "Renamed", "o@example.test", ""]])
+        self.assertEqual((result.students_created, result.students_updated), (0, 1))
+        student = next(s for s in self.repo.list_students() if s.student_id == "OLD1")
+        self.assertEqual((student.name, student.email), ("Renamed", "o@example.test"))
+        self.assertEqual(self.db.query(clinical.ClinicalPlacement).count(), 2)
 
     def test_requires_confirmation(self):
         self.seed()
@@ -263,7 +308,7 @@ class StudentReplacementTests(ClinicalTestCase):
             )
         )
         self.assertTrue(preview.can_apply)
-        self.assertEqual((preview.existing_student_count, preview.existing_placement_count), (2, 2))
+        self.assertEqual((preview.students_to_create, preview.students_to_update), (2, 0))
         self.db.rollback()
         self.assertEqual({s.student_id for s in self.repo.list_students()}, {"OLD1", "OLD2"})
 

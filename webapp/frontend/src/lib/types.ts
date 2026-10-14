@@ -526,7 +526,12 @@ export interface ClinicalReadiness {
 
 export type ClinicalStudentsImportField = "student_id" | "name" | "email";
 
-export type ClinicalStudentsImportMapping = Record<ClinicalStudentsImportField, string | null>;
+export interface ClinicalStudentsImportMapping {
+  student_id: string | null;
+  name: string | null;
+  email: string | null;
+  days: Record<string, string | null>;
+}
 
 export interface ClinicalStudentsImportInspection {
   sheets: string[];
@@ -541,6 +546,10 @@ export interface ClinicalStudentsImportPreviewRow {
   student_id: string;
   name: string;
   email: string;
+  action: "create" | "update" | null;
+  student_change: string;
+  availability_change: string;
+  warnings: string[];
   errors: string[];
 }
 
@@ -549,16 +558,18 @@ export interface ClinicalStudentsImportPreview {
   total_rows: number;
   valid_rows: number;
   invalid_rows: number;
+  students_to_create: number;
+  students_to_update: number;
+  availability_mapped: boolean;
   rows: ClinicalStudentsImportPreviewRow[];
-  existing_student_count: number;
-  existing_placement_count: number;
   can_apply: boolean;
 }
 
 export interface ClinicalStudentsImportResult {
-  students_removed: number;
-  placements_removed: number;
   students_created: number;
+  students_updated: number;
+  availability_updated: number;
+  windows_imported: number;
 }
 
 export interface ClinicalUnplacedStudent {
@@ -595,6 +606,7 @@ export interface ClinicalSchedule {
 export interface ClinicalPlacementWarning {
   code:
     | "OUTSIDE_AVAILABILITY"
+    | "TENTATIVE_AVAILABILITY"
     | "REQUIRED_TAG_MISSING"
     | "RESTRICTED_TAG_CONFLICT"
     | "CAPACITY_EXCEEDED"
