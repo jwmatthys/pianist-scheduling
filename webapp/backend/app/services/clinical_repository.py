@@ -28,6 +28,8 @@ from ..clinical_models import (
     tag_identity_key,
 )
 from .availability import AvailabilityWindow, normalize_day, normalize_windows
+from .clinical_scheduling_models import OpportunityInput, SchedulingInput, StudentInput, TagPreference
+from .time_parsing import format_time_of_day
 
 
 class ClinicalValidationError(ValueError):
@@ -608,6 +610,59 @@ class ClinicalRepository:
             )
             for row in rows
         ]
+
+    def scheduling_input(self) -> SchedulingInput:
+        """Immutable snapshot of scheduling inputs, stamped with the current source-data revision.
+
+        Candidate and readiness results derived from it are valid only for that
+        revision; any source-data change increments it.
+        """
+        tags = {tag.id: tag.name for tag in self.list_tags()}
+        availability: dict[str, list[AvailabilityWindow]] = {}
+        for row in self.db.query(ClinicalStudentAvailabilityWindow).order_by(
+            ClinicalStudentAvailabilityWindow.day, ClinicalStudentAvailabilityWindow.start_minute
+        ):
+            availability.setdefault(row.clinical_student_id, []).append(AvailabilityWindow(
+                day=row.day, start_minute=row.start_minute, end_minute=row.end_minute,
+                status=row.status, source=row.source, source_row=row.source_row,
+            ))
+        states = self.student_tag_states()
+        preferences = {
+            TagState.REQUIRED: TagPreference.REQUIRED,
+            TagState.PREFERRED: TagPreference.PREFERRED,
+            TagState.RESTRICTED: TagPreference.RESTRICTED,
+        }
+        students = tuple(
+            StudentInput(
+                id=student.id,
+                label=student.name or student.student_id,
+                availability=tuple(availability.get(student.id, ())),
+                tag_preferences={
+                    tag_id: preferences[state]
+                    for tag_id, state in states.get(student.id, {}).items()
+                    if state in preferences
+                },
+            )
+            for student in self.list_students()
+        )
+        opportunities = tuple(
+            OpportunityInput(
+                id=item.id,
+                label=(
+                    f"{item.site_name}, {item.day_of_week[:3]} "
+                    f"{format_time_of_day(item.start_minute)}-{format_time_of_day(item.end_minute)}"
+                ),
+                day=item.day_of_week,
+                start_minute=item.start_minute,
+                end_minute=item.end_minute,
+                session_length_minutes=item.session_length_minutes,
+                travel_minutes=item.travel_minutes,
+                capacity=item.capacity,
+                tag_ids=frozenset(tag.id for tag in item.tags),
+            )
+            for item in self.list_opportunities()
+        )
+        return SchedulingInput(self.get_state().source_data_revision, students, opportunities, tags)
 
     def set_tag_state(self, clinical_student_id: str, tag_id: str, state: TagState) -> None:
         """Persist a student/tag state; Neutral is represented by the absence of a row."""

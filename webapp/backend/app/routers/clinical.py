@@ -15,7 +15,9 @@ from ..database import get_db
 from ..services import clinical_sites_importer as importer
 from ..services.availability import AvailabilityWindow, normalize_day
 from ..services import clinical_students_importer as students_importer
+from ..services.clinical_candidates import generate_candidates
 from ..services.clinical_import_common import ClinicalImportError
+from ..services.clinical_readiness import analyze_readiness
 from ..services.clinical_repository import (
     ClinicalRepository,
     ClinicalValidationError,
@@ -538,3 +540,33 @@ async def apply_students_import(
     except Exception:
         db.rollback()
         raise
+
+
+# --- Readiness and candidates (read-only; never assigns students) ---------
+
+
+@router.get("/readiness", response_model=schemas.ClinicalReadinessOut)
+def get_readiness(db: Session = Depends(get_db)):
+    scheduling_input = ClinicalRepository(db).scheduling_input()
+    candidates = generate_candidates(scheduling_input)
+    report = analyze_readiness(scheduling_input, candidates)
+    return schemas.ClinicalReadinessOut(
+        source_data_revision=report.source_data_revision,
+        is_ready=report.is_ready,
+        student_count=report.student_count,
+        opportunity_count=report.opportunity_count,
+        feasible_candidate_count=report.feasible_candidate_count,
+        total_candidate_count=report.total_candidate_count,
+        students_with_candidates=len({item.student_id for item in candidates.feasible}),
+        warnings=[
+            schemas.ClinicalReadinessWarningOut(
+                code=item.code.value,
+                severity=item.severity.value,
+                category=item.category.value,
+                subject=None if item.subject is None else schemas.ClinicalReadinessSubjectOut(
+                    kind=item.subject.kind.value, id=item.subject.id, label=item.subject.label
+                ),
+            )
+            for item in report.warnings
+        ],
+    )

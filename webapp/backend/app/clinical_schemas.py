@@ -101,3 +101,27 @@ class ClinicalAvailabilityWindowIO(BaseModel):
 
 class ClinicalStudentAvailabilityIO(BaseModel):
     windows: list[ClinicalAvailabilityWindowIO] = Field(max_length=500)
+
+
+class ClinicalReadinessSubjectOut(BaseModel):
+    kind: str
+    id: str
+    label: str
+
+
+class ClinicalReadinessWarningOut(BaseModel):
+    code: str
+    severity: str
+    category: str
+    subject: ClinicalReadinessSubjectOut | None = None
+
+
+class ClinicalReadinessOut(BaseModel):
+    source_data_revision: int
+    is_ready: bool
+    student_count: int
+    opportunity_count: int
+    feasible_candidate_count: int
+    total_candidate_count: int
+    students_with_candidates: int
+    warnings: list[ClinicalReadinessWarningOut]

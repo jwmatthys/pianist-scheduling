@@ -7,6 +7,16 @@ vi.mock("../lib/api", () => ({
   api: {
     listClinicalOpportunities: vi.fn().mockResolvedValue([]),
     listClinicalTags: vi.fn().mockResolvedValue([]),
+    getClinicalReadiness: vi.fn().mockResolvedValue({
+      source_data_revision: 0,
+      is_ready: false,
+      student_count: 0,
+      opportunity_count: 0,
+      feasible_candidate_count: 0,
+      total_candidate_count: 0,
+      students_with_candidates: 0,
+      warnings: [],
+    }),
   },
 }));
 
@@ -21,12 +31,12 @@ describe("ClinicalModule", () => {
     expect(screen.getByRole("heading", { name: "Clinical Sites" })).toBeTruthy();
   });
 
-  it("shows not-implemented placeholders for Schedule and Reports", async () => {
+  it("shows readiness on Schedule and a placeholder on Reports", async () => {
     const user = userEvent.setup();
     render(<ClinicalModule />);
 
     await user.click(screen.getByRole("button", { name: "Schedule" }));
-    expect(screen.getByText(/scheduling functionality is not implemented/i)).toBeTruthy();
+    expect(screen.getByText(/schedule generation is not implemented/i)).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "Reports" }));
     expect(screen.getByText(/reports and exports are not implemented/i)).toBeTruthy();

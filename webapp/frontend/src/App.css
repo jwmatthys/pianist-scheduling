@@ -1416,3 +1416,32 @@ button {
 .clinical-table td.clinical-availability-missing {
   background: #ffeb9c;
 }
+
+.clinical-readiness-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0.25rem 0 1rem;
+}
+
+.clinical-readiness-list li {
+  margin: 0.25rem 0;
+}
+
+.clinical-readiness-item ul {
+  margin: 0.25rem 0 0.5rem;
+  padding-left: 1.5rem;
+  list-style: disc;
+  color: #52606d;
+}
+
+.clinical-readiness-error {
+  color: #a4262c;
+}
+
+.clinical-readiness-warning {
+  color: #8a5a00;
+}
+
+.clinical-readiness-info {
+  color: #52606d;
+}

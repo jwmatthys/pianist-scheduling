@@ -31,6 +31,7 @@ import type {
   ClinicalSitesImportPreview,
   ClinicalSitesImportResult,
   ClinicalStudent,
+  ClinicalReadiness,
   RecurringAvailabilityWindow,
   ClinicalStudentFields,
   ClinicalStudentsImportInspection,
@@ -313,6 +314,7 @@ export const api = {
       body: form,
     });
   },
+  getClinicalReadiness: () => request<ClinicalReadiness>("/api/clinical/readiness"),
   listClinicalStudents: () => request<ClinicalStudent[]>("/api/clinical/students"),
   createClinicalStudent: (data: ClinicalStudentFields) =>
     request<ClinicalStudent>("/api/clinical/students", { method: "POST", body: JSON.stringify(data) }),

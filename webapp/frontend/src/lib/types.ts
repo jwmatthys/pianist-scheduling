@@ -503,6 +503,27 @@ export interface RecurringAvailabilityWindow {
   status: AvailabilityStatus;
 }
 
+export type ClinicalReadinessSeverity = "error" | "warning" | "info";
+export type ClinicalReadinessCategory = "data" | "students" | "opportunities" | "tags";
+
+export interface ClinicalReadinessWarning {
+  code: string;
+  severity: ClinicalReadinessSeverity;
+  category: ClinicalReadinessCategory;
+  subject: { kind: "student" | "opportunity" | "tag"; id: string; label: string } | null;
+}
+
+export interface ClinicalReadiness {
+  source_data_revision: number;
+  is_ready: boolean;
+  student_count: number;
+  opportunity_count: number;
+  feasible_candidate_count: number;
+  total_candidate_count: number;
+  students_with_candidates: number;
+  warnings: ClinicalReadinessWarning[];
+}
+
 export type ClinicalStudentsImportField = "student_id" | "name" | "email";
 
 export type ClinicalStudentsImportMapping = Record<ClinicalStudentsImportField, string | null>;
