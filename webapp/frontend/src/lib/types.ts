@@ -496,6 +496,13 @@ export interface ClinicalStudent extends ClinicalStudentFields {
   updated_at: string;
 }
 
+export interface RecurringAvailabilityWindow {
+  day: string;
+  start_minute: number;
+  end_minute: number;
+  status: AvailabilityStatus;
+}
+
 export type ClinicalStudentsImportField = "student_id" | "name" | "email";
 
 export type ClinicalStudentsImportMapping = Record<ClinicalStudentsImportField, string | null>;

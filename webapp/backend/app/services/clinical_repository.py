@@ -27,7 +27,7 @@ from ..clinical_models import (
     normalize_tag_name,
     tag_identity_key,
 )
-from .availability import AvailabilityWindow, normalize_day
+from .availability import AvailabilityWindow, normalize_day, normalize_windows
 
 
 class ClinicalValidationError(ValueError):
@@ -571,6 +571,24 @@ class ClinicalRepository:
         self.db.expire(student, ["availability"])
         if record_change:
             self.record_source_change()
+
+    def set_student_availability(
+        self, clinical_student_id: str, windows: Sequence[AvailabilityWindow]
+    ) -> list[AvailabilityWindow]:
+        """Replace one student's recurring weekly windows as a single source-data change.
+
+        Same-status overlaps and adjacent windows are merged; conflicting overlaps and
+        invalid windows are rejected so nothing partial is stored.
+        """
+        self._require(ClinicalStudent, clinical_student_id, "STUDENT_NOT_FOUND", "The student no longer exists.")
+        normalized, issues = normalize_windows(list(windows))
+        if any(issue.severity == "error" for issue in issues):
+            raise ClinicalValidationError(
+                "INVALID_AVAILABILITY_WINDOW",
+                "Availability Windows must be valid and must not overlap with a different status.",
+            )
+        self.replace_student_availability(clinical_student_id, normalized)
+        return self.student_availability(clinical_student_id)
 
     def student_availability(self, clinical_student_id: str) -> list[AvailabilityWindow]:
         rows = (

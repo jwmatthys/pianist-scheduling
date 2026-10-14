@@ -62,8 +62,10 @@ describe("Student Roster page", () => {
     ]);
     render(<ClinicalStudentRosterPage />);
     expect(await screen.findByText("Ada Example")).toBeTruthy();
-    expect(screen.getByText("Not yet configured")).toBeTruthy();
-    expect(screen.getByText("2 Availability Windows")).toBeTruthy();
+    expect(screen.getByText("No availability configured")).toBeTruthy();
+    expect(screen.getByText("Availability entered")).toBeTruthy();
+    expect(screen.getByText("No availability configured").closest("td")?.className).toContain("clinical-availability-missing");
+    expect(screen.getByText("Availability entered").closest("td")?.className ?? "").not.toContain("clinical-availability-missing");
     expect(screen.getByText("KIDS: Required")).toBeTruthy();
   });
 

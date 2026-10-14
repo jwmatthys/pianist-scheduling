@@ -13,6 +13,7 @@ from .. import clinical_schemas as schemas
 from ..clinical_models import ClinicalPlacement, ClinicalStudent, PlacementOpportunity, TagState
 from ..database import get_db
 from ..services import clinical_sites_importer as importer
+from ..services.availability import AvailabilityWindow, normalize_day
 from ..services import clinical_students_importer as students_importer
 from ..services.clinical_import_common import ClinicalImportError
 from ..services.clinical_repository import (
@@ -399,6 +400,48 @@ def set_student_tag_states(
         db.rollback()
         raise _http_error(error) from error
     return _student_response(repo, student)
+
+
+def _availability_response(repo: ClinicalRepository, student_pk: str) -> schemas.ClinicalStudentAvailabilityIO:
+    return schemas.ClinicalStudentAvailabilityIO(windows=[
+        schemas.ClinicalAvailabilityWindowIO(
+            day=item.day, start_minute=item.start_minute, end_minute=item.end_minute, status=item.status
+        )
+        for item in repo.student_availability(student_pk)
+    ])
+
+
+@router.get("/students/{student_pk}/availability", response_model=schemas.ClinicalStudentAvailabilityIO)
+def get_student_availability(student_pk: str, db: Session = Depends(get_db)):
+    repo = ClinicalRepository(db)
+    try:
+        repo.get_student(student_pk)
+    except ClinicalValidationError as error:
+        raise _http_error(error) from error
+    return _availability_response(repo, student_pk)
+
+
+@router.put("/students/{student_pk}/availability", response_model=schemas.ClinicalStudentAvailabilityIO)
+def set_student_availability(
+    student_pk: str, payload: schemas.ClinicalStudentAvailabilityIO, db: Session = Depends(get_db)
+):
+    repo = ClinicalRepository(db)
+    windows = [
+        AvailabilityWindow(
+            day=normalize_day(item.day) or item.day,
+            start_minute=item.start_minute,
+            end_minute=item.end_minute,
+            status=item.status,  # type: ignore[arg-type]
+        )
+        for item in payload.windows
+    ]
+    try:
+        repo.set_student_availability(student_pk, windows)
+        _commit(db)
+    except ClinicalValidationError as error:
+        db.rollback()
+        raise _http_error(error) from error
+    return _availability_response(repo, student_pk)
 
 
 @router.delete("/students/{student_pk}", status_code=204)

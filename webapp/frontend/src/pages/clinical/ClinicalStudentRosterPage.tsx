@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api } from "../../lib/api";
 import type { ClinicalStudent, ClinicalTag, ClinicalTagState } from "../../lib/types";
 import { ConfirmDialog, Modal } from "./ClinicalDialogs";
+import { ClinicalStudentAvailabilityDialog } from "./ClinicalStudentAvailabilityDialog";
 import { ClinicalStudentRosterImportDialog } from "./ClinicalStudentRosterImportDialog";
 
 const STATE_ORDER: ClinicalTagState[] = ["neutral", "required", "preferred", "restricted"];
@@ -18,6 +19,10 @@ function nextState(state: ClinicalTagState): ClinicalTagState {
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function availabilitySummary(count: number): string {
+  return count === 0 ? "No availability configured" : "Availability entered";
 }
 
 function TagStateLegend() {
@@ -50,6 +55,7 @@ function StudentDialog({
   const [states, setStates] = useState<Record<string, ClinicalTagState>>(() => ({ ...(student?.tag_states ?? {}) }));
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [editingAvailability, setEditingAvailability] = useState(false);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -128,7 +134,18 @@ function StudentDialog({
             </>
           )}
         </fieldset>
-        <p className="muted">Availability is not editable yet.</p>
+        <div className="clinical-availability-row">
+          <button
+            type="button"
+            disabled={!student}
+            onClick={() => setEditingAvailability(true)}
+          >
+            Edit Availability
+          </button>
+          <span className="muted">
+            {student ? availabilitySummary(student.availability_window_count) : "Save the student first to enter availability."}
+          </span>
+        </div>
         <div className="dialog-actions">
           <button type="button" onClick={onClose}>
             Cancel
@@ -138,6 +155,13 @@ function StudentDialog({
           </button>
         </div>
       </form>
+      {student && editingAvailability && (
+        <ClinicalStudentAvailabilityDialog
+          student={student}
+          onSaved={onChanged}
+          onClose={() => setEditingAvailability(false)}
+        />
+      )}
     </Modal>
   );
 }
@@ -165,6 +189,7 @@ export function ClinicalStudentRosterPage() {
   const [editing, setEditing] = useState<ClinicalStudent | "new" | null>(null);
   const [deleting, setDeleting] = useState<ClinicalStudent | null>(null);
   const [importing, setImporting] = useState(false);
+  const [availabilityFor, setAvailabilityFor] = useState<ClinicalStudent | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -241,14 +266,19 @@ export function ClinicalStudentRosterPage() {
                 <td>{item.student_id}</td>
                 <td>{item.name}</td>
                 <td>{item.email}</td>
-                <td>
-                  {item.availability_window_count > 0 ? (
-                    `${item.availability_window_count} Availability ${
-                      item.availability_window_count === 1 ? "Window" : "Windows"
-                    }`
-                  ) : (
-                    <span className="muted">Not yet configured</span>
-                  )}
+                <td className={item.availability_window_count === 0 ? "clinical-availability-missing" : undefined}>
+                  <div className="clinical-availability-cell">
+                    <span className={item.availability_window_count === 0 ? undefined : "muted"}>
+                      {availabilitySummary(item.availability_window_count)}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`Edit availability for ${item.name}`}
+                      onClick={() => setAvailabilityFor(item)}
+                    >
+                      Edit Availability
+                    </button>
+                  </div>
                 </td>
                 <td>
                   <TagSummary student={item} tags={tags} />
@@ -279,6 +309,13 @@ export function ClinicalStudentRosterPage() {
           tags={tags}
           onChanged={refresh}
           onClose={() => setEditing(null)}
+        />
+      )}
+      {availabilityFor && (
+        <ClinicalStudentAvailabilityDialog
+          student={availabilityFor}
+          onSaved={refresh}
+          onClose={() => setAvailabilityFor(null)}
         />
       )}
       {importing && (

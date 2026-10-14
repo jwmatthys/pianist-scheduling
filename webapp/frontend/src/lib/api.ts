@@ -31,6 +31,7 @@ import type {
   ClinicalSitesImportPreview,
   ClinicalSitesImportResult,
   ClinicalStudent,
+  RecurringAvailabilityWindow,
   ClinicalStudentFields,
   ClinicalStudentsImportInspection,
   ClinicalStudentsImportMapping,
@@ -325,6 +326,15 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ tag_states: tagStates }),
     }),
+  getClinicalStudentAvailability: (id: string) =>
+    request<{ windows: RecurringAvailabilityWindow[] }>(
+      `/api/clinical/students/${encodeURIComponent(id)}/availability`
+    ),
+  setClinicalStudentAvailability: (id: string, windows: RecurringAvailabilityWindow[]) =>
+    request<{ windows: RecurringAvailabilityWindow[] }>(
+      `/api/clinical/students/${encodeURIComponent(id)}/availability`,
+      { method: "PUT", body: JSON.stringify({ windows }) }
+    ),
   deleteClinicalStudent: (id: string) =>
     request<void>(`/api/clinical/students/${encodeURIComponent(id)}`, { method: "DELETE" }),
   inspectClinicalStudentsFile: (file: File, sheetName?: string | null) => {

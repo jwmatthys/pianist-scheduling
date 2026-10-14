@@ -90,3 +90,14 @@ class ClinicalStudentOut(ClinicalStudentFields):
 
 class ClinicalStudentTagStatesIn(BaseModel):
     tag_states: dict[str, str]
+
+
+class ClinicalAvailabilityWindowIO(BaseModel):
+    day: str
+    start_minute: int
+    end_minute: int
+    status: str
+
+
+class ClinicalStudentAvailabilityIO(BaseModel):
+    windows: list[ClinicalAvailabilityWindowIO] = Field(max_length=500)
