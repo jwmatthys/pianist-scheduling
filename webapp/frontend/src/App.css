@@ -562,11 +562,21 @@ button {
 }
 
 .dialog-close {
-  border: 0;
-  background: transparent;
-  color: #234b65;
-  text-decoration: underline;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid #b9c4ce;
+  border-radius: 4px;
+  color: #455e63;
+  background: white;
+  font-size: 1.25rem;
+  line-height: 1;
   cursor: pointer;
+}
+
+.dialog-close:hover {
+  background: #eef2f5;
 }
 
 .dialog-actions {
@@ -1163,4 +1173,114 @@ button {
   .wide-window-pair {
     grid-template-columns: 1fr;
   }
+}
+
+.clinical-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.clinical-table th,
+.clinical-table td {
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid #d5dde4;
+  text-align: left;
+  vertical-align: top;
+}
+
+.clinical-tag {
+  display: inline-block;
+  margin: 0 0.25rem 0.25rem 0;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: #dbe9f5;
+  color: #1f2933;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.clinical-tag-unused {
+  background: #eceff1;
+  color: #8a96a0;
+}
+
+.clinical-tag-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  border: 1px solid #d5dde4;
+  border-radius: 4px;
+}
+
+.session-dialog .clinical-tag-option {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.session-dialog .clinical-tag-option input {
+  width: auto;
+  min-height: 0;
+}
+
+.clinical-tag-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.clinical-tag-list li,
+.clinical-tag-add {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.clinical-tag-add label {
+  flex: 1;
+}
+
+.session-dialog select {
+  min-height: 40px;
+  font: inherit;
+}
+
+.clinical-tag-manager {
+  display: grid;
+  gap: 1rem;
+}
+
+.clinical-tag-manager .dialog-actions {
+  margin-top: 0.5rem;
+}
+
+.clinical-wide-dialog {
+  width: min(760px, calc(100vw - 32px));
+  overflow: auto;
+}
+
+.clinical-tag-list {
+  max-height: 40vh;
+  overflow: auto;
+}
+
+.clinical-tag-list li {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1fr) max-content 6.5rem 6.5rem;
+  align-items: center;
+  min-width: max-content;
+  width: 100%;
+}
+
+.clinical-tag-list li form {
+  grid-column: 1 / -1;
+}
+
+.clinical-tag-action {
+  width: 100%;
+  min-height: 36px;
+  white-space: nowrap;
 }

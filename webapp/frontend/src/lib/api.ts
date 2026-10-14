@@ -26,6 +26,9 @@ import type {
   RunAssignmentResult,
   SchedulingSession,
   SchedulingSessionInput,
+  ClinicalTag,
+  PlacementOpportunity,
+  PlacementOpportunityFields,
 } from "./types";
 import { getApiBase } from "./platform";
 
@@ -235,4 +238,37 @@ export const api = {
   getJuryScheduleHistory: () => request<JuryScheduleHistoryItem[]>("/api/jury/results/history"),
   getJuryScheduleResult: (resultUuid: string) =>
     request<JuryScheduleResult>(`/api/jury/results/${encodeURIComponent(resultUuid)}`),
+  listClinicalOpportunities: () => request<PlacementOpportunity[]>("/api/clinical/opportunities"),
+  createClinicalOpportunity: (data: PlacementOpportunityFields & { tag_ids: string[] }) =>
+    request<PlacementOpportunity>("/api/clinical/opportunities", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateClinicalOpportunity: (id: string, data: PlacementOpportunityFields) =>
+    request<PlacementOpportunity>(`/api/clinical/opportunities/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  setClinicalOpportunityTags: (id: string, tagIds: string[]) =>
+    request<PlacementOpportunity>(`/api/clinical/opportunities/${encodeURIComponent(id)}/tags`, {
+      method: "PUT",
+      body: JSON.stringify({ tag_ids: tagIds }),
+    }),
+  deleteClinicalOpportunity: (id: string) =>
+    request<{ removed_placement_count: number }>(
+      `/api/clinical/opportunities/${encodeURIComponent(id)}`,
+      { method: "DELETE" },
+    ),
+  listClinicalTags: () => request<ClinicalTag[]>("/api/clinical/tags"),
+  createClinicalTag: (name: string) =>
+    request<ClinicalTag>("/api/clinical/tags", { method: "POST", body: JSON.stringify({ name }) }),
+  renameClinicalTag: (id: string, name: string) =>
+    request<ClinicalTag>(`/api/clinical/tags/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    }),
+  deleteClinicalTag: (id: string) =>
+    request<{ affected_student_count: number }>(`/api/clinical/tags/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
 };

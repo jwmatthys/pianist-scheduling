@@ -714,7 +714,7 @@ export function JurySetupPage() {
           <form onSubmit={(event) => void savePanel(event)}>
             <div className="jury-dialog-heading">
               <div><p className="jury-eyebrow">JURY PANEL SETTINGS</p><h2 id="jury-panel-dialog-title">{panelDialog.panel_uuid ? "Edit Jury Panel" : "Add Jury Panel"}</h2></div>
-              <button type="button" className="jury-icon-button" aria-label="Close Panel editor" onClick={() => setPanelDialog(null)}>×</button>
+              <button type="button" className="dialog-close" aria-label="Close Panel editor" onClick={() => setPanelDialog(null)}>×</button>
             </div>
             <div className="jury-panel-form-grid">
               <label className="jury-form-wide">Scheduling Date<input type="date" required value={panelDialog.jury_date} onChange={(event) => setPanelDialog({ ...panelDialog, jury_date: event.target.value })} /></label>

@@ -132,7 +132,7 @@ function App() {
           <div className="dialog-heading">
             <h2>{editingSession ? "Edit Scheduling Session" : "New Scheduling Session"}</h2>
             <button type="button" className="dialog-close" aria-label="Close" onClick={() => newSessionDialogRef.current?.close()}>
-              Close
+              ×
             </button>
           </div>
           <label>

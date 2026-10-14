@@ -51,6 +51,18 @@ class PlacementOpportunityInput:
     capacity: int = 1
 
 
+@dataclass(frozen=True)
+class ClinicalTagSummary:
+    tag: ClinicalTag
+    opportunity_count: int
+    student_count: int
+
+    @property
+    def is_unused(self) -> bool:
+        """Unused means no current Placement Opportunity references the tag."""
+        return self.opportunity_count == 0
+
+
 def _now() -> datetime:
     return datetime.utcnow()
 
@@ -109,13 +121,18 @@ class ClinicalRepository:
             raise ClinicalValidationError("INVALID_TAG", "A tag name is required.")
         return cleaned
 
-    def create_tag(self, name: str) -> ClinicalTag:
+    def _insert_tag(self, name: str) -> ClinicalTag:
         cleaned = self._clean_tag_name(name)
         if self.find_tag(cleaned) is not None:
             raise ClinicalValidationError("DUPLICATE_TAG", f"The tag '{cleaned}' already exists.")
         tag = ClinicalTag(name=cleaned, normalized_name=tag_identity_key(cleaned))
         self.db.add(tag)
         self.db.flush()
+        return tag
+
+    def create_tag(self, name: str) -> ClinicalTag:
+        tag = self._insert_tag(name)
+        self.record_source_change()
         return tag
 
     def get_or_create_tag(self, name: str) -> ClinicalTag:
@@ -131,6 +148,7 @@ class ClinicalRepository:
         tag.normalized_name = tag_identity_key(cleaned)
         tag.updated_at = _now()
         self.db.flush()
+        self.record_source_change()
         return tag
 
     def is_tag_used_by_opportunity(self, tag_id: str) -> bool:
@@ -157,18 +175,42 @@ class ClinicalRepository:
         """Delete a tag and its Clinical associations; returns affected student count."""
         tag = self._require(ClinicalTag, tag_id, "TAG_NOT_FOUND", "The tag no longer exists.")
         affected_students = self.count_students_with_tag_selection(tag.id)
-        used = self.is_tag_used_by_opportunity(tag.id)
         self.db.query(PlacementOpportunityTag).filter(PlacementOpportunityTag.tag_id == tag.id).delete()
         self.db.query(ClinicalStudentTagState).filter(ClinicalStudentTagState.tag_id == tag.id).delete()
         self.db.delete(tag)
         self.db.flush()
-        if used or affected_students:
-            self.record_source_change()
+        self.record_source_change()
         return affected_students
+
+    def tag_summaries(self) -> list["ClinicalTagSummary"]:
+        """Every registered tag with current-use information for the Tag Manager."""
+        opportunity_counts = dict(
+            self.db.query(PlacementOpportunityTag.tag_id, func.count(PlacementOpportunityTag.opportunity_id))
+            .group_by(PlacementOpportunityTag.tag_id)
+            .all()
+        )
+        student_counts = dict(
+            self.db.query(
+                ClinicalStudentTagState.tag_id, func.count(func.distinct(ClinicalStudentTagState.student_id))
+            )
+            .filter(ClinicalStudentTagState.state != TagState.NEUTRAL.value)
+            .group_by(ClinicalStudentTagState.tag_id)
+            .all()
+        )
+        return [
+            ClinicalTagSummary(
+                tag=tag,
+                opportunity_count=opportunity_counts.get(tag.id, 0),
+                student_count=student_counts.get(tag.id, 0),
+            )
+            for tag in self.list_tags()
+        ]
 
     # --- placement opportunities -------------------------------------
 
     def _validated_opportunity_values(self, values: PlacementOpportunityInput) -> dict:
+        if not values.site_name.strip():
+            raise ClinicalValidationError("INVALID_SITE_NAME", "Site name is required.")
         day = normalize_day(values.day_of_week)
         if day is None:
             raise ClinicalValidationError("INVALID_DAY", "A valid day of the week is required.")
@@ -199,7 +241,7 @@ class ClinicalRepository:
         for name in tag_names:
             if not normalize_tag_name(name):
                 continue
-            tag = self.get_or_create_tag(name)
+            tag = self.find_tag(name) or self._insert_tag(name)
             tags[tag.id] = tag
         self.db.query(PlacementOpportunityTag).filter(
             PlacementOpportunityTag.opportunity_id == opportunity.id
@@ -209,21 +251,59 @@ class ClinicalRepository:
         self.db.flush()
         self.db.expire(opportunity, ["tags"])
 
+    def _set_opportunity_tag_ids(self, opportunity: PlacementOpportunity, tag_ids: Iterable[str]) -> None:
+        unique_ids = list(dict.fromkeys(tag_ids))
+        found = {
+            tag.id for tag in self.db.query(ClinicalTag).filter(ClinicalTag.id.in_(unique_ids)).all()
+        } if unique_ids else set()
+        if found != set(unique_ids):
+            raise ClinicalValidationError("TAG_NOT_FOUND", "A selected tag no longer exists.")
+        self.db.query(PlacementOpportunityTag).filter(
+            PlacementOpportunityTag.opportunity_id == opportunity.id
+        ).delete()
+        for tag_id in unique_ids:
+            self.db.add(PlacementOpportunityTag(opportunity_id=opportunity.id, tag_id=tag_id))
+        self.db.flush()
+        self.db.expire(opportunity, ["tags"])
+
     def create_opportunity(
-        self, values: PlacementOpportunityInput, tag_names: Iterable[str] = ()
+        self,
+        values: PlacementOpportunityInput,
+        tag_names: Iterable[str] = (),
+        tag_ids: Iterable[str] | None = None,
     ) -> PlacementOpportunity:
         opportunity = PlacementOpportunity(**self._validated_opportunity_values(values))
         self.db.add(opportunity)
         self.db.flush()
-        self._set_opportunity_tags(opportunity, tag_names)
+        if tag_ids is not None:
+            self._set_opportunity_tag_ids(opportunity, tag_ids)
+        else:
+            self._set_opportunity_tags(opportunity, tag_names)
         self.record_source_change()
         return opportunity
+
+    def set_opportunity_tags(self, opportunity_id: str, tag_ids: Iterable[str]) -> PlacementOpportunity:
+        """Replace one opportunity's tag associations; never creates or deletes tags."""
+        opportunity = self._require(
+            PlacementOpportunity, opportunity_id, "OPPORTUNITY_NOT_FOUND", "The Placement Opportunity no longer exists."
+        )
+        self._set_opportunity_tag_ids(opportunity, tag_ids)
+        opportunity.updated_at = _now()
+        self.db.flush()
+        self.record_source_change()
+        return opportunity
+
+    def list_opportunities(self) -> list[PlacementOpportunity]:
+        return self.db.query(PlacementOpportunity).order_by(
+            PlacementOpportunity.site_name, PlacementOpportunity.created_at, PlacementOpportunity.id
+        ).all()
 
     def update_opportunity(
         self,
         opportunity_id: str,
         values: PlacementOpportunityInput,
         tag_names: Iterable[str] | None = None,
+        tag_ids: Iterable[str] | None = None,
     ) -> PlacementOpportunity:
         opportunity = self._require(
             PlacementOpportunity, opportunity_id, "OPPORTUNITY_NOT_FOUND", "The Placement Opportunity no longer exists."
@@ -231,7 +311,9 @@ class ClinicalRepository:
         for key, value in self._validated_opportunity_values(values).items():
             setattr(opportunity, key, value)
         opportunity.updated_at = _now()
-        if tag_names is not None:
+        if tag_ids is not None:
+            self._set_opportunity_tag_ids(opportunity, tag_ids)
+        elif tag_names is not None:
             self._set_opportunity_tags(opportunity, tag_names)
         self.db.flush()
         self.record_source_change()

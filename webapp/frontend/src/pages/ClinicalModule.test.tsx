@@ -1,14 +1,22 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ClinicalModule } from "./ClinicalModule";
+
+vi.mock("../lib/api", () => ({
+  api: {
+    listClinicalOpportunities: vi.fn().mockResolvedValue([]),
+    listClinicalTags: vi.fn().mockResolvedValue([]),
+  },
+}));
 
 describe("ClinicalModule", () => {
   it("shows the four tabs in order and starts on Clinical Sites", () => {
     render(<ClinicalModule />);
     const labels = screen
       .getAllByRole("button")
-      .map((button) => button.textContent);
+      .map((button) => button.textContent)
+      .slice(0, 4);
     expect(labels).toEqual(["Clinical Sites", "Student Roster", "Schedule", "Reports"]);
     expect(screen.getByRole("heading", { name: "Clinical Sites" })).toBeTruthy();
   });

@@ -64,8 +64,8 @@ export const AccompanistModule = forwardRef<AccompanistModuleHandle>(function Ac
         <div className="lesson-import-dialog-content">
           <header className="lesson-import-dialog-heading">
             <h2>Import lessons from spreadsheet</h2>
-            <button type="button" className="dialog-close" onClick={() => lessonImportDialogRef.current?.close()}>
-              Close
+            <button type="button" className="dialog-close" aria-label="Close" onClick={() => lessonImportDialogRef.current?.close()}>
+              ×
             </button>
           </header>
           <ImportPage onImported={() => {

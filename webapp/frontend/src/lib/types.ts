@@ -393,3 +393,31 @@ export interface JuryScheduleHistoryItem {
   scheduled_count: number;
   unscheduled_count: number;
 }
+
+export interface ClinicalTag {
+  id: string;
+  name: string;
+  opportunity_count: number;
+  student_count: number;
+  is_unused: boolean;
+}
+
+export interface PlacementOpportunityFields {
+  site_name: string;
+  site_address: string;
+  contact_name: string;
+  contact_email: string;
+  contact_phone: string;
+  day_of_week: string;
+  start_minute: number;
+  end_minute: number;
+  session_length_minutes: number;
+  travel_minutes: number;
+  capacity: number;
+}
+
+export interface PlacementOpportunity extends PlacementOpportunityFields {
+  id: string;
+  tags: { id: string; name: string }[];
+  placement_count: number;
+}

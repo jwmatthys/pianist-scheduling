@@ -229,8 +229,8 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
               <h2>Import Pianist Availability</h2>
               <p className="muted">CSV, XLSX, or XLS</p>
             </div>
-            <button type="button" className="dialog-close" onClick={() => dialogRef.current?.close()}>
-              Close
+            <button type="button" className="dialog-close" aria-label="Close" onClick={() => dialogRef.current?.close()}>
+              ×
             </button>
           </header>
 

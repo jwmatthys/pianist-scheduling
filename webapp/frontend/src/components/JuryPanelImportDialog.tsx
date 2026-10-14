@@ -105,7 +105,7 @@ export function JuryPanelImportDialog({ onApplied }: Props) {
               <h2>Import Jury Panels</h2>
               <p className="muted">CSV, XLSX, or XLS</p>
             </div>
-            <button type="button" className="dialog-close" onClick={() => dialogRef.current?.close()}>Close</button>
+            <button type="button" className="dialog-close" aria-label="Close" onClick={() => dialogRef.current?.close()}>×</button>
           </header>
 
           {error && <div className="error-banner" role="alert" style={{ whiteSpace: "pre-line" }}>{error}</div>}

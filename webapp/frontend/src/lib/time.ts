@@ -23,3 +23,13 @@ export function formatUtcTimestampLocally(value: string): string {
   const timestamp = new Date(hasTimezone ? value : `${value}Z`);
   return Number.isNaN(timestamp.getTime()) ? value : timestamp.toLocaleString();
 }
+
+export function parseTwelveHourTime(value: string): number | null {
+  const match = /^\s*(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m?\.?\s*$/i.exec(value);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = match[2] === undefined ? 0 : Number(match[2]);
+  if (hour < 1 || hour > 12 || minute > 59) return null;
+  const pm = match[3].toLowerCase() === "p";
+  return ((hour % 12) + (pm ? 12 : 0)) * 60 + minute;
+}
