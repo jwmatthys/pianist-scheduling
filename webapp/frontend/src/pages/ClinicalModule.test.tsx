@@ -50,7 +50,7 @@ describe("ClinicalModule", () => {
     expect(screen.getByRole("heading", { name: "Clinical Sites" })).toBeTruthy();
   });
 
-  it("shows readiness on Schedule and a placeholder on Reports", async () => {
+  it("shows readiness on Schedule and a report controls on Reports", async () => {
     const user = userEvent.setup();
     render(<ClinicalModule />);
 
@@ -58,6 +58,6 @@ describe("ClinicalModule", () => {
     expect(screen.getByRole("heading", { name: "Placements" })).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "Reports" }));
-    expect(screen.getByText(/reports and exports are not implemented/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Generate report" })).toBeTruthy();
   });
 });

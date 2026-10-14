@@ -33,7 +33,7 @@ flowchart TD
     Dashboard --> Jury[Performance Juries]
 ```
 
-A session dashboard should summarize its institution/program, academic term, and modules with usable data/results. It links into Accompanist Scheduling and the implemented Performance Juries setup workflow. Clinical Placements implements Clinical Sites, Student Roster, readiness/candidate analysis, deterministic schedule generation, and manual placement review. Manual coordinator overrides display current feasibility and capacity warnings per [CLINICAL-PLACEMENT-MODULE-SPEC.md](CLINICAL-PLACEMENT-MODULE-SPEC.md); reports and exports remain pending.
+A session dashboard should summarize its institution/program, academic term, and modules with usable data/results. It links into Accompanist Scheduling and the implemented Performance Juries setup workflow. Clinical Placements implements Clinical Sites, Student Roster, readiness/candidate analysis, deterministic schedule generation, and manual placement review. Manual coordinator overrides display current feasibility and capacity warnings per [CLINICAL-PLACEMENT-MODULE-SPEC.md](CLINICAL-PLACEMENT-MODULE-SPEC.md); the Reports tab generates a Clinical-owned Markdown report (student roster, site roster, unplaced students, and placement warnings) from the saved schedule and exports it locally as `.md` or `.pdf` through the shared Markdown-to-PDF infrastructure.
 
 The existing Accompanist UI becomes the first module workflow with minimal movement: its Import, Pianists/Availability, Schedule, and Reports views remain internal Accompanist views. Product navigation owns session selection and the module dashboard; Accompanist navigation and terminology stay inside that module.
 
