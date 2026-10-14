@@ -215,6 +215,14 @@ class SessionFileTests(unittest.TestCase):
             names = {row[0] for row in snapshot.execute("SELECT name FROM pianists")}
         self.assertEqual(names, {"Synthetic Pianist", "WAL Synthetic Pianist"})
 
+    def test_restore_validates_database_from_a_closed_temporary_file(self):
+        self.populate()
+        archive = export_session_archive(self.engine)
+
+        restored = restore_session(self.engine, archive, self.recovery_directory)
+
+        self.assertEqual(restored.institution_name, "Legacy Session")
+
     def test_restore_round_trip_recovers_metadata_and_accompanist_data(self):
         original = create_new_session(self.engine, self.metadata(), self.recovery_directory)
         self.populate()

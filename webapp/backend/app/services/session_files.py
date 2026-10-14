@@ -277,15 +277,18 @@ def _read_zip_entry(archive: zipfile.ZipFile, name: str, maximum: int) -> bytes:
 def _check_database_payload(database_bytes: bytes, manifest: schemas.SessionArchiveManifest) -> int:
     if not database_bytes:
         raise SessionFileError("INVALID_DATABASE", "The session database payload is empty.")
-    with tempfile.NamedTemporaryFile(suffix=".sqlite3") as staged_file:
-        staged_file.write(database_bytes)
-        staged_file.flush()
+    file_descriptor, staged_path = tempfile.mkstemp(suffix=".sqlite3")
+    os.close(file_descriptor)
+    try:
+        Path(staged_path).write_bytes(database_bytes)
         try:
-            with closing(sqlite3.connect(f"file:{staged_file.name}?mode=ro", uri=True)) as connection:
+            with closing(sqlite3.connect(f"file:{staged_path}?mode=ro", uri=True)) as connection:
                 integrity = connection.execute("PRAGMA integrity_check").fetchone()
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
         except sqlite3.Error as error:
             raise SessionFileError("INVALID_DATABASE", "The archive does not contain a readable SQLite database.") from error
+    finally:
+        Path(staged_path).unlink(missing_ok=True)
     if integrity != ("ok",):
         raise SessionFileError("INVALID_DATABASE", "The session database failed SQLite integrity validation.")
     if version != manifest.database_schema_version:
