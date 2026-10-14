@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../../lib/api";
-import type { ClinicalReadiness, ClinicalReadinessCategory, ClinicalReadinessWarning } from "../../lib/types";
+import type {
+  ClinicalReadiness,
+  ClinicalReadinessCategory,
+  ClinicalReadinessWarning,
+  ClinicalSchedule,
+} from "../../lib/types";
+import { ConfirmDialog } from "./ClinicalDialogs";
+
+const UNPLACED_REASONS: Record<string, string> = {
+  NO_FEASIBLE_CANDIDATE: "No feasible opportunity",
+  CAPACITY_LIMIT: "Capacity limit",
+  MANUALLY_UNPLACED: "Manually unplaced",
+};
 
 const CATEGORY_TITLES: Record<ClinicalReadinessCategory, string> = {
   data: "Data",
@@ -76,11 +88,16 @@ function WarningGroup({ code, items }: { code: string; items: ClinicalReadinessW
 
 export function ClinicalSchedulePage() {
   const [readiness, setReadiness] = useState<ClinicalReadiness | null>(null);
+  const [schedule, setSchedule] = useState<ClinicalSchedule | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     try {
-      setReadiness(await api.getClinicalReadiness());
+      const [nextReadiness, nextSchedule] = await Promise.all([api.getClinicalReadiness(), api.getClinicalSchedule()]);
+      setReadiness(nextReadiness);
+      setSchedule(nextSchedule);
       setError("");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -91,6 +108,19 @@ export function ClinicalSchedulePage() {
     void load();
   }, [load]);
 
+  const run = async (action: () => Promise<ClinicalSchedule>) => {
+    setBusy(true);
+    try {
+      setSchedule(await action());
+      setReadiness(await api.getClinicalReadiness());
+      setError("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const groups = new Map<string, ClinicalReadinessWarning[]>();
   for (const warning of readiness?.warnings ?? []) {
     groups.set(warning.code, [...(groups.get(warning.code) ?? []), warning]);
@@ -100,14 +130,78 @@ export function ClinicalSchedulePage() {
     <section className="clinical-sites" aria-labelledby="clinical-schedule-heading">
       <div className="dialog-heading">
         <h2 id="clinical-schedule-heading">Schedule</h2>
-        <button type="button" onClick={() => void load()}>
-          Refresh
-        </button>
+        <div className="dialog-actions">
+          <button type="button" onClick={() => void load()}>
+            Refresh
+          </button>
+          <button
+            type="button"
+            className="primary"
+            disabled={busy || !readiness?.is_ready}
+            onClick={() => void run(api.generateClinicalSchedule)}
+          >
+            Generate Schedule
+          </button>
+          <button
+            type="button"
+            className="danger-btn"
+            disabled={busy || !schedule?.has_placements}
+            onClick={() => setConfirmClear(true)}
+          >
+            Clear Schedule
+          </button>
+        </div>
       </div>
       <p className="muted">
-        Schedule generation is not implemented yet. This view checks readiness only; no placements are generated or
-        shown.
+        Generating replaces automatic placements only. Manual editing of placements is not available yet.
       </p>
+      {confirmClear && (
+        <ConfirmDialog
+          title="Clear Schedule?"
+          message="This removes all generated and manual placement decisions. Students and Clinical Sites are not changed."
+          confirmLabel="Clear Schedule"
+          onCancel={() => setConfirmClear(false)}
+          onConfirm={() => {
+            setConfirmClear(false);
+            void run(api.clearClinicalSchedule);
+          }}
+        />
+      )}
+      {schedule?.has_placements && (
+        <div aria-label="Schedule summary">
+          {schedule.is_schedule_stale && (
+            <div className="warning-banner" role="status" aria-label="Schedule out of date">
+              Schedule is out of date. Student or Clinical Site data has changed since placements were last
+              generated. Existing placements have been preserved. Regenerate or clear the schedule.
+            </div>
+          )}
+          <h3>Schedule Summary</h3>
+          <ul className="clinical-readiness-list">
+            <li>
+              {schedule.placed_count} {plural(schedule.placed_count, "student", "students")} placed
+            </li>
+            <li>
+              {schedule.unplaced_count} {plural(schedule.unplaced_count, "student", "students")} unplaced
+            </li>
+            <li>
+              Utilization: {Math.round(schedule.utilization * 100)}% ({schedule.used_capacity} of{" "}
+              {schedule.total_capacity} {plural(schedule.total_capacity, "seat", "seats")})
+            </li>
+            <li>Preferred-tag matches: {schedule.preferred_tag_matches}</li>
+            <li>Tentative minutes: {schedule.tentative_minutes}</li>
+          </ul>
+          {schedule.unplaced.length > 0 && (
+            <ul className="clinical-readiness-list" aria-label="Unplaced students">
+              {schedule.unplaced.map((item) => (
+                <li key={item.student_id}>
+                  <span aria-hidden="true">⚠ </span>
+                  {item.student_name}: {UNPLACED_REASONS[item.reason] ?? item.reason}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       {error && (
         <div className="error-banner" role="alert">
           {error}

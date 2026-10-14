@@ -27,7 +27,7 @@ from ..services.clinical_repository import (
 router = APIRouter(prefix="/api/clinical", tags=["clinical placements"])
 
 _NOT_FOUND_CODES = {"TAG_NOT_FOUND", "OPPORTUNITY_NOT_FOUND", "STUDENT_NOT_FOUND"}
-_CONFLICT_CODES = {"DUPLICATE_TAG", "DUPLICATE_STUDENT_ID"}
+_CONFLICT_CODES = {"DUPLICATE_TAG", "DUPLICATE_STUDENT_ID", "NOT_READY"}
 
 
 def _http_error(error: ClinicalValidationError) -> HTTPException:
@@ -570,3 +570,62 @@ def get_readiness(db: Session = Depends(get_db)):
             for item in report.warnings
         ],
     )
+
+
+# --- Schedule generation ---------------------------------------------------
+
+
+def _schedule_out(db: Session) -> schemas.ClinicalScheduleOut:
+    repo = ClinicalRepository(db)
+    state = repo.get_state()
+    summary = repo.schedule_summary()
+    records = repo.list_placement_records()
+    names = {s.id: s.label for s in repo.scheduling_input().students}
+    return schemas.ClinicalScheduleOut(
+        schedule_revision=state.schedule_revision,
+        source_data_revision=state.source_data_revision,
+        is_schedule_stale=state.is_schedule_stale,
+        has_placements=bool(records),
+        student_count=summary.student_count,
+        placed_count=summary.placed_count,
+        unplaced_count=summary.unplaced_count,
+        used_capacity=summary.used_capacity,
+        total_capacity=summary.total_capacity,
+        utilization=summary.utilization,
+        preferred_tag_matches=summary.preferred_tag_matches,
+        tentative_minutes=summary.tentative_minutes,
+        unverified_placement_count=summary.unverified_placement_count,
+        unplaced=[
+            schemas.ClinicalUnplacedOut(student_id=u.student_id, student_name=names.get(u.student_id, ""), reason=u.reason.value)
+            for u in summary.unplaced
+        ],
+        placements=[
+            schemas.ClinicalPlacementOut(
+                student_id=r.student_id, kind=r.kind.value, opportunity_id=r.opportunity_id, start_minute=r.start_minute
+            )
+            for r in records
+        ],
+    )
+
+
+@router.get("/schedule", response_model=schemas.ClinicalScheduleOut)
+def get_schedule(db: Session = Depends(get_db)):
+    return _schedule_out(db)
+
+
+@router.post("/schedule/generate", response_model=schemas.ClinicalScheduleOut)
+def generate_schedule(db: Session = Depends(get_db)):
+    try:
+        ClinicalRepository(db).generate_schedule()
+        _commit(db)
+    except ClinicalValidationError as error:
+        db.rollback()
+        raise _http_error(error)
+    return _schedule_out(db)
+
+
+@router.post("/schedule/clear", response_model=schemas.ClinicalScheduleOut)
+def clear_schedule(db: Session = Depends(get_db)):
+    ClinicalRepository(db).clear_all_placements()
+    _commit(db)
+    return _schedule_out(db)

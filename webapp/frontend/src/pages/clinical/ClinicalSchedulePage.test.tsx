@@ -2,10 +2,47 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../lib/api";
-import type { ClinicalReadiness } from "../../lib/types";
+import type { ClinicalReadiness, ClinicalSchedule } from "../../lib/types";
 import { ClinicalSchedulePage } from "./ClinicalSchedulePage";
 
-vi.mock("../../lib/api", () => ({ api: { getClinicalReadiness: vi.fn() } }));
+vi.mock("../../lib/api", () => ({
+  api: {
+    getClinicalReadiness: vi.fn(),
+    getClinicalSchedule: vi.fn(),
+    generateClinicalSchedule: vi.fn(),
+    clearClinicalSchedule: vi.fn(),
+  },
+}));
+
+const emptySchedule: ClinicalSchedule = {
+  schedule_revision: 0,
+  source_data_revision: 3,
+  is_schedule_stale: false,
+  has_placements: false,
+  student_count: 42,
+  placed_count: 0,
+  unplaced_count: 42,
+  used_capacity: 0,
+  total_capacity: 50,
+  utilization: 0,
+  preferred_tag_matches: 0,
+  tentative_minutes: 0,
+  unverified_placement_count: 0,
+  unplaced: [],
+  placements: [],
+};
+const generated: ClinicalSchedule = {
+  ...emptySchedule,
+  schedule_revision: 1,
+  has_placements: true,
+  placed_count: 40,
+  unplaced_count: 2,
+  used_capacity: 40,
+  utilization: 0.8,
+  preferred_tag_matches: 7,
+  tentative_minutes: 120,
+  unplaced: [{ student_id: "x", student_name: "Dee Demo", reason: "CAPACITY_LIMIT" }],
+};
 
 const base: ClinicalReadiness = {
   source_data_revision: 3,
@@ -26,7 +63,10 @@ const studentWarning = (code: string, id: string, label: string) => ({
 });
 
 describe("ClinicalSchedulePage readiness", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api.getClinicalSchedule).mockResolvedValue(emptySchedule);
+  });
 
   it("shows the readiness summary and candidate counts without any placements", async () => {
     vi.mocked(api.getClinicalReadiness).mockResolvedValue(base);
@@ -37,7 +77,6 @@ describe("ClinicalSchedulePage readiness", () => {
     expect(screen.getByText(/300 feasible student\/opportunity pairings of 756 evaluated/)).toBeTruthy();
     expect(screen.getByText(/40 of 42 students have at least one feasible opportunity/)).toBeTruthy();
     expect(screen.getByText(/No readiness warnings/)).toBeTruthy();
-    expect(screen.getByText(/schedule generation is not implemented/i)).toBeTruthy();
   });
 
   it("groups warnings by category with counts and subjects", async () => {
@@ -89,5 +128,55 @@ describe("ClinicalSchedulePage readiness", () => {
     await user.click(screen.getByRole("button", { name: "Refresh" }));
     await waitFor(() => expect(within(screen.getByRole("alert")).getByText("boom")).toBeTruthy());
     expect(api.getClinicalReadiness).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("ClinicalSchedulePage generation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api.getClinicalReadiness).mockResolvedValue(base);
+    vi.mocked(api.getClinicalSchedule).mockResolvedValue(emptySchedule);
+  });
+
+  it("generates a schedule, shows the summary, and keeps readiness visible", async () => {
+    vi.mocked(api.generateClinicalSchedule).mockResolvedValue(generated);
+    render(<ClinicalSchedulePage />);
+    const generate = await screen.findByRole("button", { name: "Generate Schedule" });
+    expect((screen.getByRole("button", { name: "Clear Schedule" }) as HTMLButtonElement).disabled).toBe(true);
+    await userEvent.click(generate);
+    expect(await screen.findByText(/40 students placed/)).toBeTruthy();
+    expect(screen.getByText(/2 students unplaced/)).toBeTruthy();
+    expect(screen.getByText(/Utilization: 80% \(40 of 50 seats\)/)).toBeTruthy();
+    expect(screen.getByText(/Preferred-tag matches: 7/)).toBeTruthy();
+    expect(screen.getByText(/Tentative minutes: 120/)).toBeTruthy();
+    expect(screen.getByText(/Dee Demo: Capacity limit/)).toBeTruthy();
+    expect(screen.getByText("Ready for scheduling")).toBeTruthy();
+  });
+
+  it("disables generation when not ready", async () => {
+    vi.mocked(api.getClinicalReadiness).mockResolvedValue({ ...base, is_ready: false });
+    render(<ClinicalSchedulePage />);
+    await screen.findByText("Not ready for scheduling");
+    expect((screen.getByRole("button", { name: "Generate Schedule" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("shows a stale notice and clears only after confirmation", async () => {
+    vi.mocked(api.getClinicalSchedule).mockResolvedValue({ ...generated, is_schedule_stale: true });
+    vi.mocked(api.clearClinicalSchedule).mockResolvedValue(emptySchedule);
+    render(<ClinicalSchedulePage />);
+    expect(await screen.findByText(/Schedule is out of date/)).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "Clear Schedule" }));
+    expect(api.clearClinicalSchedule).not.toHaveBeenCalled();
+    const dialog = screen.getByRole("dialog", { name: "Clear Schedule?", hidden: true });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Clear Schedule", hidden: true }));
+    await waitFor(() => expect(api.clearClinicalSchedule).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByText(/students placed/)).toBeNull());
+  });
+
+  it("shows a structured generation error", async () => {
+    vi.mocked(api.generateClinicalSchedule).mockRejectedValue(new Error("Placements cannot be generated"));
+    render(<ClinicalSchedulePage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Generate Schedule" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("cannot be generated");
   });
 });

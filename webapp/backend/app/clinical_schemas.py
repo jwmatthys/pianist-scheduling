@@ -125,3 +125,34 @@ class ClinicalReadinessOut(BaseModel):
     total_candidate_count: int
     students_with_candidates: int
     warnings: list[ClinicalReadinessWarningOut]
+
+
+class ClinicalPlacementOut(BaseModel):
+    student_id: str
+    kind: str
+    opportunity_id: str | None
+    start_minute: int | None
+
+
+class ClinicalUnplacedOut(BaseModel):
+    student_id: str
+    student_name: str
+    reason: str
+
+
+class ClinicalScheduleOut(BaseModel):
+    schedule_revision: int
+    source_data_revision: int
+    is_schedule_stale: bool
+    has_placements: bool
+    student_count: int
+    placed_count: int
+    unplaced_count: int
+    used_capacity: int
+    total_capacity: int
+    utilization: float
+    preferred_tag_matches: int
+    tentative_minutes: int
+    unverified_placement_count: int
+    unplaced: list[ClinicalUnplacedOut]
+    placements: list[ClinicalPlacementOut]

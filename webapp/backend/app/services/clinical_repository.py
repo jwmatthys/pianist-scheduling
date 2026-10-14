@@ -28,7 +28,21 @@ from ..clinical_models import (
     tag_identity_key,
 )
 from .availability import AvailabilityWindow, normalize_day, normalize_windows
-from .clinical_scheduling_models import OpportunityInput, SchedulingInput, StudentInput, TagPreference
+from .clinical_candidates import generate_candidates
+from .clinical_optimizer import optimize
+from .clinical_readiness import analyze_readiness
+from .clinical_scheduling_models import (
+    OpportunityInput,
+    OptimizationResult,
+    PlacementKind,
+    PlacementRecord,
+    PreservedPlacement,
+    SchedulingInput,
+    ScheduleSummary,
+    StudentInput,
+    TagPreference,
+)
+from .clinical_schedule_summary import summarize_schedule
 from .time_parsing import format_time_of_day
 
 
@@ -745,6 +759,56 @@ class ClinicalRepository:
         state.modified_at = _now()
         self.db.flush()
         return removed
+
+    # --- schedule generation -----------------------------------------------
+
+    def list_placement_records(self) -> list[PlacementRecord]:
+        return [
+            PlacementRecord(
+                student_id=row.clinical_student_id,
+                kind=PlacementKind(row.placement_type),
+                opportunity_id=row.placement_opportunity_id,
+                start_minute=row.start_minute,
+            )
+            for row in self.db.query(ClinicalPlacement).order_by(ClinicalPlacement.clinical_student_id)
+        ]
+
+    def generate_schedule(self) -> OptimizationResult:
+        """Replace automatic placements with a fresh optimal solution.
+
+        Refuses when readiness has blocking errors. Manual and Manually unplaced
+        decisions are preserved and treated as occupying capacity. Increments the
+        schedule revision and clears staleness; Sites and Students are untouched.
+        """
+        scheduling_input = self.scheduling_input()
+        candidates = generate_candidates(scheduling_input)
+        if not analyze_readiness(scheduling_input, candidates).is_ready:
+            raise ClinicalValidationError(
+                "NOT_READY", "Placements cannot be generated until the blocking readiness errors are resolved."
+            )
+        self.db.query(ClinicalPlacement).filter(
+            ClinicalPlacement.placement_type == PlacementType.AUTOMATIC.value
+        ).delete(synchronize_session=False)
+        preserved = [
+            PreservedPlacement(item.student_id, item.opportunity_id) for item in self.list_placement_records()
+        ]
+        result = optimize(scheduling_input, candidates, preserved)
+        for item in result.placements:
+            self.set_placement(
+                item.student_id, PlacementType.AUTOMATIC, item.opportunity_id, item.selected_start_minute
+            )
+        state = self.get_state()
+        state.schedule_revision += 1
+        state.is_schedule_stale = False
+        state.modified_at = _now()
+        self.db.flush()
+        return result
+
+    def schedule_summary(self) -> ScheduleSummary:
+        scheduling_input = self.scheduling_input()
+        return summarize_schedule(
+            scheduling_input, generate_candidates(scheduling_input), self.list_placement_records()
+        )
 
     # --- helpers ------------------------------------------------------
 

@@ -560,3 +560,32 @@ export interface ClinicalStudentsImportResult {
   placements_removed: number;
   students_created: number;
 }
+
+export interface ClinicalUnplacedStudent {
+  student_id: string;
+  student_name: string;
+  reason: "NO_FEASIBLE_CANDIDATE" | "CAPACITY_LIMIT" | "MANUALLY_UNPLACED";
+}
+
+export interface ClinicalSchedule {
+  schedule_revision: number;
+  source_data_revision: number;
+  is_schedule_stale: boolean;
+  has_placements: boolean;
+  student_count: number;
+  placed_count: number;
+  unplaced_count: number;
+  used_capacity: number;
+  total_capacity: number;
+  utilization: number;
+  preferred_tag_matches: number;
+  tentative_minutes: number;
+  unverified_placement_count: number;
+  unplaced: ClinicalUnplacedStudent[];
+  placements: {
+    student_id: string;
+    kind: "automatic" | "manual" | "manuallyUnplaced";
+    opportunity_id: string | null;
+    start_minute: number | null;
+  }[];
+}

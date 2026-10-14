@@ -32,6 +32,7 @@ import type {
   ClinicalSitesImportResult,
   ClinicalStudent,
   ClinicalReadiness,
+  ClinicalSchedule,
   RecurringAvailabilityWindow,
   ClinicalStudentFields,
   ClinicalStudentsImportInspection,
@@ -315,6 +316,10 @@ export const api = {
     });
   },
   getClinicalReadiness: () => request<ClinicalReadiness>("/api/clinical/readiness"),
+  getClinicalSchedule: () => request<ClinicalSchedule>("/api/clinical/schedule"),
+  generateClinicalSchedule: () =>
+    request<ClinicalSchedule>("/api/clinical/schedule/generate", { method: "POST" }),
+  clearClinicalSchedule: () => request<ClinicalSchedule>("/api/clinical/schedule/clear", { method: "POST" }),
   listClinicalStudents: () => request<ClinicalStudent[]>("/api/clinical/students"),
   createClinicalStudent: (data: ClinicalStudentFields) =>
     request<ClinicalStudent>("/api/clinical/students", { method: "POST", body: JSON.stringify(data) }),

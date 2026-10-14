@@ -1445,3 +1445,11 @@ button {
 .clinical-readiness-info {
   color: #52606d;
 }
+
+.warning-banner {
+  background: #fff3b0;
+  border: 1px solid #d9b100;
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  margin: 0.5rem 0;
+}

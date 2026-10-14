@@ -176,3 +176,102 @@ class ReadinessReport:
 
     def count(self, code: ReadinessCode) -> int:
         return sum(1 for item in self.warnings if item.code is code)
+
+
+# --- Optimization ------------------------------------------------------------
+
+
+class PlacementKind(str, Enum):
+    """Placement decision kinds; values match the persisted placement types."""
+
+    AUTOMATIC = "automatic"
+    MANUAL = "manual"
+    MANUALLY_UNPLACED = "manuallyUnplaced"
+
+
+@dataclass(frozen=True)
+class PreservedPlacement:
+    """A manual decision the optimizer must schedule around.
+
+    ``opportunity_id`` is None for a Manually unplaced decision: that student is
+    excluded from automatic generation and consumes no capacity. A manual placement
+    consumes one unit of its opportunity's capacity.
+    """
+
+    student_id: str
+    opportunity_id: str | None
+
+
+class UnplacedReason(str, Enum):
+    NO_FEASIBLE_CANDIDATE = "NO_FEASIBLE_CANDIDATE"
+    # The student has feasible opportunities, but capacity (or a better global
+    # assignment for other students) left them out.
+    CAPACITY_LIMIT = "CAPACITY_LIMIT"
+    MANUALLY_UNPLACED = "MANUALLY_UNPLACED"
+
+
+@dataclass(frozen=True)
+class ProposedPlacement:
+    student_id: str
+    opportunity_id: str
+    selected_start_minute: int
+    preferred_tag_match_count: int
+    tentative_minutes: int
+
+
+@dataclass(frozen=True)
+class UnplacedStudent:
+    student_id: str
+    reason: UnplacedReason
+
+
+@dataclass(frozen=True)
+class OptimizationStatistics:
+    eligible_student_count: int
+    placed_count: int
+    unplaced_count: int
+    # Students holding a preserved manual decision; never touched by the optimizer.
+    preserved_student_count: int
+    total_preferred_tag_matches: int
+    total_tentative_minutes: int
+    total_start_minutes: int
+
+
+@dataclass(frozen=True)
+class OptimizationResult:
+    """Proposed automatic placements, valid only for ``source_data_revision``."""
+
+    source_data_revision: int
+    placements: tuple[ProposedPlacement, ...]
+    unplaced: tuple[UnplacedStudent, ...]
+    statistics: OptimizationStatistics
+
+
+@dataclass(frozen=True)
+class PlacementRecord:
+    """Read-only view of one persisted placement decision."""
+
+    student_id: str
+    kind: PlacementKind
+    opportunity_id: str | None
+    start_minute: int | None
+
+
+@dataclass(frozen=True)
+class ScheduleSummary:
+    """Aggregate view of the persisted schedule against current source data."""
+
+    student_count: int
+    placed_count: int
+    unplaced_count: int
+    used_capacity: int
+    total_capacity: int
+    preferred_tag_matches: int
+    tentative_minutes: int
+    # Placements whose opportunity/start no longer matches a feasible candidate start.
+    unverified_placement_count: int
+    unplaced: tuple[UnplacedStudent, ...]
+
+    @property
+    def utilization(self) -> float:
+        return self.used_capacity / self.total_capacity if self.total_capacity else 0.0

@@ -7,6 +7,23 @@ vi.mock("../lib/api", () => ({
   api: {
     listClinicalOpportunities: vi.fn().mockResolvedValue([]),
     listClinicalTags: vi.fn().mockResolvedValue([]),
+    getClinicalSchedule: vi.fn().mockResolvedValue({
+      schedule_revision: 0,
+      source_data_revision: 0,
+      is_schedule_stale: false,
+      has_placements: false,
+      student_count: 0,
+      placed_count: 0,
+      unplaced_count: 0,
+      used_capacity: 0,
+      total_capacity: 0,
+      utilization: 0,
+      preferred_tag_matches: 0,
+      tentative_minutes: 0,
+      unverified_placement_count: 0,
+      unplaced: [],
+      placements: [],
+    }),
     getClinicalReadiness: vi.fn().mockResolvedValue({
       source_data_revision: 0,
       is_ready: false,
@@ -36,7 +53,7 @@ describe("ClinicalModule", () => {
     render(<ClinicalModule />);
 
     await user.click(screen.getByRole("button", { name: "Schedule" }));
-    expect(screen.getByText(/schedule generation is not implemented/i)).toBeTruthy();
+    expect(screen.getByText(/manual editing of placements is not available yet/i)).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "Reports" }));
     expect(screen.getByText(/reports and exports are not implemented/i)).toBeTruthy();
