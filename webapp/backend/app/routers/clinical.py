@@ -4,13 +4,15 @@ Handlers stay thin; domain rules and revision/staleness tracking live in
 ClinicalRepository. Each request commits as one transaction.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import clinical_schemas as schemas
-from ..clinical_models import PlacementOpportunity
+from ..clinical_models import ClinicalPlacement, PlacementOpportunity
 from ..database import get_db
+from ..services import clinical_sites_importer as importer
 from ..services.clinical_repository import (
     ClinicalRepository,
     ClinicalValidationError,
@@ -206,3 +208,119 @@ def delete_tag(tag_id: str, db: Session = Depends(get_db)):
         db.rollback()
         raise _http_error(error) from error
     return schemas.ClinicalTagDeleteOut(affected_student_count=affected)
+
+
+# --- Clinical Sites import -------------------------------------------------
+
+
+class ClinicalSitesImportResult(BaseModel):
+    opportunities_removed: int
+    placements_removed: int
+    opportunities_created: int
+    tags_created: int
+
+
+def _import_http_error(error: importer.ClinicalSitesImportError) -> HTTPException:
+    status = 413 if error.code == "FILE_TOO_LARGE" else 400
+    return HTTPException(status, detail={"code": error.code, "message": str(error), "issues": error.issues})
+
+
+async def _read_upload(file: UploadFile) -> bytes:
+    content = await file.read(importer.MAX_UPLOAD_BYTES + 1)
+    if len(content) > importer.MAX_UPLOAD_BYTES:
+        raise importer.ClinicalSitesImportError("FILE_TOO_LARGE", "Clinical Sites files must be 25 MB or smaller.")
+    return content
+
+
+def _parse_mapping(raw: str) -> importer.ClinicalSitesImportMapping:
+    try:
+        return importer.ClinicalSitesImportMapping.model_validate_json(raw)
+    except ValidationError as error:
+        raise importer.ClinicalSitesImportError("INVALID_MAPPING", "The column mapping is not valid.") from error
+
+
+@router.post("/opportunities/import/inspect", response_model=importer.ClinicalSitesImportInspection)
+async def inspect_sites_import(file: UploadFile = File(...), sheet_name: str | None = Form(default=None)):
+    try:
+        return importer.inspect_file(file.filename or "", await _read_upload(file), sheet_name or None)
+    except importer.ClinicalSitesImportError as error:
+        raise _import_http_error(error) from error
+
+
+@router.post("/opportunities/import/preview", response_model=importer.ClinicalSitesImportPreview)
+async def preview_sites_import(
+    file: UploadFile = File(...),
+    mapping: str = Form(...),
+    sheet_name: str | None = Form(default=None),
+    db: Session = Depends(get_db),
+):
+    """Phase A: parse and validate only. Nothing is written."""
+    try:
+        parsed = importer.parse_sites(
+            file.filename or "", await _read_upload(file), sheet_name or None, _parse_mapping(mapping)
+        )
+    except importer.ClinicalSitesImportError as error:
+        raise _import_http_error(error) from error
+    repo = ClinicalRepository(db)
+    return importer.build_preview(
+        parsed,
+        {tag.normalized_name for tag in repo.list_tags()},
+        len(repo.list_opportunities()),
+        db.query(ClinicalPlacement).count(),
+    )
+
+
+@router.post("/opportunities/import/apply", response_model=ClinicalSitesImportResult)
+async def apply_sites_import(
+    file: UploadFile = File(...),
+    mapping: str = Form(...),
+    sheet_name: str | None = Form(default=None),
+    confirmed: bool = Form(default=False),
+    db: Session = Depends(get_db),
+):
+    """Phase B: re-parse the file, then atomically replace all Placement Opportunities."""
+    try:
+        if not confirmed:
+            raise importer.ClinicalSitesImportError(
+                "CONFIRMATION_REQUIRED", "Confirm the replacement before importing Clinical Sites."
+            )
+        parsed = importer.parse_sites(
+            file.filename or "", await _read_upload(file), sheet_name or None, _parse_mapping(mapping)
+        )
+        invalid = [site for site in parsed.rows if site.errors]
+        if invalid:
+            raise importer.ClinicalSitesImportError(
+                "VALIDATION_FAILED",
+                "Fix the listed rows in the source file and try again.",
+                [f"Row {site.row_number}: {message}" for site in invalid[:25] for message in site.errors],
+            )
+        result = ClinicalRepository(db).replace_opportunities(
+            (
+                PlacementOpportunityInput(
+                    site_name=site.site_name,
+                    site_address=site.site_address,
+                    contact_name=site.contact_name,
+                    contact_email=site.contact_email,
+                    contact_phone=site.contact_phone,
+                    day_of_week=site.day_of_week or "",
+                    start_minute=site.start_minute or 0,
+                    end_minute=site.end_minute or 0,
+                    session_length_minutes=site.session_length_minutes or 0,
+                    travel_minutes=site.travel_minutes or 0,
+                    capacity=site.capacity or 1,
+                ),
+                site.tags,
+            )
+            for site in parsed.rows
+        )
+        db.commit()
+        return ClinicalSitesImportResult(**result.__dict__)
+    except importer.ClinicalSitesImportError as error:
+        db.rollback()
+        raise _import_http_error(error) from error
+    except ClinicalValidationError as error:
+        db.rollback()
+        raise _http_error(error) from error
+    except Exception:
+        db.rollback()
+        raise

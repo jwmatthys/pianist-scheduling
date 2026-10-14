@@ -421,3 +421,60 @@ export interface PlacementOpportunity extends PlacementOpportunityFields {
   tags: { id: string; name: string }[];
   placement_count: number;
 }
+
+export type ClinicalSitesImportField =
+  | "site_name"
+  | "site_address"
+  | "contact_name"
+  | "contact_email"
+  | "contact_phone"
+  | "day_of_week"
+  | "start_time"
+  | "end_time"
+  | "session_length"
+  | "travel_time"
+  | "capacity";
+
+export type ClinicalSitesImportMapping = Record<ClinicalSitesImportField, string | null>;
+
+export interface ClinicalSitesImportInspection {
+  sheets: string[];
+  selected_sheet: string | null;
+  columns: string[];
+  sample_rows: Record<string, string>[];
+  suggested_mapping: ClinicalSitesImportMapping;
+}
+
+export interface ClinicalSitesImportPreviewRow {
+  row_number: number;
+  site_name: string;
+  day_of_week: string | null;
+  start_minute: number | null;
+  end_minute: number | null;
+  session_length_minutes: number | null;
+  travel_minutes: number | null;
+  capacity: number | null;
+  tags: string[];
+  errors: string[];
+}
+
+export interface ClinicalSitesImportPreview {
+  selected_sheet: string | null;
+  tag_columns: string[];
+  total_rows: number;
+  valid_rows: number;
+  invalid_rows: number;
+  rows: ClinicalSitesImportPreviewRow[];
+  new_tags: string[];
+  reused_tags: string[];
+  existing_opportunity_count: number;
+  existing_placement_count: number;
+  can_apply: boolean;
+}
+
+export interface ClinicalSitesImportResult {
+  opportunities_removed: number;
+  placements_removed: number;
+  opportunities_created: number;
+  tags_created: number;
+}

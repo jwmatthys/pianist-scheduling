@@ -55,6 +55,12 @@ Restore rejects malformed, oversized, duplicate, unexpected, encrypted, path-tra
 
 Automatic recovery archives are valid `.mpsession` files under the active database's `recovery/` directory (Tauri: the per-user application-data directory). Retention is the latest three snapshots. They are distinct from user-exported files and are not shown in a session history UI. Archives are unencrypted and may contain student educational information; users must store and transfer them under institutional policy. The application does not upload session data.
 
+## Dialog Conventions
+
+Every modal dialog dismisses through the shared `.dialog-close` control (defined in `App.css`): a 36px bordered square containing `×`, placed at the right of the dialog heading, with an `aria-label` such as "Close". Do not use text-link "Close" buttons or module-specific close styles. Footer buttons such as Cancel or Done are separate from this control.
+
+Row-level delete actions in tables and lists use one shared control: `danger-btn small` containing `×`, with a `title` and an `aria-label` naming the item (for example "Delete Synthetic Clinic"). This applies to Lesson Roster rows, Pianists, Jury Panels, Jury Availability Windows, Clinical Placement Opportunities, and Clinical Tags. Do not use text "Delete" or "Remove" buttons for single-row deletion. Bulk actions such as "Delete all lessons" remain labeled danger buttons, and every deletion still goes through its module's existing confirmation. Edit actions stay as separate text buttons with spacing from the delete control.
+
 ## Shared Availability and Import
 
 `AvailabilityWindow` is a shared value with weekday, start/end minute, status (`Available`, `Tentative`, or `Unavailable`), and optional in-memory import row provenance. It accepts ranges and multiple windows per day; it does not own an optimizer, person table, or UI policy. Submission completeness is separate from status: absent windows are unknown for an incomplete horizon and derive Unavailable for a valid complete horizon. Same-status overlapping/adjacent ranges merge. Conflicting overlaps are errors. Time/day parsing is shared; Tentative scoring remains Accompanist-specific.

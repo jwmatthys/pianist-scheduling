@@ -67,6 +67,14 @@ def _now() -> datetime:
     return datetime.utcnow()
 
 
+@dataclass
+class ClinicalReplaceResult:
+    opportunities_removed: int
+    placements_removed: int
+    opportunities_created: int
+    tags_created: int
+
+
 class ClinicalRepository:
     def __init__(self, db: Session):
         self.db = db
@@ -318,6 +326,48 @@ class ClinicalRepository:
         self.db.flush()
         self.record_source_change()
         return opportunity
+
+    def replace_opportunities(
+        self, sites: Iterable[tuple[PlacementOpportunityInput, Iterable[str]]]
+    ) -> "ClinicalReplaceResult":
+        """Full replacement of Placement Opportunities (all-or-nothing within the caller's transaction).
+
+        Clears every placement decision, reuses tags by normalized name, creates missing tags,
+        never deletes tags, and leaves students, availability, and tag states untouched.
+        """
+        prepared = [(self._validated_opportunity_values(values), list(names)) for values, names in sites]
+        opportunities_removed = self.db.query(func.count(PlacementOpportunity.id)).scalar() or 0
+        placements_removed = self.clear_all_placements()
+        self.db.query(PlacementOpportunityTag).delete()
+        self.db.query(PlacementOpportunity).delete()
+        self.db.flush()
+
+        tags: dict[str, ClinicalTag] = {}
+        tags_created = 0
+        for values, names in prepared:
+            opportunity = PlacementOpportunity(**values)
+            self.db.add(opportunity)
+            self.db.flush()
+            linked: set[str] = set()
+            for name in names:
+                key = tag_identity_key(name)
+                if not key or key in linked:
+                    continue
+                tag = tags.get(key) or self.find_tag(name)
+                if tag is None:
+                    tag = self._insert_tag(name)
+                    tags_created += 1
+                tags[key] = tag
+                linked.add(key)
+                self.db.add(PlacementOpportunityTag(opportunity_id=opportunity.id, tag_id=tag.id))
+            self.db.flush()
+        self.record_source_change()
+        return ClinicalReplaceResult(
+            opportunities_removed=opportunities_removed,
+            placements_removed=placements_removed,
+            opportunities_created=len(prepared),
+            tags_created=tags_created,
+        )
 
     def count_placements_for_opportunity(self, opportunity_id: str) -> int:
         return (

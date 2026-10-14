@@ -128,6 +128,32 @@ Profiles should be keyed by module/data kind and user/program context, not share
 
 Each module may compose shared primitives differently: a weekly grid for accompanist availability, a student/site form or calendar for placements, and date-specific faculty/resource windows for juries. No Forms API, cloud sync, or external import service is proposed.
 
+### Preferred import architecture: two-phase preview and commit
+
+New and revised module imports should use this two-phase model. Clinical Sites import (`clinical_sites_importer.py`, the `/api/clinical/opportunities/import/*` routes, and `ClinicalRepository.replace_opportunities`) is the reference implementation.
+
+**Phase A: Parse, validate, preview (no writes)**
+
+- Inspect the file (CSV/XLS/XLSX, read locally), detect columns and worksheets, and suggest a user-editable column mapping.
+- Parse and validate every row against the module's rules, producing structured, row-level issues (sheet row numbers, never internal IDs). Invalid data is reported, never silently corrected or invented; the user fixes the source file and retries.
+- Return a preview: normalized rows, issues, and the effect on existing data (for example counts replaced or cleared, new versus reused registry entries).
+- Phase A must not modify the database, revisions, or staleness state.
+
+**Phase B: Commit (single transaction)**
+
+- Require explicit confirmation, with a warning that lists exactly what will be replaced, cleared, and preserved.
+- Re-upload or re-read the source file and re-parse and re-validate it server-side with the submitted mapping. Never trust preview rows, normalized values, or validation results sent back by the browser; the preview is for display only.
+- Reject the whole import if any row is invalid. Apply all changes in one transaction so a failure leaves existing data untouched, and bump the source-data revision exactly once.
+- Repository methods validate and flush; the router commits or rolls back. Revision, staleness, and dependent-result invalidation logic live in the module repository, not the UI.
+
+**Structure**
+
+- Keep the pure parser (file reading, mapping, validation, preview models) free of database, Tauri, and HTTP concerns so it can run locally or in a future browser/WebAssembly build.
+- Keep persistence in the module repository, and keep route handlers thin.
+- Reuse shared infrastructure rather than private copies: tabular reading, day normalization, and time-of-day parsing/formatting (`services/time_parsing.py`, `lib/time.ts`).
+- Replacement semantics must be explicit and limited to the module's own data. Existing Accompanist and Jury importers predate this pattern and are not required to change while frozen; adopt it when they are next revised.
+- Tests should cover parsing, validation, preview-writes-nothing, confirmation required, invalid-row rejection with no changes, and revision/staleness results, using synthetic data only.
+
 ## 8. Session, Institution/Program, and Academic Term
 
 Use one entity: **Scheduling Session**. “Project” may appear as a user-facing synonym but is not a separate persisted entity. One session represents exactly one institution/program and one academic term. One active session/database at a time is the initial architecture; do not build an in-app historical session library.

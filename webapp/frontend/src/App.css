@@ -1269,7 +1269,8 @@ button {
 
 .clinical-tag-list li {
   display: grid;
-  grid-template-columns: minmax(10rem, 1fr) max-content 6.5rem 6.5rem;
+  grid-template-columns: minmax(10rem, 1fr) max-content 6.5rem max-content;
+  gap: 0.75rem;
   align-items: center;
   min-width: max-content;
   width: 100%;
@@ -1279,8 +1280,44 @@ button {
   grid-column: 1 / -1;
 }
 
+.clinical-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  white-space: nowrap;
+}
+
+.danger-btn.small:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.clinical-tag-delete {
+  justify-self: start;
+  min-height: 0;
+}
+
 .clinical-tag-action {
   width: 100%;
   min-height: 36px;
   white-space: nowrap;
+}
+
+.clinical-import-mapping {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem 1rem;
+}
+
+.clinical-import-preview-wrap {
+  max-height: 40vh;
+  overflow: auto;
+}
+
+.clinical-import-row-error {
+  background: #fce4d6;
+}
+
+.clinical-import-dialog {
+  width: min(980px, calc(100vw - 32px));
 }

@@ -583,7 +583,7 @@ export function JurySetupPage() {
                       </div>
                       <div className="jury-panel-actions">
                         <button type="button" className="secondary-btn" disabled={busy} onClick={() => openEditPanel(panel)}>Edit</button>
-                        <button type="button" className="jury-delete-button" disabled={busy} aria-label={`Delete ${panel.panel_name}`} onClick={() => void removePanel(panel)}>Delete</button>
+                        <button type="button" className="danger-btn small" disabled={busy} title="Delete Panel" aria-label={`Delete ${panel.panel_name}`} onClick={() => void removePanel(panel)}>&times;</button>
                       </div>
                     </article>
                   ))}
@@ -677,7 +677,8 @@ export function JurySetupPage() {
                             <label className="jury-window-time">Until<input aria-label={`Window ${index + 1} end`} type="time" value={fromMinutes(window.end_minute)} disabled={busy} onChange={(event) => editAvailabilityWindow(index, "end_minute", event.target.value)} onBlur={saveEditedAvailabilityWindow} /></label>
                             <button
                               type="button"
-                              className="jury-delete-button"
+                              className="danger-btn small"
+                              title="Remove Availability Window"
                               aria-label={`Remove Available window ${index + 1}`}
                               disabled={busy}
                               onClick={() => void persistAvailabilityWindows(
@@ -685,7 +686,7 @@ export function JurySetupPage() {
                                 selectedAvailabilityDate,
                                 selectedAvailability.windows.filter((_, itemIndex) => itemIndex !== index),
                               )}
-                            >Remove</button>
+                            >&times;</button>
                           </li>
                         ))}
                       </ul>

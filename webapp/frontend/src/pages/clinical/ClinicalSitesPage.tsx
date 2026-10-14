@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api } from "../../lib/api";
+import { ConfirmDialog, Modal } from "./ClinicalDialogs";
+import { ClinicalSitesImportDialog } from "./ClinicalSitesImportDialog";
 import { formatMinutes, parseTwelveHourTime } from "../../lib/time";
 import type { ClinicalTag, PlacementOpportunity, PlacementOpportunityFields } from "../../lib/types";
 
@@ -7,65 +9,6 @@ const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function Modal({
-  title,
-  onClose,
-  className = "",
-  children,
-}: {
-  title: string;
-  onClose: () => void;
-  className?: string;
-  children: ReactNode;
-}) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const dialog = ref.current;
-    if (!dialog || dialog.open) return;
-    if (typeof dialog.showModal === "function") dialog.showModal();
-    else dialog.setAttribute("open", "");
-  }, []);
-  return (
-    <dialog ref={ref} className={`session-dialog ${className}`.trim()} aria-label={title} onCancel={onClose}>
-      <div className="dialog-heading">
-        <h2>{title}</h2>
-        <button type="button" className="dialog-close" aria-label="Close" onClick={onClose}>
-          ×
-        </button>
-      </div>
-      {children}
-    </dialog>
-  );
-}
-
-function ConfirmDialog({
-  title,
-  message,
-  confirmLabel,
-  onConfirm,
-  onCancel,
-}: {
-  title: string;
-  message: string;
-  confirmLabel: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <Modal title={title} onClose={onCancel}>
-      <p className="dialog-note">{message}</p>
-      <div className="dialog-actions">
-        <button type="button" onClick={onCancel}>
-          Cancel
-        </button>
-        <button type="button" className="danger-btn" onClick={onConfirm}>
-          {confirmLabel}
-        </button>
-      </div>
-    </Modal>
-  );
 }
 
 function TagChip({ tag }: { tag: { name: string; is_unused?: boolean } }) {
@@ -380,11 +323,12 @@ function TagManagerDialog({
                 </button>
                 <button
                   type="button"
-                  className="danger-btn clinical-tag-action"
+                  className="danger-btn small clinical-tag-delete"
+                  title="Delete tag"
                   aria-label={`Delete ${tag.name}`}
                   onClick={() => setDeleting(tag)}
                 >
-                  Delete
+                  &times;
                 </button>
               </>
             )}
@@ -424,6 +368,8 @@ export function ClinicalSitesPage() {
   const [editing, setEditing] = useState<PlacementOpportunity | "new" | null>(null);
   const [deleting, setDeleting] = useState<PlacementOpportunity | null>(null);
   const [managingTags, setManagingTags] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [notice, setNotice] = useState("");
 
   const refresh = useCallback(async () => {
     try {
@@ -466,6 +412,9 @@ export function ClinicalSitesPage() {
       <div className="dialog-heading">
         <h2 id="clinical-sites-heading">Clinical Sites</h2>
         <div className="dialog-actions">
+          <button type="button" onClick={() => setImporting(true)}>
+            Import Clinical Sites
+          </button>
           <button type="button" onClick={() => setManagingTags(true)}>
             Manage Tags
           </button>
@@ -477,6 +426,11 @@ export function ClinicalSitesPage() {
       {error && (
         <div className="error-banner" role="alert">
           {error}
+        </div>
+      )}
+      {notice && (
+        <div className="availability-success" role="status">
+          {notice}
         </div>
       )}
       {loaded && !error && opportunities.length === 0 ? (
@@ -511,12 +465,22 @@ export function ClinicalSitesPage() {
                     <TagChip key={tag.id} tag={tag} />
                   ))}
                 </td>
-                <td>
-                  <button type="button" onClick={() => setEditing(item)}>
-                    Edit {item.site_name}
+                <td className="clinical-row-actions">
+                  <button
+                    type="button"
+                    aria-label={`Edit ${item.site_name}`}
+                    onClick={() => setEditing(item)}
+                  >
+                    Edit
                   </button>
-                  <button type="button" className="danger-btn" onClick={() => setDeleting(item)}>
-                    Delete {item.site_name}
+                  <button
+                    type="button"
+                    className="danger-btn small"
+                    title="Delete Placement Opportunity"
+                    aria-label={`Delete ${item.site_name}`}
+                    onClick={() => setDeleting(item)}
+                  >
+                    &times;
                   </button>
                 </td>
               </tr>
@@ -531,6 +495,15 @@ export function ClinicalSitesPage() {
           tags={tags}
           onChanged={refresh}
           onClose={() => setEditing(null)}
+        />
+      )}
+      {importing && (
+        <ClinicalSitesImportDialog
+          onClose={() => setImporting(false)}
+          onImported={async (message) => {
+            await refresh();
+            setNotice(message);
+          }}
         />
       )}
       {managingTags && (

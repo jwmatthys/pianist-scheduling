@@ -151,8 +151,7 @@
   white-space: nowrap;
 }
 
-.jury-text-button,
-.jury-delete-button {
+.jury-text-button {
   border: 0;
   padding: 0.2rem 0.3rem;
   color: #24586a;
@@ -162,8 +161,7 @@
   text-underline-offset: 2px;
 }
 
-.jury-text-button:disabled,
-.jury-delete-button:disabled {
+.jury-text-button:disabled {
   color: #87999e;
   cursor: not-allowed;
 }
@@ -687,11 +685,6 @@
 .jury-panel-actions {
   gap: 0.65rem;
   flex: 0 0 auto;
-}
-
-.jury-delete-button {
-  color: var(--jury-red);
-  font-size: 0.8rem;
 }
 
 .jury-availability-layout {

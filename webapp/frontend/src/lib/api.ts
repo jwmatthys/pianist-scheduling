@@ -26,6 +26,10 @@ import type {
   RunAssignmentResult,
   SchedulingSession,
   SchedulingSessionInput,
+  ClinicalSitesImportInspection,
+  ClinicalSitesImportMapping,
+  ClinicalSitesImportPreview,
+  ClinicalSitesImportResult,
   ClinicalTag,
   PlacementOpportunity,
   PlacementOpportunityFields,
@@ -271,4 +275,34 @@ export const api = {
     request<{ affected_student_count: number }>(`/api/clinical/tags/${encodeURIComponent(id)}`, {
       method: "DELETE",
     }),
+  inspectClinicalSitesFile: (file: File, sheetName?: string | null) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (sheetName) form.append("sheet_name", sheetName);
+    return request<ClinicalSitesImportInspection>("/api/clinical/opportunities/import/inspect", {
+      method: "POST",
+      body: form,
+    });
+  },
+  previewClinicalSitesImport: (file: File, sheetName: string | null, mapping: ClinicalSitesImportMapping) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (sheetName) form.append("sheet_name", sheetName);
+    form.append("mapping", JSON.stringify(mapping));
+    return request<ClinicalSitesImportPreview>("/api/clinical/opportunities/import/preview", {
+      method: "POST",
+      body: form,
+    });
+  },
+  applyClinicalSitesImport: (file: File, sheetName: string | null, mapping: ClinicalSitesImportMapping) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (sheetName) form.append("sheet_name", sheetName);
+    form.append("mapping", JSON.stringify(mapping));
+    form.append("confirmed", "true");
+    return request<ClinicalSitesImportResult>("/api/clinical/opportunities/import/apply", {
+      method: "POST",
+      body: form,
+    });
+  },
 };
