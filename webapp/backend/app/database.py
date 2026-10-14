@@ -104,6 +104,7 @@ def _column_names(connection: Connection, table_name: str) -> set[str]:
 
 
 def _expected_columns() -> dict[str, set[str]]:
+    from . import clinical_models  # noqa: F401
     from . import models  # noqa: F401
     from . import module_models  # noqa: F401
 
@@ -444,6 +445,33 @@ def _upgrade_to_v9(connection: Connection) -> None:
     )
 
 
+def _upgrade_to_v10(connection: Connection) -> None:
+    """Add module-owned Clinical Placement tables and per-session module state."""
+    from . import clinical_models
+
+    _create_module_tables(connection, {
+        "clinical_tags",
+        "clinical_placement_opportunities",
+        "clinical_opportunity_tags",
+        "clinical_students",
+        "clinical_student_availability_windows",
+        "clinical_student_tag_states",
+        "clinical_placements",
+        "clinical_module_states",
+    })
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    for (session_uuid,) in connection.exec_driver_sql(
+        "SELECT session_uuid FROM scheduling_sessions"
+    ).all():
+        connection.execute(clinical_models.ClinicalModuleState.__table__.insert().values(
+            session_uuid=session_uuid,
+            schedule_revision=0,
+            source_data_revision=0,
+            is_schedule_stale=False,
+            modified_at=now,
+        ))
+
+
 MIGRATIONS = (
     SchemaMigration(
         version=1,
@@ -489,6 +517,11 @@ MIGRATIONS = (
         version=9,
         name="add_editable_accompanist_pianist_ids",
         upgrade=_upgrade_to_v9,
+    ),
+    SchemaMigration(
+        version=10,
+        name="add_clinical_placement_module_tables",
+        upgrade=_upgrade_to_v10,
     ),
 )
 LATEST_SCHEMA_VERSION = MIGRATIONS[-1].version

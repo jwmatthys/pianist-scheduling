@@ -21,6 +21,24 @@ from app.database import (
 )
 from app.services.accompanist_results import get_result_by_uuid
 
+CLINICAL_TABLES_DROP_ORDER = (
+    "clinical_placements",
+    "clinical_student_tag_states",
+    "clinical_student_availability_windows",
+    "clinical_opportunity_tags",
+    "clinical_students",
+    "clinical_placement_opportunities",
+    "clinical_tags",
+    "clinical_module_states",
+)
+
+
+def drop_clinical_tables(connection):
+    """Simulate a pre-v10 database by removing the Clinical tables added in v10."""
+    for table_name in CLINICAL_TABLES_DROP_ORDER:
+        connection.exec_driver_sql(f"DROP TABLE {table_name}")
+
+
 LEGACY_FIXTURE = Path(__file__).parent / "fixtures" / "legacy_accompanist_v0.sql"
 
 
@@ -255,6 +273,7 @@ class DatabaseMigrationTests(unittest.TestCase):
         with self.engine.begin() as connection:
             connection.exec_driver_sql("DROP TABLE accompanist_lesson_jury_requirements")
             connection.exec_driver_sql("DROP TABLE jury_panel_dates")
+            drop_clinical_tables(connection)
             connection.exec_driver_sql("PRAGMA user_version = 6")
         with Session(self.engine) as db:
             lesson = models.Lesson(
@@ -343,6 +362,7 @@ class DatabaseMigrationTests(unittest.TestCase):
             db.commit()
         with self.engine.begin() as connection:
             connection.exec_driver_sql("DROP TABLE jury_panel_dates")
+            drop_clinical_tables(connection)
             connection.exec_driver_sql("PRAGMA user_version = 7")
 
         report = migrate_database(self.engine)
@@ -363,12 +383,13 @@ class DatabaseMigrationTests(unittest.TestCase):
         with self.engine.begin() as connection:
             connection.exec_driver_sql("DROP INDEX uq_pianists_organization_code_ci")
             connection.exec_driver_sql("ALTER TABLE pianists DROP COLUMN pianist_code")
+            drop_clinical_tables(connection)
             connection.exec_driver_sql("PRAGMA user_version = 8")
 
         report = migrate_database(self.engine)
 
         self.assertEqual(report.initial_version, 8)
-        self.assertEqual(report.current_version, 9)
+        self.assertEqual(report.current_version, LATEST_SCHEMA_VERSION)
         with Session(self.engine) as db:
             self.assertEqual(db.get(models.Pianist, 42).pianist_code, "42")
         with self.engine.connect() as connection:

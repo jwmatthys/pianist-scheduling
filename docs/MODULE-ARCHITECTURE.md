@@ -15,11 +15,12 @@ Music Program Scheduler
   -> Active-session dashboard (session identity + Edit/New/Open/Export)
   -> Implemented Scheduling Modules
        -> Accompanist Scheduling
-       -> Clinical Placements (approved workflow; implementation pending)
+
       -> Performance Juries (lesson-based setup and readiness)
+      -> Clinical Placements (approved workflow; implementation pending)
 ```
 
-The Accompanist module has its own header, return-to-dashboard control, and internal Import Lessons, Pianists & Availability, Schedule, and Reports navigation. Session actions do not remain in that module header. Performance Juries provides lesson-based setup and readiness tabs in Panels, Lesson Entries, Pianist Availability, Schedule, and Overview order; Panels is the initial view. Schedule generation remains unimplemented. Clinical Placements is still a shell pending implementation; its approved workflow and domain policy are specified in [CLINICAL-PLACEMENT-MODULE-SPEC.md](CLINICAL-PLACEMENT-MODULE-SPEC.md). Until implemented, do not display fake workflow state or statistics. Replacing/restoring a session returns the user to the dashboard. Export does not change navigation state.
+The Accompanist module has its own header, return-to-dashboard control, and internal Import Lessons, Pianists & Availability, Schedule, and Reports navigation. Session actions do not remain in that module header. Performance Juries provides lesson-based setup and readiness tabs in Panels, Lesson Entries, Pianist Availability, Schedule, and Overview order; Panels is the initial view. Schedule generation remains unimplemented. Clinical Placements has a Phase 1 foundation only (module navigation with Clinical Sites, Student Roster, Schedule, and Reports placeholders, plus module-owned persistence and repositories); import, editing UI, validation, optimizer, and reports are pending. Its approved workflow and domain policy are specified in [CLINICAL-PLACEMENT-MODULE-SPEC.md](CLINICAL-PLACEMENT-MODULE-SPEC.md). Until implemented, placeholder screens must say so and must not display fake workflow state or statistics. Replacing/restoring a session returns the user to the dashboard. Export does not change navigation state.
 
 ## Module Ownership
 
@@ -28,8 +29,10 @@ Modules are statically registered built-in workflows, not dynamically loaded plu
 Each module owns its inputs, persistence records/profiles, constraints, validation policy, optimizer, workflow, output model, and report definitions:
 
 - **Accompanist Scheduling:** lessons, source-owned Jury Required and Pianist Required values, pianist-specific profiles/availability, workload, fit/scoring, overlap and manual-assignment policy, assignments, and accompanist reports.
-- **Clinical Placements:** module-owned students and recurring availability, student tag requirements/preferences/restrictions, Clinical Tags, Placement Opportunities and capacity, manual and automatic placement decisions, validation, a typed Clinical placement result, and Clinical reports. The director-informed, approved domain rules and lexicographic optimizer contract are defined in [CLINICAL-PLACEMENT-MODULE-SPEC.md](CLINICAL-PLACEMENT-MODULE-SPEC.md). Implement a Clinical-specific optimizer; do not reuse or coerce the Accompanist or Jury optimizer.
+
 - **Performance Juries:** lesson-based entries/roster, user-selected Panels (unassigned lessons auto-assigned on exact Instrument/Panel Name match when the Lesson Roster opens), one Scheduling Date per Panel, duration/break/meal configuration, date-scoped pianist Availability Windows, readiness validation, and eventual Jury-specific optimizer/reports. Jury Required and Panel selection belong to each source lesson entry, not globally to a student. The standalone scheduler is characterized in [JURY-SCHEDULER-CHARACTERIZATION.md](JURY-SCHEDULER-CHARACTERIZATION.md); its optimizer is not integrated.
+
+- **Clinical Placements:** module-owned students and recurring availability, student tag requirements/preferences/restrictions, Clinical Tags, Placement Opportunities and capacity, manual and automatic placement decisions, validation, a typed Clinical placement result, and Clinical reports. The director-informed, approved domain rules and lexicographic optimizer contract are defined in [CLINICAL-PLACEMENT-MODULE-SPEC.md](CLINICAL-PLACEMENT-MODULE-SPEC.md). Implement a Clinical-specific optimizer; do not reuse or coerce the Accompanist or Jury optimizer.
 
 Never create a universal optimizer, universal assignment/schedule type, giant universal Person/Student record, or one universal spreadsheet schema.
 

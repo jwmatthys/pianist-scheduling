@@ -27,7 +27,7 @@ export const SCHEDULING_MODULES: SchedulingModule[] = [
     key: "clinical",
     name: "Clinical Placements",
     description: "Plan music therapy and music education student placements with clinical sites and field experiences.",
-    availability: "shell",
+    availability: "available",
   },
 ];
 

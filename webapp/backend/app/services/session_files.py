@@ -85,6 +85,7 @@ def _metadata_input(values: dict) -> schemas.SessionMetadataIn:
 
 
 def _replace_metadata(target_engine: Engine, values: schemas.SessionMetadataIn, session_uuid: str | None = None) -> None:
+    from .. import clinical_models  # noqa: F401  (registers tables for session re-keying)
     from .. import module_models
 
     with Session(target_engine) as db:
