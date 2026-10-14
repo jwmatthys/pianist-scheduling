@@ -33,6 +33,9 @@ import type {
   ClinicalStudent,
   ClinicalReadiness,
   ClinicalSchedule,
+  ClinicalScheduleEntry,
+  ClinicalPlacementVerification,
+  ClinicalPlacementWarning,
   RecurringAvailabilityWindow,
   ClinicalStudentFields,
   ClinicalStudentsImportInspection,
@@ -320,6 +323,37 @@ export const api = {
   generateClinicalSchedule: () =>
     request<ClinicalSchedule>("/api/clinical/schedule/generate", { method: "POST" }),
   clearClinicalSchedule: () => request<ClinicalSchedule>("/api/clinical/schedule/clear", { method: "POST" }),
+  listClinicalSchedulePlacements: () =>
+    request<ClinicalScheduleEntry[]>("/api/clinical/schedule/placements"),
+  getClinicalPlacementVerification: () =>
+    request<ClinicalPlacementVerification[]>("/api/clinical/schedule/verification"),
+  validateClinicalManualPlacement: (data: { student_id: string; opportunity_id: string; start_minute: number }) =>
+    request<{ warnings: ClinicalPlacementWarning[] }>("/api/clinical/schedule/placements/validate", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  createClinicalManualPlacement: (data: { student_id: string; opportunity_id: string; start_minute: number }) =>
+    request<ClinicalSchedule>("/api/clinical/schedule/placements", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  moveClinicalManualPlacement: (studentId: string, data: { student_id: string; opportunity_id: string; start_minute: number }) =>
+    request<ClinicalSchedule>(`/api/clinical/schedule/placements/${encodeURIComponent(studentId)}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  markClinicalStudentManuallyUnplaced: (studentId: string) =>
+    request<ClinicalSchedule>(`/api/clinical/schedule/students/${encodeURIComponent(studentId)}/manually-unplace`, {
+      method: "POST",
+    }),
+  removeClinicalPlacement: (studentId: string) =>
+    request<ClinicalSchedule>(`/api/clinical/schedule/placements/${encodeURIComponent(studentId)}`, {
+      method: "DELETE",
+    }),
+  removeClinicalPlacementOverride: (studentId: string) =>
+    request<ClinicalSchedule>(`/api/clinical/schedule/placements/${encodeURIComponent(studentId)}/override`, {
+      method: "DELETE",
+    }),
   listClinicalStudents: () => request<ClinicalStudent[]>("/api/clinical/students"),
   createClinicalStudent: (data: ClinicalStudentFields) =>
     request<ClinicalStudent>("/api/clinical/students", { method: "POST", body: JSON.stringify(data) }),

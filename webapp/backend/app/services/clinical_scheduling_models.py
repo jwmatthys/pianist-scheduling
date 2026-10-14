@@ -32,6 +32,7 @@ class OpportunityInput:
     travel_minutes: int
     capacity: int
     tag_ids: frozenset[str] = frozenset()
+    site_name: str = ""
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,7 @@ class StudentInput:
     availability: tuple[AvailabilityWindow, ...] = ()
     # Required/Preferred/Restricted only; Neutral is the absence of an entry.
     tag_preferences: dict[str, TagPreference] = field(default_factory=dict)
+    student_number: str = ""
 
 
 @dataclass(frozen=True)
@@ -275,3 +277,52 @@ class ScheduleSummary:
     @property
     def utilization(self) -> float:
         return self.used_capacity / self.total_capacity if self.total_capacity else 0.0
+
+
+class PlacementWarningCode(str, Enum):
+    OUTSIDE_AVAILABILITY = "OUTSIDE_AVAILABILITY"
+    REQUIRED_TAG_MISSING = "REQUIRED_TAG_MISSING"
+    RESTRICTED_TAG_CONFLICT = "RESTRICTED_TAG_CONFLICT"
+    CAPACITY_EXCEEDED = "CAPACITY_EXCEEDED"
+    OUTSIDE_OPPORTUNITY_WINDOW = "OUTSIDE_OPPORTUNITY_WINDOW"
+
+
+@dataclass(frozen=True)
+class PlacementWarning:
+    code: PlacementWarningCode
+    message: str
+
+
+@dataclass(frozen=True)
+class ScheduleEntry:
+    """Current student placement, or ordinary/manually-unplaced state."""
+
+    student_id: str
+    student_name: str
+    student_number: str
+    kind: PlacementKind | None
+    opportunity_id: str | None
+    site_name: str | None
+    opportunity_label: str | None
+    day: str | None
+    start_minute: int | None
+    end_minute: int | None
+    tags: tuple[str, ...]
+    preferred_tag_match_count: int
+    tentative_minutes: int | None
+    verified: bool | None
+    warnings: tuple[PlacementWarning, ...]
+    unplaced_reason: UnplacedReason | None
+
+
+@dataclass(frozen=True)
+class PlacementVerification:
+    """A persisted assignment that is not a currently feasible candidate start."""
+
+    student_id: str
+    student_name: str
+    opportunity_id: str | None
+    site_name: str | None
+    day: str | None
+    start_minute: int | None
+    warnings: tuple[PlacementWarning, ...]

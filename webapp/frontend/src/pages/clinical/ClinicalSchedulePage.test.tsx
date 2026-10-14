@@ -2,15 +2,22 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../lib/api";
-import type { ClinicalReadiness, ClinicalSchedule } from "../../lib/types";
+import type { ClinicalReadiness, ClinicalSchedule, ClinicalScheduleEntry, PlacementOpportunity } from "../../lib/types";
 import { ClinicalSchedulePage } from "./ClinicalSchedulePage";
 
 vi.mock("../../lib/api", () => ({
   api: {
     getClinicalReadiness: vi.fn(),
     getClinicalSchedule: vi.fn(),
+    listClinicalOpportunities: vi.fn(),
+    validateClinicalManualPlacement: vi.fn(),
     generateClinicalSchedule: vi.fn(),
     clearClinicalSchedule: vi.fn(),
+    createClinicalManualPlacement: vi.fn(),
+    moveClinicalManualPlacement: vi.fn(),
+    markClinicalStudentManuallyUnplaced: vi.fn(),
+    removeClinicalPlacement: vi.fn(),
+    removeClinicalPlacementOverride: vi.fn(),
   },
 }));
 
@@ -29,6 +36,8 @@ const emptySchedule: ClinicalSchedule = {
   tentative_minutes: 0,
   unverified_placement_count: 0,
   unplaced: [],
+  entries: [],
+  verification: [],
   placements: [],
 };
 const generated: ClinicalSchedule = {
@@ -42,6 +51,72 @@ const generated: ClinicalSchedule = {
   preferred_tag_matches: 7,
   tentative_minutes: 120,
   unplaced: [{ student_id: "x", student_name: "Dee Demo", reason: "CAPACITY_LIMIT" }],
+  entries: [{
+    student_id: "x",
+    student_name: "Dee Demo",
+    student_number: "DEMO-1",
+    kind: null,
+    opportunity_id: null,
+    site_name: null,
+    opportunity_label: null,
+    day: null,
+    start_minute: null,
+    end_minute: null,
+    tags: [],
+    preferred_tag_match_count: 0,
+    tentative_minutes: null,
+    verified: null,
+    warnings: [],
+    unplaced_reason: "CAPACITY_LIMIT",
+  }],
+};
+const opportunity: PlacementOpportunity = {
+  id: "op-1",
+  site_name: "Mercy Clinic",
+  site_address: "",
+  contact_name: "",
+  contact_email: "",
+  contact_phone: "",
+  day_of_week: "Tuesday",
+  start_minute: 8 * 60,
+  end_minute: 11 * 60,
+  session_length_minutes: 60,
+  travel_minutes: 15,
+  capacity: 1,
+  tags: [{ id: "tag-1", name: "Mental Health" }],
+  placement_count: 0,
+};
+const studentEntry: ClinicalScheduleEntry = {
+  student_id: "student-1",
+  student_name: "Ada Example",
+  student_number: "A-001",
+  kind: null,
+  opportunity_id: null,
+  site_name: null,
+  opportunity_label: null,
+  day: null,
+  start_minute: null,
+  end_minute: null,
+  tags: [],
+  preferred_tag_match_count: 0,
+  tentative_minutes: null,
+  verified: null,
+  warnings: [],
+  unplaced_reason: "NO_FEASIBLE_CANDIDATE",
+};
+const manualEntry: ClinicalScheduleEntry = {
+  ...studentEntry,
+  kind: "manual",
+  opportunity_id: opportunity.id,
+  site_name: opportunity.site_name,
+  opportunity_label: "Mercy Clinic, Tue 8:00 AM-11:00 AM",
+  day: "Tuesday",
+  start_minute: 8 * 60 + 10,
+  end_minute: 9 * 60 + 10,
+  tags: ["Mental Health"],
+  verified: false,
+  warnings: [{ code: "OUTSIDE_AVAILABILITY", message: "Outside student availability." }],
+  unplaced_reason: null,
 };
 
 const base: ClinicalReadiness = {
@@ -66,17 +141,16 @@ describe("ClinicalSchedulePage readiness", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.getClinicalSchedule).mockResolvedValue(emptySchedule);
+    vi.mocked(api.listClinicalOpportunities).mockResolvedValue([]);
   });
 
-  it("shows the readiness summary and candidate counts without any placements", async () => {
+  it("shows no warnings and enables generation when ready", async () => {
     vi.mocked(api.getClinicalReadiness).mockResolvedValue(base);
     render(<ClinicalSchedulePage />);
-    expect(await screen.findByText("Ready for scheduling")).toBeTruthy();
-    expect(screen.getByText(/42 students loaded/)).toBeTruthy();
-    expect(screen.getByText(/18 placement opportunities loaded/)).toBeTruthy();
-    expect(screen.getByText(/300 feasible student\/opportunity pairings of 756 evaluated/)).toBeTruthy();
-    expect(screen.getByText(/40 of 42 students have at least one feasible opportunity/)).toBeTruthy();
-    expect(screen.getByText(/No readiness warnings/)).toBeTruthy();
+    expect(await screen.findByText(/No readiness warnings/)).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Generate Schedule" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByText(/students loaded/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
   });
 
   it("groups warnings by category with counts and subjects", async () => {
@@ -107,7 +181,7 @@ describe("ClinicalSchedulePage readiness", () => {
     expect(screen.queryByRole("heading", { name: "Placement Opportunities" })).toBeNull();
   });
 
-  it("shows a not-ready status for blocking errors", async () => {
+  it("disables generation for blocking errors and shows the warning", async () => {
     vi.mocked(api.getClinicalReadiness).mockResolvedValue({
       ...base,
       is_ready: false,
@@ -115,19 +189,15 @@ describe("ClinicalSchedulePage readiness", () => {
       warnings: [{ code: "NO_STUDENTS", severity: "error", category: "data", subject: null }],
     });
     render(<ClinicalSchedulePage />);
-    const status = await screen.findByRole("status", { name: "Readiness status" });
-    expect(status.textContent).toBe("Not ready for scheduling");
-    expect(screen.getByText(/No students have been entered/)).toBeTruthy();
+    expect(await screen.findByText(/No students have been entered/)).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Generate Schedule" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("status", { name: "Readiness status" })).toBeNull();
   });
 
-  it("refreshes readiness on demand and reports errors", async () => {
-    vi.mocked(api.getClinicalReadiness).mockResolvedValueOnce(base).mockRejectedValueOnce(new Error("boom"));
-    const user = userEvent.setup();
+  it("reports load errors", async () => {
+    vi.mocked(api.getClinicalReadiness).mockRejectedValueOnce(new Error("boom"));
     render(<ClinicalSchedulePage />);
-    await screen.findByText("Ready for scheduling");
-    await user.click(screen.getByRole("button", { name: "Refresh" }));
     await waitFor(() => expect(within(screen.getByRole("alert")).getByText("boom")).toBeTruthy());
-    expect(api.getClinicalReadiness).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -136,6 +206,7 @@ describe("ClinicalSchedulePage generation", () => {
     vi.clearAllMocks();
     vi.mocked(api.getClinicalReadiness).mockResolvedValue(base);
     vi.mocked(api.getClinicalSchedule).mockResolvedValue(emptySchedule);
+    vi.mocked(api.listClinicalOpportunities).mockResolvedValue([]);
   });
 
   it("generates a schedule, shows the summary, and keeps readiness visible", async () => {
@@ -149,15 +220,15 @@ describe("ClinicalSchedulePage generation", () => {
     expect(screen.getByText(/Utilization: 80% \(40 of 50 seats\)/)).toBeTruthy();
     expect(screen.getByText(/Preferred-tag matches: 7/)).toBeTruthy();
     expect(screen.getByText(/Tentative minutes: 120/)).toBeTruthy();
-    expect(screen.getByText(/Dee Demo: Capacity limit/)).toBeTruthy();
-    expect(screen.getByText("Ready for scheduling")).toBeTruthy();
+    expect(screen.getByText("Dee Demo")).toBeTruthy();
+    expect(screen.getByText("Capacity limit")).toBeTruthy();
+    expect(screen.getByText(/No readiness warnings/)).toBeTruthy();
   });
 
   it("disables generation when not ready", async () => {
     vi.mocked(api.getClinicalReadiness).mockResolvedValue({ ...base, is_ready: false });
     render(<ClinicalSchedulePage />);
-    await screen.findByText("Not ready for scheduling");
-    expect((screen.getByRole("button", { name: "Generate Schedule" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((await screen.findByRole("button", { name: "Generate Schedule" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("shows a stale notice and clears only after confirmation", async () => {
@@ -178,5 +249,145 @@ describe("ClinicalSchedulePage generation", () => {
     render(<ClinicalSchedulePage />);
     await userEvent.click(await screen.findByRole("button", { name: "Generate Schedule" }));
     expect((await screen.findByRole("alert")).textContent).toContain("cannot be generated");
+  });
+
+  it("assigns an unplaced student from the drop-down and shows manual warnings", async () => {
+    const initial: ClinicalSchedule = { ...emptySchedule, student_count: 1, unplaced_count: 1, entries: [studentEntry] };
+    const saved: ClinicalSchedule = {
+      ...initial,
+      has_placements: true,
+      placed_count: 1,
+      unplaced_count: 0,
+      entries: [manualEntry],
+      placements: [{ student_id: "student-1", kind: "manual", opportunity_id: opportunity.id, start_minute: 490 }],
+    };
+    vi.mocked(api.getClinicalSchedule).mockResolvedValueOnce(initial);
+    vi.mocked(api.listClinicalOpportunities).mockResolvedValue([opportunity]);
+    vi.mocked(api.createClinicalManualPlacement).mockResolvedValue(saved);
+    render(<ClinicalSchedulePage />);
+    expect(screen.queryByRole("button", { name: "Assign" })).toBeNull();
+    await userEvent.selectOptions(await screen.findByLabelText(/Placement Site for/), opportunity.id);
+    await waitFor(() => expect(api.createClinicalManualPlacement).toHaveBeenCalledWith({
+      student_id: "student-1",
+      opportunity_id: opportunity.id,
+      start_minute: opportunity.start_minute,
+    }));
+    expect((await screen.findAllByText("Outside student availability.")).length).toBeGreaterThan(0);
+    expect(screen.getByText("Manual")).toBeTruthy();
+  });
+
+  it("marks manually unplaced from the drop-down and returns to automatic with the placeholder option", async () => {
+    const manuallyUnplaced: ClinicalScheduleEntry = {
+      ...studentEntry,
+      kind: "manuallyUnplaced",
+      unplaced_reason: "MANUALLY_UNPLACED",
+    };
+    const marked: ClinicalSchedule = {
+      ...emptySchedule,
+      has_placements: true,
+      unplaced_count: 1,
+      entries: [manuallyUnplaced],
+      placements: [{ student_id: studentEntry.student_id, kind: "manuallyUnplaced", opportunity_id: null, start_minute: null }],
+    };
+    vi.mocked(api.getClinicalSchedule).mockResolvedValueOnce({ ...emptySchedule, entries: [studentEntry], student_count: 1, unplaced_count: 1 });
+    vi.mocked(api.markClinicalStudentManuallyUnplaced).mockResolvedValue(marked);
+    vi.mocked(api.removeClinicalPlacementOverride).mockResolvedValue({
+      ...emptySchedule,
+      entries: [studentEntry],
+      student_count: 1,
+      unplaced_count: 1,
+    });
+    render(<ClinicalSchedulePage />);
+    expect(screen.queryByRole("button", { name: /Mark Manually Unplaced|Remove Manual Unplaced/ })).toBeNull();
+    await userEvent.selectOptions(await screen.findByLabelText(/Placement Site for/), "__manually_unplaced__");
+    await waitFor(() => expect(api.markClinicalStudentManuallyUnplaced).toHaveBeenCalledWith(studentEntry.student_id));
+    expect(await screen.findByText("Manually Unplaced")).toBeTruthy();
+    await userEvent.selectOptions(screen.getByLabelText(/Placement Site for/), "");
+    await waitFor(() => expect(api.removeClinicalPlacementOverride).toHaveBeenCalledWith(studentEntry.student_id));
+  });
+
+  it("no longer shows a Placement Verification section and keeps the summary at the bottom", async () => {
+    vi.mocked(api.getClinicalSchedule).mockResolvedValue({ ...generated, entries: [manualEntry] });
+    vi.mocked(api.listClinicalOpportunities).mockResolvedValue([opportunity]);
+    render(<ClinicalSchedulePage />);
+    await screen.findByText("Schedule Summary");
+    expect(screen.queryByText("Placement Verification")).toBeNull();
+    const headings = screen.getAllByRole("heading", { level: 3 }).map((node) => node.textContent);
+    expect(headings[headings.length - 1]).toBe("Schedule Summary");
+  });
+
+  it("edits an existing placement into a manual move", async () => {
+    const initial: ClinicalSchedule = {
+      ...generated,
+      entries: [manualEntry],
+      placements: [{
+        student_id: manualEntry.student_id,
+        kind: "manual",
+        opportunity_id: opportunity.id,
+        start_minute: manualEntry.start_minute,
+      }],
+    };
+    const moved: ClinicalSchedule = {
+      ...initial,
+      schedule_revision: 2,
+      entries: [{ ...manualEntry, start_minute: 8 * 60 + 30, end_minute: 9 * 60 + 30 }],
+      placements: [{
+        student_id: manualEntry.student_id,
+        kind: "manual",
+        opportunity_id: opportunity.id,
+        start_minute: 8 * 60 + 30,
+      }],
+    };
+    vi.mocked(api.getClinicalSchedule).mockResolvedValue(initial);
+    vi.mocked(api.listClinicalOpportunities).mockResolvedValue([opportunity]);
+    vi.mocked(api.validateClinicalManualPlacement).mockResolvedValue({ warnings: [] });
+    vi.mocked(api.moveClinicalManualPlacement).mockResolvedValue(moved);
+    render(<ClinicalSchedulePage />);
+    const timeInput = await screen.findByLabelText(`Start time for ${manualEntry.student_name}`);
+    await userEvent.clear(timeInput);
+    await userEvent.type(timeInput, "8:30 AM");
+    await userEvent.tab();
+    await waitFor(() => expect(api.moveClinicalManualPlacement).toHaveBeenCalledWith(manualEntry.student_id, {
+      student_id: manualEntry.student_id,
+      opportunity_id: opportunity.id,
+      start_minute: 8 * 60 + 30,
+    }));
+    expect(await screen.findByDisplayValue("8:30 AM")).toBeTruthy();
+  });
+
+  it("changes the site from the row drop-down and marks conflicts in amber", async () => {
+    const other = { ...opportunity, id: "opp-2", site_name: "Other Clinic" };
+    const initial: ClinicalSchedule = {
+      ...generated,
+      entries: [manualEntry],
+      placements: [{
+        student_id: manualEntry.student_id,
+        kind: "manual",
+        opportunity_id: opportunity.id,
+        start_minute: manualEntry.start_minute,
+      }],
+    };
+    const conflicted: ClinicalSchedule = {
+      ...initial,
+      entries: [{
+        ...manualEntry,
+        opportunity_id: other.id,
+        site_name: other.site_name,
+        warnings: [{ code: "REQUIRED_TAG_MISSING", message: "Missing required tag MENTAL HEALTH." }],
+      }],
+    };
+    vi.mocked(api.getClinicalSchedule).mockResolvedValue(initial);
+    vi.mocked(api.listClinicalOpportunities).mockResolvedValue([opportunity, other]);
+    vi.mocked(api.moveClinicalManualPlacement).mockResolvedValue(conflicted);
+    render(<ClinicalSchedulePage />);
+    const select = await screen.findByLabelText(`Placement Site for ${manualEntry.student_name}`);
+    await userEvent.selectOptions(select, other.id);
+    await waitFor(() => expect(api.moveClinicalManualPlacement).toHaveBeenCalledWith(manualEntry.student_id, {
+      student_id: manualEntry.student_id,
+      opportunity_id: other.id,
+      start_minute: manualEntry.start_minute,
+    }));
+    const warning = await screen.findByText("Missing required tag MENTAL HEALTH.");
+    expect(warning.closest("tr")?.className).toContain("clinical-placement-row-warning");
   });
 });

@@ -582,10 +582,51 @@ export interface ClinicalSchedule {
   tentative_minutes: number;
   unverified_placement_count: number;
   unplaced: ClinicalUnplacedStudent[];
+  entries: ClinicalScheduleEntry[];
+  verification: ClinicalPlacementVerification[];
   placements: {
     student_id: string;
     kind: "automatic" | "manual" | "manuallyUnplaced";
     opportunity_id: string | null;
     start_minute: number | null;
   }[];
+}
+
+export interface ClinicalPlacementWarning {
+  code:
+    | "OUTSIDE_AVAILABILITY"
+    | "REQUIRED_TAG_MISSING"
+    | "RESTRICTED_TAG_CONFLICT"
+    | "CAPACITY_EXCEEDED"
+    | "OUTSIDE_OPPORTUNITY_WINDOW";
+  message: string;
+}
+
+export interface ClinicalScheduleEntry {
+  student_id: string;
+  student_name: string;
+  student_number: string;
+  kind: "automatic" | "manual" | "manuallyUnplaced" | null;
+  opportunity_id: string | null;
+  site_name: string | null;
+  opportunity_label: string | null;
+  day: string | null;
+  start_minute: number | null;
+  end_minute: number | null;
+  tags: string[];
+  preferred_tag_match_count: number;
+  tentative_minutes: number | null;
+  verified: boolean | null;
+  warnings: ClinicalPlacementWarning[];
+  unplaced_reason: ClinicalUnplacedStudent["reason"] | null;
+}
+
+export interface ClinicalPlacementVerification {
+  student_id: string;
+  student_name: string;
+  opportunity_id: string | null;
+  site_name: string | null;
+  day: string | null;
+  start_minute: number | null;
+  warnings: ClinicalPlacementWarning[];
 }

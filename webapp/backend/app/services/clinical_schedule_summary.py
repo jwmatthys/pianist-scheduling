@@ -8,13 +8,13 @@ from __future__ import annotations
 from typing import Sequence
 
 from .clinical_candidates import opportunity_window_issue
+from .clinical_placement_review import review_schedule
 from .clinical_scheduling_models import (
     CandidateSet,
     PlacementKind,
     PlacementRecord,
     ScheduleSummary,
     SchedulingInput,
-    TagPreference,
     UnplacedReason,
     UnplacedStudent,
 )
@@ -26,30 +26,24 @@ def summarize_schedule(
     students = {s.id: s for s in scheduling_input.students}
     opportunities = {o.id: o for o in scheduling_input.opportunities}
     by_record = {item.student_id: item for item in records if item.student_id in students}
-    feasible_pairs = {(c.student_id, c.opportunity_id): c for c in candidates.candidates if c.is_feasible}
+    reviewed_entries, verification = review_schedule(scheduling_input, records, candidates)
+    reviewed_by_student = {item.student_id: item for item in reviewed_entries}
 
-    preferred = tentative = unverified = used = 0
+    preferred = tentative = used = 0
     placed: set[str] = set()
     for student_id, record in by_record.items():
         if record.kind is PlacementKind.MANUALLY_UNPLACED or record.opportunity_id not in opportunities:
             continue
         placed.add(student_id)
         used += 1
-        candidate = feasible_pairs.get((student_id, record.opportunity_id))
-        start = None if candidate is None else next(
-            (item for item in candidate.feasible_starts if item.start_minute == record.start_minute), None
-        )
-        if candidate is None or start is None:
-            unverified += 1
-            continue
-        tentative += start.tentative_minutes
-        student, opportunity = students[student_id], opportunities[record.opportunity_id]
-        preferred += sum(
-            1 for tag_id, pref in student.tag_preferences.items()
-            if pref is TagPreference.PREFERRED and tag_id in opportunity.tag_ids
-        )
+        entry = reviewed_by_student[student_id]
+        preferred += entry.preferred_tag_match_count
+        if entry.tentative_minutes is not None:
+            tentative += entry.tentative_minutes
 
-    has_feasible = {student_id for student_id, _ in feasible_pairs}
+    has_feasible = {
+        candidate.student_id for candidate in candidates.candidates if candidate.is_feasible
+    }
     unplaced = []
     for student in sorted(scheduling_input.students, key=lambda s: (s.label.casefold(), s.id)):
         if student.id in placed:
@@ -72,6 +66,6 @@ def summarize_schedule(
         total_capacity=total_capacity,
         preferred_tag_matches=preferred,
         tentative_minutes=tentative,
-        unverified_placement_count=unverified,
+        unverified_placement_count=len(verification),
         unplaced=tuple(unplaced),
     )

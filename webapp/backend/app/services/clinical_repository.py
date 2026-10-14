@@ -30,13 +30,17 @@ from ..clinical_models import (
 from .availability import AvailabilityWindow, normalize_day, normalize_windows
 from .clinical_candidates import generate_candidates
 from .clinical_optimizer import optimize
+from .clinical_placement_review import review_schedule
 from .clinical_readiness import analyze_readiness
 from .clinical_scheduling_models import (
     OpportunityInput,
     OptimizationResult,
     PlacementKind,
     PlacementRecord,
+    PlacementVerification,
+    PlacementWarning,
     PreservedPlacement,
+    ScheduleEntry,
     SchedulingInput,
     ScheduleSummary,
     StudentInput,
@@ -650,6 +654,7 @@ class ClinicalRepository:
             StudentInput(
                 id=student.id,
                 label=student.name or student.student_id,
+                student_number=student.student_id,
                 availability=tuple(availability.get(student.id, ())),
                 tag_preferences={
                     tag_id: preferences[state]
@@ -673,6 +678,7 @@ class ClinicalRepository:
                 travel_minutes=item.travel_minutes,
                 capacity=item.capacity,
                 tag_ids=frozenset(tag.id for tag in item.tags),
+                site_name=item.site_name,
             )
             for item in self.list_opportunities()
         )
@@ -762,6 +768,73 @@ class ClinicalRepository:
 
     # --- schedule generation -----------------------------------------------
 
+    def set_manual_placement(
+        self, clinical_student_id: str, placement_opportunity_id: str, start_minute: int
+    ) -> ClinicalPlacement:
+        """Assign or move a student manually, preserving all policy warnings for review."""
+        if isinstance(start_minute, bool) or not isinstance(start_minute, int) or not 0 <= start_minute < 24 * 60:
+            raise ClinicalValidationError("INVALID_PLACEMENT", "The start time is not a valid time of day.")
+        placement = self.set_placement(
+            clinical_student_id, PlacementType.MANUAL, placement_opportunity_id, start_minute
+        )
+        self._record_schedule_edit()
+        return placement
+
+    def set_manually_unplaced(self, clinical_student_id: str) -> ClinicalPlacement:
+        placement = self.set_placement(clinical_student_id, PlacementType.MANUALLY_UNPLACED)
+        self._record_schedule_edit()
+        return placement
+
+    def preview_manual_placement(
+        self, clinical_student_id: str, placement_opportunity_id: str, start_minute: int
+    ) -> tuple[PlacementWarning, ...]:
+        if isinstance(start_minute, bool) or not isinstance(start_minute, int) or not 0 <= start_minute < 24 * 60:
+            raise ClinicalValidationError("INVALID_PLACEMENT", "The start time is not a valid time of day.")
+        self.get_student(clinical_student_id)
+        self._require(
+            PlacementOpportunity,
+            placement_opportunity_id,
+            "OPPORTUNITY_NOT_FOUND",
+            "The Placement Opportunity no longer exists.",
+        )
+        records = [r for r in self.list_placement_records() if r.student_id != clinical_student_id]
+        records.append(
+            PlacementRecord(
+                student_id=clinical_student_id,
+                kind=PlacementKind.MANUAL,
+                opportunity_id=placement_opportunity_id,
+                start_minute=start_minute,
+            )
+        )
+        entries, _ = review_schedule(self.scheduling_input(), records)
+        return next(entry.warnings for entry in entries if entry.student_id == clinical_student_id)
+
+    def remove_manual_override(self, clinical_student_id: str) -> bool:
+        placement = self.get_placement(clinical_student_id)
+        if placement is None or placement.placement_type == PlacementType.AUTOMATIC.value:
+            raise ClinicalValidationError(
+                "NO_MANUAL_OVERRIDE", "The student does not have a manual placement override to remove."
+            )
+        self.db.delete(placement)
+        self._record_schedule_edit()
+        self.db.flush()
+        return True
+
+    def remove_placement_decision(self, clinical_student_id: str) -> bool:
+        placement = self.get_placement(clinical_student_id)
+        if placement is None:
+            raise ClinicalValidationError("PLACEMENT_NOT_FOUND", "The student has no placement decision to remove.")
+        self.db.delete(placement)
+        self._record_schedule_edit()
+        self.db.flush()
+        return True
+
+    def _record_schedule_edit(self) -> None:
+        state = self.get_state()
+        state.schedule_revision += 1
+        state.modified_at = _now()
+        self.db.flush()
+
     def list_placement_records(self) -> list[PlacementRecord]:
         return [
             PlacementRecord(
@@ -772,6 +845,11 @@ class ClinicalRepository:
             )
             for row in self.db.query(ClinicalPlacement).order_by(ClinicalPlacement.clinical_student_id)
         ]
+
+    def schedule_review(self) -> tuple[tuple[ScheduleEntry, ...], tuple[PlacementVerification, ...]]:
+        """Return schedule rows and verification warnings against current source data."""
+        scheduling_input = self.scheduling_input()
+        return review_schedule(scheduling_input, self.list_placement_records(), generate_candidates(scheduling_input))
 
     def generate_schedule(self) -> OptimizationResult:
         """Replace automatic placements with a fresh optimal solution.
@@ -806,8 +884,21 @@ class ClinicalRepository:
 
     def schedule_summary(self) -> ScheduleSummary:
         scheduling_input = self.scheduling_input()
+        candidates = generate_candidates(scheduling_input)
         return summarize_schedule(
-            scheduling_input, generate_candidates(scheduling_input), self.list_placement_records()
+            scheduling_input, candidates, self.list_placement_records()
+        )
+
+    def schedule_snapshot(
+        self,
+    ) -> tuple[ScheduleSummary, tuple[ScheduleEntry, ...], tuple[PlacementVerification, ...]]:
+        """Return summary, rows, and verification from one consistent input snapshot."""
+        scheduling_input = self.scheduling_input()
+        candidates = generate_candidates(scheduling_input)
+        records = self.list_placement_records()
+        return (
+            summarize_schedule(scheduling_input, candidates, records),
+            *review_schedule(scheduling_input, records, candidates),
         )
 
     # --- helpers ------------------------------------------------------

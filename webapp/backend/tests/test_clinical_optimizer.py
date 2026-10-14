@@ -188,6 +188,89 @@ class SchedulePersistenceTests(ClinicalTestCase):
         self.assertEqual((state.schedule_revision, state.is_schedule_stale), (0, False))
         self.assertEqual(self.repo.list_placement_records(), [])
 
+    def test_manual_assignment_accepts_non_quarter_hour_start_and_calculates_session_end(self):
+        placement = self.repo.set_manual_placement(self.a.id, self.site.id, 8 * H + 10)
+        self.assertEqual(placement.placement_type, PlacementType.MANUAL.value)
+        self.assertEqual(placement.start_minute, 8 * H + 10)
+        entry = next(e for e in self.repo.schedule_review()[0] if e.student_id == self.a.id)
+        self.assertEqual(entry.end_minute, 9 * H + 10)
+        self.assertEqual(entry.kind, self.repo.list_placement_records()[0].kind)
+
+    def test_manual_move_changes_site_and_start(self):
+        second = self.repo.create_opportunity(opportunity_input(site_name="Second Clinic", capacity=2))
+        self.repo.set_manual_placement(self.a.id, self.site.id, 8 * H + 10)
+        moved = self.repo.set_manual_placement(self.a.id, second.id, 10 * H + 5)
+        self.assertEqual((moved.placement_opportunity_id, moved.start_minute), (second.id, 10 * H + 5))
+        self.assertEqual(len([r for r in self.repo.list_placement_records() if r.student_id == self.a.id]), 1)
+
+    def test_manual_arbitrary_start_is_verified_and_summary_metrics_are_current(self):
+        preferred = self.repo.create_tag("Trauma Care")
+        self.repo.set_student_tag_states(self.a.id, {preferred.id: TagState.PREFERRED})
+        self.repo.set_opportunity_tags(self.site.id, [preferred.id])
+        self.repo.set_student_availability(
+            self.a.id, [AvailabilityWindow("Tuesday", 0, 24 * H, "Tentative")]
+        )
+        self.repo.set_manual_placement(self.a.id, self.site.id, 8 * H + 10)
+        entry = next(e for e in self.repo.schedule_review()[0] if e.student_id == self.a.id)
+        self.assertTrue(entry.verified)
+        self.assertEqual(entry.tentative_minutes, 90)
+        summary = self.repo.schedule_summary()
+        self.assertEqual(summary.preferred_tag_matches, 1)
+        self.assertEqual(summary.tentative_minutes, 90)
+        self.assertEqual(summary.unverified_placement_count, 0)
+
+    def test_manual_placement_is_allowed_but_all_policy_warnings_are_reported(self):
+        required = self.repo.create_tag("Required Experience")
+        restricted = self.repo.create_tag("No Acute")
+        self.repo.set_student_tag_states(
+            self.a.id,
+            {required.id: TagState.REQUIRED, restricted.id: TagState.RESTRICTED},
+        )
+        self.repo.set_student_availability(
+            self.a.id, [AvailabilityWindow("Monday", 8 * H, 10 * H, "Available")]
+        )
+        self.repo.set_opportunity_tags(self.site.id, [restricted.id])
+        self.repo.set_manual_placement(self.a.id, self.site.id, 12 * H)
+        entry = next(e for e in self.repo.schedule_review()[0] if e.student_id == self.a.id)
+        codes = {warning.code.value for warning in entry.warnings}
+        self.assertEqual(
+            codes,
+            {"OUTSIDE_AVAILABILITY", "REQUIRED_TAG_MISSING", "RESTRICTED_TAG_CONFLICT", "OUTSIDE_OPPORTUNITY_WINDOW"},
+        )
+        self.assertIn("REQUIRED EXPERIENCE", next(w.message for w in entry.warnings if w.code.value == "REQUIRED_TAG_MISSING"))
+        self.assertIn("NO ACUTE", next(w.message for w in entry.warnings if w.code.value == "RESTRICTED_TAG_CONFLICT"))
+
+    def test_capacity_exceeded_warning_does_not_reject_manual_assignment(self):
+        self.repo.set_manual_placement(self.a.id, self.site.id, 8 * H + 10)
+        self.repo.set_manual_placement(self.b.id, self.site.id, 8 * H + 20)
+        entries, _ = self.repo.schedule_review()
+        warning = next(
+            warning
+            for entry in entries
+            for warning in entry.warnings
+            if warning.code.value == "CAPACITY_EXCEEDED"
+        )
+        self.assertEqual(warning.message, "Capacity exceeded: 2 students assigned; capacity is 1.")
+
+    def test_manually_unplace_and_remove_override(self):
+        self.repo.set_manually_unplaced(self.a.id)
+        self.assertEqual(self.repo.get_placement(self.a.id).placement_type, PlacementType.MANUALLY_UNPLACED.value)
+        self.repo.remove_manual_override(self.a.id)
+        self.assertIsNone(self.repo.get_placement(self.a.id))
+        with self.assertRaises(ClinicalValidationError):
+            self.repo.remove_manual_override(self.a.id)
+
+    def test_verification_detects_source_change_and_removed_override_becomes_ordinary_unplaced(self):
+        self.repo.set_manual_placement(self.a.id, self.site.id, 9 * H)
+        self.repo.set_student_availability(self.a.id, [AvailabilityWindow("Monday", 8 * H, 10 * H, "Available")])
+        self.assertTrue(self.repo.get_state().is_schedule_stale)
+        _, verification = self.repo.schedule_review()
+        self.assertEqual(len(verification), 1)
+        self.assertIn("OUTSIDE_AVAILABILITY", {w.code.value for w in verification[0].warnings})
+        self.repo.remove_manual_override(self.a.id)
+        entry = next(e for e in self.repo.schedule_review()[0] if e.student_id == self.a.id)
+        self.assertEqual(entry.unplaced_reason, UnplacedReason.NO_FEASIBLE_CANDIDATE)
+
     def test_generation_blocked_when_not_ready(self):
         self.repo.delete_student(self.a.id)
         self.repo.delete_student(self.b.id)
@@ -230,6 +313,40 @@ class ScheduleApiTests(ClinicalTestCase):
         cleared = clinical.clear_schedule(self.db)
         self.assertFalse(cleared.has_placements)
         self.assertEqual(cleared.schedule_revision, 0)
+
+    def test_manual_api_preview_assignment_unplace_and_override_removal(self):
+        entry = self.repo.list_students()[0]
+        opportunity = self.repo.list_opportunities()[0]
+        preview = clinical.validate_manual_placement(
+            clinical.schemas.ClinicalManualPlacementIn(
+                student_id=entry.id, opportunity_id=opportunity.id, start_minute=8 * H + 10
+            ),
+            self.db,
+        )
+        self.assertEqual(preview.warnings, [])
+        assigned = clinical.create_manual_placement(
+            clinical.schemas.ClinicalManualPlacementIn(
+                student_id=entry.id, opportunity_id=opportunity.id, start_minute=8 * H + 10
+            ),
+            self.db,
+        )
+        self.assertEqual(assigned.entries[0].kind, "manual")
+        self.assertEqual(assigned.entries[0].start_minute, 8 * H + 10)
+        listed = clinical.list_schedule_placements(self.db)
+        self.assertEqual(next(item for item in listed if item.student_id == entry.id).kind, "manual")
+        self.assertEqual(clinical.get_placement_verification(self.db), [])
+        moved = clinical.move_manual_placement(
+            entry.id,
+            clinical.schemas.ClinicalManualPlacementIn(
+                student_id=entry.id, opportunity_id=opportunity.id, start_minute=8 * H + 20
+            ),
+            self.db,
+        )
+        self.assertEqual(moved.entries[0].start_minute, 8 * H + 20)
+        manually_unplaced = clinical.manually_unplace_student(entry.id, self.db)
+        self.assertEqual(manually_unplaced.entries[0].kind, "manuallyUnplaced")
+        removed = clinical.remove_manual_placement_override(entry.id, self.db)
+        self.assertIsNone(removed.entries[0].kind)
 
 
 if __name__ == "__main__":

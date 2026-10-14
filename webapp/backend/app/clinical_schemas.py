@@ -156,3 +156,52 @@ class ClinicalScheduleOut(BaseModel):
     unverified_placement_count: int
     unplaced: list[ClinicalUnplacedOut]
     placements: list[ClinicalPlacementOut]
+    entries: list["ClinicalScheduleEntryOut"]
+    verification: list["ClinicalPlacementVerificationOut"]
+
+
+class ClinicalPlacementWarningOut(BaseModel):
+    code: str
+    message: str
+
+
+class ClinicalScheduleEntryOut(BaseModel):
+    student_id: str
+    student_name: str
+    student_number: str
+    kind: str | None
+    opportunity_id: str | None
+    site_name: str | None
+    opportunity_label: str | None
+    day: str | None
+    start_minute: int | None
+    end_minute: int | None
+    tags: list[str]
+    preferred_tag_match_count: int
+    tentative_minutes: int | None
+    verified: bool | None
+    warnings: list[ClinicalPlacementWarningOut]
+    unplaced_reason: str | None
+
+
+class ClinicalPlacementVerificationOut(BaseModel):
+    student_id: str
+    student_name: str
+    opportunity_id: str | None
+    site_name: str | None
+    day: str | None
+    start_minute: int | None
+    warnings: list[ClinicalPlacementWarningOut]
+
+
+class ClinicalManualPlacementIn(BaseModel):
+    student_id: str
+    opportunity_id: str
+    start_minute: int = Field(ge=0, lt=1440)
+
+
+class ClinicalPlacementWarningsOut(BaseModel):
+    warnings: list[ClinicalPlacementWarningOut]
+
+
+ClinicalScheduleOut.model_rebuild()

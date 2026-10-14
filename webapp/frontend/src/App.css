@@ -1427,6 +1427,77 @@ button {
   margin: 0.25rem 0;
 }
 
+.clinical-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  margin: 0.5rem 0 1.25rem;
+}
+
+.clinical-placement-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+.clinical-placement-table th,
+.clinical-placement-table td {
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid #d5dde4;
+  text-align: left;
+  vertical-align: top;
+}
+
+.clinical-placement-table th {
+  background: #eef2f6;
+}
+
+.clinical-placement-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-width: 140px;
+}
+
+.clinical-placement-warnings {
+  margin: 0.25rem 0;
+  padding-left: 1.2rem;
+  color: #795900;
+}
+
+.clinical-placement-row-warning,
+.clinical-placement-row-warning td {
+  background: #fff3c4;
+}
+
+.clinical-inline-time {
+  width: 7rem;
+}
+
+.clinical-unplaced-row {
+  background: #fff3c4;
+}
+
+.clinical-manual-placement-form {
+  display: grid;
+  gap: 0.75rem;
+  min-width: min(520px, calc(100vw - 48px));
+}
+
+.clinical-manual-placement-form label {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.clinical-manual-placement-form select,
+.clinical-manual-placement-form input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.clinical-manual-placement-form .dialog-actions {
+  margin-top: 0.5rem;
+}
+
 .clinical-readiness-item ul {
   margin: 0.25rem 0 0.5rem;
   padding-left: 1.5rem;
@@ -1452,4 +1523,170 @@ button {
   border-radius: 4px;
   padding: 0.5rem 0.75rem;
   margin: 0.5rem 0;
+}
+
+/* Clinical Schedule: visual language shared with Jury Scheduling */
+.clinical-schedule {
+  --jury-ink: #17333b;
+  --jury-muted: #63767c;
+  --jury-line: #d5dfe0;
+  --jury-paper: #ffffff;
+  --jury-green: #1c6957;
+  --jury-green-wash: #e3f2ec;
+  --jury-red: #9d3c32;
+  --jury-red-wash: #f9e8e5;
+  display: grid;
+  gap: 1rem;
+  max-width: 1440px;
+  color: var(--jury-ink);
+}
+
+.clinical-schedule .clinical-section {
+  min-width: 0;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--jury-line);
+  background: var(--jury-paper);
+}
+
+.clinical-schedule .clinical-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.9rem;
+}
+
+.clinical-schedule .clinical-section-heading h2,
+.clinical-schedule .clinical-section h3 {
+  margin: 0 0 0.65rem;
+  font-size: 1rem;
+}
+
+.clinical-schedule .clinical-section-heading h2 {
+  margin: 0;
+}
+
+.clinical-schedule .clinical-section-heading p {
+  margin: 0.25rem 0 0;
+  color: var(--jury-muted);
+  font-size: 0.83rem;
+  line-height: 1.4;
+}
+
+.clinical-schedule .clinical-section h4 {
+  margin: 0.75rem 0 0.35rem;
+}
+
+.clinical-schedule .clinical-schedule-toolbar .dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.clinical-schedule .availability-success {
+  margin-bottom: 0.75rem;
+  padding: 0.7rem;
+  color: var(--jury-green);
+  background: var(--jury-green-wash);
+  font-size: 0.88rem;
+}
+
+.clinical-schedule .error-banner {
+  padding: 0.65rem 0.85rem;
+  color: var(--jury-red);
+  background: var(--jury-red-wash);
+  border: 1px solid #e6b9b4;
+  border-radius: 5px;
+}
+
+.clinical-schedule .warning-banner {
+  padding: 0.65rem 0.8rem;
+  color: #765716;
+  border: 1px solid #e5d29d;
+  background: #fff7df;
+  font-size: 0.84rem;
+  margin-bottom: 0.75rem;
+}
+
+.clinical-schedule .clinical-table-scroll {
+  margin: 0;
+  border: 1px solid #e1e8e7;
+}
+
+.clinical-schedule .clinical-placement-table {
+  min-width: 850px;
+  font-size: 0.84rem;
+}
+
+.clinical-schedule .clinical-placement-table th,
+.clinical-schedule .clinical-placement-table td {
+  padding: 0.65rem 0.7rem;
+  border-bottom: 1px solid #e4eae9;
+  vertical-align: middle;
+}
+
+.clinical-schedule .clinical-placement-table th {
+  color: #52666b;
+  background: #f1f5f4;
+  font-size: 0.74rem;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.clinical-schedule .clinical-placement-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.clinical-schedule .clinical-placement-table select,
+.clinical-schedule .clinical-placement-table input {
+  width: 100%;
+  min-width: 140px;
+  min-height: 35px;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid #b9c8c9;
+  border-radius: 4px;
+  color: var(--jury-ink);
+  background: #fff;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.clinical-schedule .clinical-placement-table input.clinical-inline-time {
+  width: 7rem;
+  min-width: 0;
+}
+
+.clinical-schedule .clinical-placement-table .muted,
+.clinical-schedule .muted {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--jury-muted);
+  font-size: 0.78rem;
+}
+
+.clinical-schedule .clinical-placement-table tbody tr.clinical-placement-row-warning,
+.clinical-schedule .clinical-placement-table tbody tr.clinical-placement-row-warning td,
+.clinical-schedule .clinical-placement-table tbody tr.clinical-unplaced-row,
+.clinical-schedule .clinical-placement-table tbody tr.clinical-unplaced-row td {
+  background: #fff6e3;
+}
+
+.clinical-schedule .clinical-placement-table tbody tr.clinical-placement-row-warning td:first-child,
+.clinical-schedule .clinical-placement-table tbody tr.clinical-unplaced-row td:first-child {
+  box-shadow: inset 3px 0 #c58419;
+}
+
+.clinical-schedule .clinical-placement-table tbody tr.clinical-placement-row-warning select,
+.clinical-schedule .clinical-placement-table tbody tr.clinical-placement-row-warning input {
+  border-color: #c58419;
+  background: #fffdf8;
+}
+
+.clinical-schedule .clinical-placement-actions {
+  display: table-cell;
+  min-width: 0;
+}
+
+.clinical-schedule .clinical-placement-actions button {
+  margin: 0 0.35rem 0.25rem 0;
 }

@@ -22,6 +22,8 @@ vi.mock("../lib/api", () => ({
       tentative_minutes: 0,
       unverified_placement_count: 0,
       unplaced: [],
+      entries: [],
+      verification: [],
       placements: [],
     }),
     getClinicalReadiness: vi.fn().mockResolvedValue({
@@ -53,7 +55,7 @@ describe("ClinicalModule", () => {
     render(<ClinicalModule />);
 
     await user.click(screen.getByRole("button", { name: "Schedule" }));
-    expect(screen.getByText(/manual editing of placements is not available yet/i)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Placements" })).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "Reports" }));
     expect(screen.getByText(/reports and exports are not implemented/i)).toBeTruthy();

@@ -27,7 +27,7 @@ from ..services.clinical_repository import (
 router = APIRouter(prefix="/api/clinical", tags=["clinical placements"])
 
 _NOT_FOUND_CODES = {"TAG_NOT_FOUND", "OPPORTUNITY_NOT_FOUND", "STUDENT_NOT_FOUND"}
-_CONFLICT_CODES = {"DUPLICATE_TAG", "DUPLICATE_STUDENT_ID", "NOT_READY"}
+_CONFLICT_CODES = {"DUPLICATE_TAG", "DUPLICATE_STUDENT_ID", "NOT_READY", "NO_MANUAL_OVERRIDE"}
 
 
 def _http_error(error: ClinicalValidationError) -> HTTPException:
@@ -578,9 +578,9 @@ def get_readiness(db: Session = Depends(get_db)):
 def _schedule_out(db: Session) -> schemas.ClinicalScheduleOut:
     repo = ClinicalRepository(db)
     state = repo.get_state()
-    summary = repo.schedule_summary()
+    summary, entries, verification = repo.schedule_snapshot()
     records = repo.list_placement_records()
-    names = {s.id: s.label for s in repo.scheduling_input().students}
+    names = {entry.student_id: entry.student_name for entry in entries}
     return schemas.ClinicalScheduleOut(
         schedule_revision=state.schedule_revision,
         source_data_revision=state.source_data_revision,
@@ -605,6 +605,45 @@ def _schedule_out(db: Session) -> schemas.ClinicalScheduleOut:
             )
             for r in records
         ],
+        entries=[
+            schemas.ClinicalScheduleEntryOut(
+                student_id=item.student_id,
+                student_name=item.student_name,
+                student_number=item.student_number,
+                kind=item.kind.value if item.kind else None,
+                opportunity_id=item.opportunity_id,
+                site_name=item.site_name,
+                opportunity_label=item.opportunity_label,
+                day=item.day,
+                start_minute=item.start_minute,
+                end_minute=item.end_minute,
+                tags=list(item.tags),
+                preferred_tag_match_count=item.preferred_tag_match_count,
+                tentative_minutes=item.tentative_minutes,
+                verified=item.verified,
+                warnings=[
+                    schemas.ClinicalPlacementWarningOut(code=warning.code.value, message=warning.message)
+                    for warning in item.warnings
+                ],
+                unplaced_reason=item.unplaced_reason.value if item.unplaced_reason else None,
+            )
+            for item in entries
+        ],
+        verification=[
+            schemas.ClinicalPlacementVerificationOut(
+                student_id=item.student_id,
+                student_name=item.student_name,
+                opportunity_id=item.opportunity_id,
+                site_name=item.site_name,
+                day=item.day,
+                start_minute=item.start_minute,
+                warnings=[
+                    schemas.ClinicalPlacementWarningOut(code=warning.code.value, message=warning.message)
+                    for warning in item.warnings
+                ],
+            )
+            for item in verification
+        ],
     )
 
 
@@ -628,4 +667,92 @@ def generate_schedule(db: Session = Depends(get_db)):
 def clear_schedule(db: Session = Depends(get_db)):
     ClinicalRepository(db).clear_all_placements()
     _commit(db)
+    return _schedule_out(db)
+
+
+@router.get("/schedule/placements", response_model=list[schemas.ClinicalScheduleEntryOut])
+def list_schedule_placements(db: Session = Depends(get_db)):
+    return _schedule_out(db).entries
+
+
+@router.get("/schedule/verification", response_model=list[schemas.ClinicalPlacementVerificationOut])
+def get_placement_verification(db: Session = Depends(get_db)):
+    return _schedule_out(db).verification
+
+
+def _save_manual_placement(
+    payload: schemas.ClinicalManualPlacementIn, db: Session
+) -> schemas.ClinicalScheduleOut:
+    try:
+        ClinicalRepository(db).set_manual_placement(payload.student_id, payload.opportunity_id, payload.start_minute)
+        _commit(db)
+    except ClinicalValidationError as error:
+        db.rollback()
+        raise _http_error(error) from error
+    return _schedule_out(db)
+
+
+@router.post("/schedule/placements", response_model=schemas.ClinicalScheduleOut)
+def create_manual_placement(payload: schemas.ClinicalManualPlacementIn, db: Session = Depends(get_db)):
+    return _save_manual_placement(payload, db)
+
+
+@router.post("/schedule/placements/validate", response_model=schemas.ClinicalPlacementWarningsOut)
+def validate_manual_placement(payload: schemas.ClinicalManualPlacementIn, db: Session = Depends(get_db)):
+    try:
+        warnings = ClinicalRepository(db).preview_manual_placement(
+            payload.student_id, payload.opportunity_id, payload.start_minute
+        )
+    except ClinicalValidationError as error:
+        raise _http_error(error) from error
+    return schemas.ClinicalPlacementWarningsOut(
+        warnings=[
+            schemas.ClinicalPlacementWarningOut(code=warning.code.value, message=warning.message)
+            for warning in warnings
+        ]
+    )
+
+
+@router.put("/schedule/placements/{student_id}", response_model=schemas.ClinicalScheduleOut)
+def move_manual_placement(
+    student_id: str, payload: schemas.ClinicalManualPlacementIn, db: Session = Depends(get_db)
+):
+    if payload.student_id != student_id:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "INVALID_PLACEMENT", "message": "Student identifier does not match the placement URL."},
+        )
+    return _save_manual_placement(payload, db)
+
+
+@router.post("/schedule/students/{student_id}/manually-unplace", response_model=schemas.ClinicalScheduleOut)
+def manually_unplace_student(student_id: str, db: Session = Depends(get_db)):
+    try:
+        ClinicalRepository(db).set_manually_unplaced(student_id)
+        _commit(db)
+    except ClinicalValidationError as error:
+        db.rollback()
+        raise _http_error(error) from error
+    return _schedule_out(db)
+
+
+@router.delete("/schedule/placements/{student_id}", response_model=schemas.ClinicalScheduleOut)
+def remove_placement_decision(student_id: str, db: Session = Depends(get_db)):
+    try:
+        ClinicalRepository(db).remove_placement_decision(student_id)
+        _commit(db)
+    except ClinicalValidationError as error:
+        db.rollback()
+        raise _http_error(error) from error
+    return _schedule_out(db)
+
+
+@router.delete("/schedule/placements/{student_id}/override", response_model=schemas.ClinicalScheduleOut)
+def remove_manual_placement_override(student_id: str, db: Session = Depends(get_db)):
+    try:
+        ClinicalRepository(db).remove_manual_override(student_id)
+        _commit(db)
+    except ClinicalValidationError as error:
+        db.rollback()
+        raise _http_error(error) from error
     return _schedule_out(db)
