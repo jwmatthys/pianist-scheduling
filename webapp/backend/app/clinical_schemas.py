@@ -71,3 +71,22 @@ class ClinicalModuleStateOut(BaseModel):
     schedule_revision: int
     source_data_revision: int
     is_schedule_stale: bool
+
+
+class ClinicalStudentFields(BaseModel):
+    student_id: str = Field(max_length=100)
+    name: str = Field(max_length=200)
+    email: str = Field(default="", max_length=200)
+
+
+class ClinicalStudentOut(ClinicalStudentFields):
+    id: str
+    availability_window_count: int
+    # Only non-neutral states are present; Neutral is the absence of an entry.
+    tag_states: dict[str, str]
+    created_at: datetime
+    updated_at: datetime
+
+
+class ClinicalStudentTagStatesIn(BaseModel):
+    tag_states: dict[str, str]

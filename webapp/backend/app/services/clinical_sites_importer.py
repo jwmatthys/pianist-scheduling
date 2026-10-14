@@ -15,10 +15,17 @@ from pydantic import BaseModel
 
 from ..clinical_models import normalize_tag_name, tag_identity_key
 from . import tabular
+from .clinical_import_common import (
+    MAX_UPLOAD_BYTES,
+    ClinicalImportError,
+    cell_text as _text,
+    header_key as _header_key,
+    is_blank as _is_blank,
+    read_frame as _frame,
+)
 from .availability import normalize_day
 from .time_parsing import parse_time_of_day
 
-MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
 FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "site_name": ("site name", "site", "clinical site", "placement site", "name"),
@@ -49,11 +56,7 @@ FIELD_LABELS = {
 REQUIRED_FIELDS = ("site_name", "day_of_week", "start_time", "end_time", "session_length")
 
 
-class ClinicalSitesImportError(RuntimeError):
-    def __init__(self, code: str, message: str, issues: list[str] | None = None):
-        self.code = code
-        self.issues = issues or []
-        super().__init__(message)
+ClinicalSitesImportError = ClinicalImportError
 
 
 class ClinicalSitesImportInspection(BaseModel):
@@ -128,45 +131,6 @@ class ParsedSites:
     selected_sheet: str | None
     tag_columns: list[str]
     rows: list[ParsedSite]
-
-
-def _is_blank(value: object) -> bool:
-    if value is None or (isinstance(value, str) and not value.strip()):
-        return True
-    try:
-        return bool(pd.isna(value))
-    except (TypeError, ValueError):
-        return False
-
-
-def _text(value: object) -> str:
-    if _is_blank(value):
-        return ""
-    if isinstance(value, float) and value.is_integer():
-        return str(int(value))
-    return str(value).strip()
-
-
-def _frame(filename: str, content: bytes, sheet_name: str | None) -> tuple[pd.DataFrame, list[str], str | None]:
-    if len(content) > MAX_UPLOAD_BYTES:
-        raise ClinicalSitesImportError("FILE_TOO_LARGE", "Clinical Sites files must be 25 MB or smaller.")
-    try:
-        sheets = tabular.list_sheets(filename, content)
-        selected = (sheet_name or sheets[0]) if sheets else None
-        if selected is not None and selected not in sheets:
-            raise ClinicalSitesImportError("UNKNOWN_SHEET", "Choose a worksheet that exists in the selected file.")
-        frame = tabular.read_table(filename, content, selected)
-    except ClinicalSitesImportError:
-        raise
-    except Exception as error:
-        raise ClinicalSitesImportError("FILE_READ_FAILED", f"Could not read the selected file: {error}") from error
-    frame = frame.copy()
-    frame.columns = [str(column) for column in frame.columns]
-    return frame, sheets, selected
-
-
-def _header_key(column: str) -> str:
-    return re.sub(r"[^a-z0-9]+", " ", column.casefold()).strip()
 
 
 def inspect_file(filename: str, content: bytes, sheet_name: str | None) -> ClinicalSitesImportInspection:

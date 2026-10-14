@@ -30,7 +30,14 @@ import type {
   ClinicalSitesImportMapping,
   ClinicalSitesImportPreview,
   ClinicalSitesImportResult,
+  ClinicalStudent,
+  ClinicalStudentFields,
+  ClinicalStudentsImportInspection,
+  ClinicalStudentsImportMapping,
+  ClinicalStudentsImportPreview,
+  ClinicalStudentsImportResult,
   ClinicalTag,
+  ClinicalTagState,
   PlacementOpportunity,
   PlacementOpportunityFields,
 } from "./types";
@@ -301,6 +308,51 @@ export const api = {
     form.append("mapping", JSON.stringify(mapping));
     form.append("confirmed", "true");
     return request<ClinicalSitesImportResult>("/api/clinical/opportunities/import/apply", {
+      method: "POST",
+      body: form,
+    });
+  },
+  listClinicalStudents: () => request<ClinicalStudent[]>("/api/clinical/students"),
+  createClinicalStudent: (data: ClinicalStudentFields) =>
+    request<ClinicalStudent>("/api/clinical/students", { method: "POST", body: JSON.stringify(data) }),
+  updateClinicalStudent: (id: string, data: ClinicalStudentFields) =>
+    request<ClinicalStudent>(`/api/clinical/students/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  setClinicalStudentTagStates: (id: string, tagStates: Record<string, ClinicalTagState>) =>
+    request<ClinicalStudent>(`/api/clinical/students/${encodeURIComponent(id)}/tag-states`, {
+      method: "PUT",
+      body: JSON.stringify({ tag_states: tagStates }),
+    }),
+  deleteClinicalStudent: (id: string) =>
+    request<void>(`/api/clinical/students/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  inspectClinicalStudentsFile: (file: File, sheetName?: string | null) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (sheetName) form.append("sheet_name", sheetName);
+    return request<ClinicalStudentsImportInspection>("/api/clinical/students/import/inspect", {
+      method: "POST",
+      body: form,
+    });
+  },
+  previewClinicalStudentsImport: (file: File, sheetName: string | null, mapping: ClinicalStudentsImportMapping) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (sheetName) form.append("sheet_name", sheetName);
+    form.append("mapping", JSON.stringify(mapping));
+    return request<ClinicalStudentsImportPreview>("/api/clinical/students/import/preview", {
+      method: "POST",
+      body: form,
+    });
+  },
+  applyClinicalStudentsImport: (file: File, sheetName: string | null, mapping: ClinicalStudentsImportMapping) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (sheetName) form.append("sheet_name", sheetName);
+    form.append("mapping", JSON.stringify(mapping));
+    form.append("confirmed", "true");
+    return request<ClinicalStudentsImportResult>("/api/clinical/students/import/apply", {
       method: "POST",
       body: form,
     });

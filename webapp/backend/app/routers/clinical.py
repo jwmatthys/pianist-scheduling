@@ -10,9 +10,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import clinical_schemas as schemas
-from ..clinical_models import ClinicalPlacement, PlacementOpportunity
+from ..clinical_models import ClinicalPlacement, ClinicalStudent, PlacementOpportunity, TagState
 from ..database import get_db
 from ..services import clinical_sites_importer as importer
+from ..services import clinical_students_importer as students_importer
+from ..services.clinical_import_common import ClinicalImportError
 from ..services.clinical_repository import (
     ClinicalRepository,
     ClinicalValidationError,
@@ -21,8 +23,8 @@ from ..services.clinical_repository import (
 
 router = APIRouter(prefix="/api/clinical", tags=["clinical placements"])
 
-_NOT_FOUND_CODES = {"TAG_NOT_FOUND", "OPPORTUNITY_NOT_FOUND"}
-_CONFLICT_CODES = {"DUPLICATE_TAG"}
+_NOT_FOUND_CODES = {"TAG_NOT_FOUND", "OPPORTUNITY_NOT_FOUND", "STUDENT_NOT_FOUND"}
+_CONFLICT_CODES = {"DUPLICATE_TAG", "DUPLICATE_STUDENT_ID"}
 
 
 def _http_error(error: ClinicalValidationError) -> HTTPException:
@@ -220,7 +222,7 @@ class ClinicalSitesImportResult(BaseModel):
     tags_created: int
 
 
-def _import_http_error(error: importer.ClinicalSitesImportError) -> HTTPException:
+def _import_http_error(error: ClinicalImportError) -> HTTPException:
     status = 413 if error.code == "FILE_TOO_LARGE" else 400
     return HTTPException(status, detail={"code": error.code, "message": str(error), "issues": error.issues})
 
@@ -316,6 +318,175 @@ async def apply_sites_import(
         db.commit()
         return ClinicalSitesImportResult(**result.__dict__)
     except importer.ClinicalSitesImportError as error:
+        db.rollback()
+        raise _import_http_error(error) from error
+    except ClinicalValidationError as error:
+        db.rollback()
+        raise _http_error(error) from error
+    except Exception:
+        db.rollback()
+        raise
+
+
+# --- Student Roster -------------------------------------------------------
+
+
+def _student_out(
+    student: ClinicalStudent, states: dict[str, TagState], availability_count: int
+) -> schemas.ClinicalStudentOut:
+    return schemas.ClinicalStudentOut(
+        id=student.id,
+        student_id=student.student_id,
+        name=student.name,
+        email=student.email,
+        availability_window_count=availability_count,
+        tag_states={tag_id: state.value for tag_id, state in states.items()},
+        created_at=student.created_at,
+        updated_at=student.updated_at,
+    )
+
+
+def _student_response(repo: ClinicalRepository, student: ClinicalStudent) -> schemas.ClinicalStudentOut:
+    return _student_out(
+        student,
+        repo.student_tag_states().get(student.id, {}),
+        repo.student_availability_counts().get(student.id, 0),
+    )
+
+
+@router.get("/students", response_model=list[schemas.ClinicalStudentOut])
+def list_students(db: Session = Depends(get_db)):
+    repo = ClinicalRepository(db)
+    states = repo.student_tag_states()
+    counts = repo.student_availability_counts()
+    return [_student_out(item, states.get(item.id, {}), counts.get(item.id, 0)) for item in repo.list_students()]
+
+
+@router.post("/students", response_model=schemas.ClinicalStudentOut, status_code=201)
+def create_student(payload: schemas.ClinicalStudentFields, db: Session = Depends(get_db)):
+    repo = ClinicalRepository(db)
+    try:
+        student = repo.create_student(payload.student_id, payload.name, payload.email, require_name=True)
+        _commit(db)
+    except ClinicalValidationError as error:
+        db.rollback()
+        raise _http_error(error) from error
+    return _student_response(repo, student)
+
+
+@router.put("/students/{student_pk}", response_model=schemas.ClinicalStudentOut)
+def update_student(student_pk: str, payload: schemas.ClinicalStudentFields, db: Session = Depends(get_db)):
+    repo = ClinicalRepository(db)
+    try:
+        student = repo.update_student(student_pk, payload.student_id, payload.name, payload.email)
+        _commit(db)
+    except ClinicalValidationError as error:
+        db.rollback()
+        raise _http_error(error) from error
+    return _student_response(repo, student)
+
+
+@router.put("/students/{student_pk}/tag-states", response_model=schemas.ClinicalStudentOut)
+def set_student_tag_states(
+    student_pk: str, payload: schemas.ClinicalStudentTagStatesIn, db: Session = Depends(get_db)
+):
+    repo = ClinicalRepository(db)
+    try:
+        student = repo.get_student(student_pk)
+        repo.set_student_tag_states(student_pk, payload.tag_states)
+        _commit(db)
+    except ClinicalValidationError as error:
+        db.rollback()
+        raise _http_error(error) from error
+    return _student_response(repo, student)
+
+
+@router.delete("/students/{student_pk}", status_code=204)
+def delete_student(student_pk: str, db: Session = Depends(get_db)):
+    try:
+        ClinicalRepository(db).delete_student(student_pk)
+        _commit(db)
+    except ClinicalValidationError as error:
+        db.rollback()
+        raise _http_error(error) from error
+
+
+# --- Student Roster import -------------------------------------------------
+
+
+class ClinicalStudentsImportResult(BaseModel):
+    students_removed: int
+    placements_removed: int
+    students_created: int
+
+
+def _parse_students_mapping(raw: str) -> students_importer.ClinicalStudentsImportMapping:
+    try:
+        return students_importer.ClinicalStudentsImportMapping.model_validate_json(raw)
+    except ValidationError as error:
+        raise ClinicalImportError("INVALID_MAPPING", "The column mapping is not valid.") from error
+
+
+@router.post("/students/import/inspect", response_model=students_importer.ClinicalStudentsImportInspection)
+async def inspect_students_import(file: UploadFile = File(...), sheet_name: str | None = Form(default=None)):
+    try:
+        return students_importer.inspect_file(file.filename or "", await _read_upload(file), sheet_name or None)
+    except ClinicalImportError as error:
+        raise _import_http_error(error) from error
+
+
+@router.post("/students/import/preview", response_model=students_importer.ClinicalStudentsImportPreview)
+async def preview_students_import(
+    file: UploadFile = File(...),
+    mapping: str = Form(...),
+    sheet_name: str | None = Form(default=None),
+    db: Session = Depends(get_db),
+):
+    """Phase A: parse and validate only. Nothing is written."""
+    try:
+        parsed = students_importer.parse_students(
+            file.filename or "", await _read_upload(file), sheet_name or None, _parse_students_mapping(mapping)
+        )
+    except ClinicalImportError as error:
+        raise _import_http_error(error) from error
+    repo = ClinicalRepository(db)
+    return students_importer.build_preview(
+        parsed, len(repo.list_students()), db.query(ClinicalPlacement).count()
+    )
+
+
+@router.post("/students/import/apply", response_model=ClinicalStudentsImportResult)
+async def apply_students_import(
+    file: UploadFile = File(...),
+    mapping: str = Form(...),
+    sheet_name: str | None = Form(default=None),
+    confirmed: bool = Form(default=False),
+    db: Session = Depends(get_db),
+):
+    """Phase B: re-parse the file, then atomically replace the whole Student Roster."""
+    try:
+        if not confirmed:
+            raise ClinicalImportError(
+                "CONFIRMATION_REQUIRED", "Confirm the replacement before importing the Student Roster."
+            )
+        parsed = students_importer.parse_students(
+            file.filename or "", await _read_upload(file), sheet_name or None, _parse_students_mapping(mapping)
+        )
+        invalid = [row for row in parsed.rows if row.errors]
+        if invalid:
+            raise ClinicalImportError(
+                "VALIDATION_FAILED",
+                "Fix the listed rows in the source file and try again.",
+                [f"Row {row.row_number}: {message}" for row in invalid[:25] for message in row.errors],
+            )
+        if not parsed.rows:
+            raise ClinicalImportError("EMPTY_IMPORT", "The selected file contains no students.")
+        result = ClinicalRepository(db).replace_students(
+            (row.student_id, row.name, row.email) for row in parsed.rows
+        )
+        db.commit()
+        return ClinicalStudentsImportResult(**result.__dict__)
+    except ClinicalImportError as error:
         db.rollback()
         raise _import_http_error(error) from error
     except ClinicalValidationError as error:

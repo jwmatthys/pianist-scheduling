@@ -75,6 +75,13 @@ class ClinicalReplaceResult:
     tags_created: int
 
 
+@dataclass(frozen=True)
+class ClinicalStudentReplaceResult:
+    students_removed: int
+    placements_removed: int
+    students_created: int
+
+
 class ClinicalRepository:
     def __init__(self, db: Session):
         self.db = db
@@ -395,29 +402,131 @@ class ClinicalRepository:
 
     # --- students -----------------------------------------------------
 
+    def _clean_student_values(
+        self, student_id: str, name: str, email: str, *, require_name: bool, exclude_id: str | None = None
+    ) -> tuple[str, str, str]:
+        cleaned_id = (student_id or "").strip()
+        cleaned_name = (name or "").strip()
+        if not cleaned_id:
+            raise ClinicalValidationError("INVALID_STUDENT_ID", "Student ID is required.")
+        if require_name and not cleaned_name:
+            raise ClinicalValidationError("INVALID_STUDENT_NAME", "Name is required.")
+        query = self.db.query(ClinicalStudent.id).filter(func.lower(ClinicalStudent.student_id) == cleaned_id.lower())
+        if exclude_id is not None:
+            query = query.filter(ClinicalStudent.id != exclude_id)
+        if query.first() is not None:
+            raise ClinicalValidationError("DUPLICATE_STUDENT_ID", "A student with that Student ID already exists.")
+        return cleaned_id, cleaned_name, (email or "").strip()
+
     def create_student(
         self,
         student_id: str,
         name: str = "",
         email: str = "",
         availability: Sequence[AvailabilityWindow] = (),
+        *,
+        require_name: bool = False,
     ) -> ClinicalStudent:
-        cleaned_id = (student_id or "").strip()
-        if not cleaned_id:
-            raise ClinicalValidationError("INVALID_STUDENT_ID", "Student ID is required.")
-        duplicate = (
-            self.db.query(ClinicalStudent.id)
-            .filter(func.lower(ClinicalStudent.student_id) == cleaned_id.lower())
-            .first()
+        cleaned_id, cleaned_name, cleaned_email = self._clean_student_values(
+            student_id, name, email, require_name=require_name
         )
-        if duplicate is not None:
-            raise ClinicalValidationError("DUPLICATE_STUDENT_ID", "A student with that Student ID already exists.")
-        student = ClinicalStudent(student_id=cleaned_id, name=name.strip(), email=email.strip())
+        student = ClinicalStudent(student_id=cleaned_id, name=cleaned_name, email=cleaned_email)
         self.db.add(student)
         self.db.flush()
         self.replace_student_availability(student.id, availability, record_change=False)
         self.record_source_change()
         return student
+
+    def get_student(self, clinical_student_id: str) -> ClinicalStudent:
+        return self._require(
+            ClinicalStudent, clinical_student_id, "STUDENT_NOT_FOUND", "The student no longer exists."
+        )
+
+    def list_students(self) -> list[ClinicalStudent]:
+        return self.db.query(ClinicalStudent).order_by(func.lower(ClinicalStudent.name), ClinicalStudent.student_id).all()
+
+    def update_student(self, clinical_student_id: str, student_id: str, name: str, email: str = "") -> ClinicalStudent:
+        student = self._require(
+            ClinicalStudent, clinical_student_id, "STUDENT_NOT_FOUND", "The student no longer exists."
+        )
+        student.student_id, student.name, student.email = self._clean_student_values(
+            student_id, name, email, require_name=True, exclude_id=student.id
+        )
+        student.updated_at = _now()
+        self.db.flush()
+        self.record_source_change()
+        return student
+
+    def student_tag_states(self) -> dict[str, dict[str, TagState]]:
+        """Stored non-neutral tag states keyed by student then tag (Neutral is never stored)."""
+        states: dict[str, dict[str, TagState]] = {}
+        for row in self.db.query(ClinicalStudentTagState).all():
+            states.setdefault(row.student_id, {})[row.tag_id] = TagState(row.state)
+        return states
+
+    def student_availability_counts(self) -> dict[str, int]:
+        rows = (
+            self.db.query(
+                ClinicalStudentAvailabilityWindow.clinical_student_id, func.count(ClinicalStudentAvailabilityWindow.id)
+            )
+            .group_by(ClinicalStudentAvailabilityWindow.clinical_student_id)
+            .all()
+        )
+        return {student_id: count for student_id, count in rows}
+
+    def set_student_tag_states(self, clinical_student_id: str, states: dict[str, TagState]) -> None:
+        """Replace one student's tag states with the supplied tag-to-state map in a single revision bump."""
+        self._require(ClinicalStudent, clinical_student_id, "STUDENT_NOT_FOUND", "The student no longer exists.")
+        wanted: dict[str, TagState] = {}
+        for tag_id, state in states.items():
+            self._require(ClinicalTag, tag_id, "TAG_NOT_FOUND", "A selected tag no longer exists.")
+            try:
+                state = TagState(state)
+            except ValueError as error:
+                raise ClinicalValidationError("INVALID_TAG_STATE", "Choose a valid tag state.") from error
+            if state is not TagState.NEUTRAL:
+                wanted[tag_id] = state
+        self.db.query(ClinicalStudentTagState).filter(
+            ClinicalStudentTagState.student_id == clinical_student_id
+        ).delete()
+        for tag_id, state in wanted.items():
+            self.db.add(ClinicalStudentTagState(student_id=clinical_student_id, tag_id=tag_id, state=state.value))
+        self.db.flush()
+        self.record_source_change()
+
+    def replace_students(self, students: Iterable[tuple[str, str, str]]) -> "ClinicalStudentReplaceResult":
+        """Full replacement of the roster (all-or-nothing within the caller's transaction).
+
+        Removes every student with their availability, tag states, and placements; keeps
+        Placement Opportunities and the tag registry; bumps the revision once.
+        """
+        prepared: list[tuple[str, str, str]] = []
+        seen: set[str] = set()
+        for student_id, name, email in students:
+            cleaned_id, cleaned_name, cleaned_email = (student_id or "").strip(), (name or "").strip(), (email or "").strip()
+            if not cleaned_id:
+                raise ClinicalValidationError("INVALID_STUDENT_ID", "Student ID is required.")
+            if not cleaned_name:
+                raise ClinicalValidationError("INVALID_STUDENT_NAME", "Name is required.")
+            if cleaned_id.lower() in seen:
+                raise ClinicalValidationError("DUPLICATE_STUDENT_ID", "Student IDs must be unique in the roster.")
+            seen.add(cleaned_id.lower())
+            prepared.append((cleaned_id, cleaned_name, cleaned_email))
+        students_removed = self.db.query(func.count(ClinicalStudent.id)).scalar() or 0
+        placements_removed = self.clear_all_placements()
+        self.db.query(ClinicalStudentTagState).delete()
+        self.db.query(ClinicalStudentAvailabilityWindow).delete()
+        self.db.query(ClinicalStudent).delete()
+        self.db.flush()
+        for student_id, name, email in prepared:
+            self.db.add(ClinicalStudent(student_id=student_id, name=name, email=email))
+        self.db.flush()
+        self.record_source_change()
+        return ClinicalStudentReplaceResult(
+            students_removed=students_removed,
+            placements_removed=placements_removed,
+            students_created=len(prepared),
+        )
 
     def delete_student(self, clinical_student_id: str) -> None:
         student = self._require(
