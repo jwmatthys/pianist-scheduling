@@ -4,11 +4,11 @@
 
 This project is a modular scheduling application for university and conservatory music programs.
 
-The current production module schedules accompanists for student lessons.
+The current production has a module schedules accompanists for student lessons, and uses that module's finalized results to schedule performance juries. Another module for music therapy clinical placements is implemented. Future modules for scheduling individual music lessons and tutoring sessions are planned.
 
 Planned future modules include:
-- Music Therapy Clinical Placements
-- Music Tutor Scheduling
+- Music Lesson Scheduling
+- Tutor Scheduling
 
 Other music-program scheduling modules may be added later.
 
@@ -63,10 +63,11 @@ Music Program Scheduler
     |     +-- Academic Term
     |
     +-- Scheduling Modules
-    |     +-- Accompanists
-    |     +-- Juries
-    |     +-- Clinical Placements
-    |     +-- Tutors
+    |     +-- Accompanist Scheduling
+    |     +-- Performance Jury Scheduling
+    |     +-- Clinical Placement Scheduling
+    |     +-- Music Lesson Scheduling
+    |     +-- Music Tutor Scheduling
     |
     +-- Shared Infrastructure
     |
