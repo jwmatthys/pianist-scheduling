@@ -8,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import clinical_models, models
+from app import clinical_models, lesson_models, models
 from app.clinical_models import (
     ClinicalModuleState,
     ClinicalPlacement,
@@ -23,6 +23,10 @@ from app.services.clinical_repository import (
     ClinicalRepository,
     ClinicalValidationError,
     PlacementOpportunityInput,
+)
+
+LESSON_TABLES_DROP_ORDER = sorted(
+    (name for name in lesson_models.LessonTag.metadata.tables if name.startswith("lesson_")), reverse=True
 )
 
 CLINICAL_TABLES = {
@@ -394,13 +398,15 @@ class ClinicalMigrationTests(ClinicalTestCase):
                 connection.exec_driver_sql(f"DROP TABLE {table}")
             connection.exec_driver_sql("DROP TABLE clinical_module_states")
             connection.exec_driver_sql("DROP TABLE saved_reports")
+            for table in LESSON_TABLES_DROP_ORDER:
+                connection.exec_driver_sql(f"DROP TABLE {table}")
             connection.exec_driver_sql("PRAGMA user_version = 9")
 
         report = migrate_database(self.engine)
 
         self.assertEqual(report.initial_version, 9)
         self.assertEqual(report.current_version, LATEST_SCHEMA_VERSION)
-        self.assertEqual(report.applied_migrations, ("add_clinical_placement_module_tables", "add_saved_reports"))
+        self.assertEqual(report.applied_migrations, ("add_clinical_placement_module_tables", "add_saved_reports", "add_lesson_scheduling_module_tables"))
         with Session(self.engine) as db:
             self.assertEqual(db.get(models.Pianist, 7).name, "Synthetic Pianist")
             state = db.query(ClinicalModuleState).one()

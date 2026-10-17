@@ -9,6 +9,7 @@ from .routers import (
     clinical,
     imports,
     jury,
+    lesson,
     lessons,
     pianists,
     reports,
@@ -48,6 +49,7 @@ app.include_router(availability_imports.router)
 app.include_router(accompanist_results.router)
 app.include_router(jury.router)
 app.include_router(clinical.router)
+app.include_router(lesson.router)
 
 
 @app.get("/api/health")

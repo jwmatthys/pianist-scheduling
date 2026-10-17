@@ -7,6 +7,7 @@ import type { SchedulingSession, SchedulingSessionInput } from "./lib/types";
 import { SCHEDULING_MODULES, type ModuleKey } from "./moduleRegistry";
 import { ModuleShell } from "./components/ModuleShell";
 import { ClinicalModule } from "./pages/ClinicalModule";
+import { LessonModule } from "./pages/LessonModule";
 import { AccompanistModule, type AccompanistModuleHandle } from "./pages/AccompanistModule";
 import { DashboardPage } from "./pages/DashboardPage";
 import { JurySetupPage } from "./pages/JurySetupPage";
@@ -118,6 +119,8 @@ function App() {
             <JurySetupPage key={session?.session_uuid} />
           ) : selectedModule.key === "clinical" ? (
             <ClinicalModule key={session?.session_uuid} />
+          ) : selectedModule.key === "lesson" ? (
+            <LessonModule key={session?.session_uuid} />
           ) : (
             <section className="module-landing" aria-labelledby="module-landing-heading">
               <h2 id="module-landing-heading">{selectedModule.name}</h2>

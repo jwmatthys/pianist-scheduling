@@ -28,6 +28,20 @@ import type {
   SchedulingSession,
   SchedulingSessionInput,
   ClinicalSitesImportInspection,
+  LessonInstructor,
+  LessonInstructorFields,
+  LessonInstructorImportInspection,
+  LessonInstructorImportMapping,
+  LessonInstructorImportPreview,
+  LessonInstructorImportResult,
+  LessonStudent,
+  LessonStudentFields,
+  LessonStudentImportInspection,
+  LessonStudentImportMapping,
+  LessonStudentImportPreview,
+  LessonStudentImportResult,
+  LessonTagState,
+  LessonTag,
   ClinicalSitesImportMapping,
   ClinicalSitesImportPreview,
   ClinicalSitesImportResult,
@@ -332,7 +346,120 @@ export const api = {
       body: form,
     });
   },
+  listLessonInstructors: () => request<LessonInstructor[]>("/api/lesson/instructors"),
+  createLessonInstructor: (data: LessonInstructorFields & { tag_ids: string[] }) =>
+    request<LessonInstructor>("/api/lesson/instructors", { method: "POST", body: JSON.stringify(data) }),
+  // Omitting tag_ids leaves the instructor's tags unchanged.
+  updateLessonInstructor: (id: string, data: LessonInstructorFields & { tag_ids?: string[] }) =>
+    request<LessonInstructor>(`/api/lesson/instructors/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  deleteLessonInstructor: (id: string) =>
+    request<{ removed_placement_count: number }>(`/api/lesson/instructors/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
+  getLessonInstructorAvailability: (id: string) =>
+    request<{ windows: RecurringAvailabilityWindow[] }>(
+      `/api/lesson/instructors/${encodeURIComponent(id)}/availability`
+    ),
+  setLessonInstructorAvailability: (id: string, windows: RecurringAvailabilityWindow[]) =>
+    request<{ windows: RecurringAvailabilityWindow[] }>(
+      `/api/lesson/instructors/${encodeURIComponent(id)}/availability`,
+      { method: "PUT", body: JSON.stringify({ windows }) }
+    ),
+  listLessonTags: () => request<LessonTag[]>("/api/lesson/tags"),
+  createLessonTag: (name: string) =>
+    request<LessonTag>("/api/lesson/tags", { method: "POST", body: JSON.stringify({ name }) }),
+  renameLessonTag: (id: string, name: string) =>
+    request<LessonTag>(`/api/lesson/tags/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    }),
+  deleteLessonTag: (id: string) =>
+    request<{ affected_instructor_count: number; affected_student_count: number }>(
+      `/api/lesson/tags/${encodeURIComponent(id)}`,
+      { method: "DELETE" }
+    ),
+  inspectLessonInstructorFile: (file: File, sheetName?: string | null) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (sheetName) form.append("sheet_name", sheetName);
+    return request<LessonInstructorImportInspection>("/api/lesson/instructors/import/inspect", {
+      method: "POST",
+      body: form,
+    });
+  },
+  previewLessonInstructorImport: (file: File, sheetName: string | null, mapping: LessonInstructorImportMapping) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (sheetName) form.append("sheet_name", sheetName);
+    form.append("mapping", JSON.stringify(mapping));
+    return request<LessonInstructorImportPreview>("/api/lesson/instructors/import/preview", {
+      method: "POST",
+      body: form,
+    });
+  },
+  applyLessonInstructorImport: (file: File, sheetName: string | null, mapping: LessonInstructorImportMapping) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (sheetName) form.append("sheet_name", sheetName);
+    form.append("mapping", JSON.stringify(mapping));
+    form.append("confirmed", "true");
+    return request<LessonInstructorImportResult>("/api/lesson/instructors/import/apply", {
+      method: "POST",
+      body: form,
+    });
+  },
   getClinicalReadiness: () => request<ClinicalReadiness>("/api/clinical/readiness"),
+  listLessonStudents: () => request<LessonStudent[]>("/api/lesson/students"),
+  // Omitting tag_states leaves a student's tag states unchanged; an object replaces the whole set.
+  createLessonStudent: (data: LessonStudentFields & { tag_states?: Record<string, LessonTagState> }) =>
+    request<LessonStudent>("/api/lesson/students", { method: "POST", body: JSON.stringify(data) }),
+  updateLessonStudent: (id: string, data: LessonStudentFields & { tag_states?: Record<string, LessonTagState> }) =>
+    request<LessonStudent>(`/api/lesson/students/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  deleteLessonStudent: (id: string) =>
+    request<void>(`/api/lesson/students/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  getLessonStudentAvailability: (id: string) =>
+    request<{ windows: RecurringAvailabilityWindow[] }>(`/api/lesson/students/${encodeURIComponent(id)}/availability`),
+  setLessonStudentAvailability: (id: string, windows: RecurringAvailabilityWindow[]) =>
+    request<{ windows: RecurringAvailabilityWindow[] }>(`/api/lesson/students/${encodeURIComponent(id)}/availability`, {
+      method: "PUT",
+      body: JSON.stringify({ windows }),
+    }),
+  inspectLessonStudentFile: (file: File, sheetName?: string | null) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (sheetName) form.append("sheet_name", sheetName);
+    return request<LessonStudentImportInspection>("/api/lesson/students/import/inspect", {
+      method: "POST",
+      body: form,
+    });
+  },
+  previewLessonStudentImport: (file: File, sheetName: string | null, mapping: LessonStudentImportMapping) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (sheetName) form.append("sheet_name", sheetName);
+    form.append("mapping", JSON.stringify(mapping));
+    return request<LessonStudentImportPreview>("/api/lesson/students/import/preview", {
+      method: "POST",
+      body: form,
+    });
+  },
+  applyLessonStudentImport: (file: File, sheetName: string | null, mapping: LessonStudentImportMapping) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (sheetName) form.append("sheet_name", sheetName);
+    form.append("mapping", JSON.stringify(mapping));
+    form.append("confirmed", "true");
+    return request<LessonStudentImportResult>("/api/lesson/students/import/apply", {
+      method: "POST",
+      body: form,
+    });
+  },
   getClinicalSchedule: () => request<ClinicalSchedule>("/api/clinical/schedule"),
   generateClinicalSchedule: () =>
     request<ClinicalSchedule>("/api/clinical/schedule/generate", { method: "POST" }),

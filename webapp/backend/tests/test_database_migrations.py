@@ -21,6 +21,18 @@ from app.database import (
 )
 from app.services.accompanist_results import get_result_by_uuid
 
+LESSON_TABLES_DROP_ORDER = (
+    "lesson_placements",
+    "lesson_student_tag_states",
+    "lesson_student_availability_windows",
+    "lesson_instructor_availability_windows",
+    "lesson_instructor_tags",
+    "lesson_students",
+    "lesson_instructors",
+    "lesson_tags",
+    "lesson_module_states",
+)
+
 CLINICAL_TABLES_DROP_ORDER = (
     "clinical_placements",
     "clinical_student_tag_states",
@@ -34,7 +46,9 @@ CLINICAL_TABLES_DROP_ORDER = (
 
 
 def drop_clinical_tables(connection):
-    """Simulate a pre-v10 database by removing the tables added in v10 and v11."""
+    """Simulate a pre-v10 database by removing the tables added in v10 through v12."""
+    for table_name in LESSON_TABLES_DROP_ORDER:
+        connection.exec_driver_sql(f"DROP TABLE {table_name}")
     connection.exec_driver_sql("DROP TABLE saved_reports")
     for table_name in CLINICAL_TABLES_DROP_ORDER:
         connection.exec_driver_sql(f"DROP TABLE {table_name}")

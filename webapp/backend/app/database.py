@@ -105,6 +105,7 @@ def _column_names(connection: Connection, table_name: str) -> set[str]:
 
 def _expected_columns() -> dict[str, set[str]]:
     from . import clinical_models  # noqa: F401
+    from . import lesson_models  # noqa: F401
     from . import models  # noqa: F401
     from . import module_models  # noqa: F401
 
@@ -477,6 +478,34 @@ def _upgrade_to_v11(connection: Connection) -> None:
     _create_module_tables(connection, {"saved_reports"})
 
 
+def _upgrade_to_v12(connection: Connection) -> None:
+    """Add module-owned Lesson Scheduling tables and per-session module state."""
+    from . import lesson_models
+
+    _create_module_tables(connection, {
+        "lesson_tags",
+        "lesson_instructors",
+        "lesson_instructor_tags",
+        "lesson_instructor_availability_windows",
+        "lesson_students",
+        "lesson_student_availability_windows",
+        "lesson_student_tag_states",
+        "lesson_placements",
+        "lesson_module_states",
+    })
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    for (session_uuid,) in connection.exec_driver_sql(
+        "SELECT session_uuid FROM scheduling_sessions"
+    ).all():
+        connection.execute(lesson_models.LessonModuleState.__table__.insert().values(
+            session_uuid=session_uuid,
+            schedule_revision=0,
+            source_data_revision=0,
+            is_schedule_stale=False,
+            modified_at=now,
+        ))
+
+
 MIGRATIONS = (
     SchemaMigration(
         version=1,
@@ -532,6 +561,11 @@ MIGRATIONS = (
         version=11,
         name="add_saved_reports",
         upgrade=_upgrade_to_v11,
+    ),
+    SchemaMigration(
+        version=12,
+        name="add_lesson_scheduling_module_tables",
+        upgrade=_upgrade_to_v12,
     ),
 )
 LATEST_SCHEMA_VERSION = MIGRATIONS[-1].version

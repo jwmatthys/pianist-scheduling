@@ -642,3 +642,149 @@ export interface ClinicalPlacementVerification {
   start_minute: number | null;
   warnings: ClinicalPlacementWarning[];
 }
+
+// --- Lesson Scheduling (module-owned; independent of Clinical types) ---
+
+export interface LessonTag {
+  id: string;
+  name: string;
+  instructor_count: number;
+  student_count: number;
+  is_unused: boolean;
+}
+
+export interface LessonInstructorFields {
+  name: string;
+  email: string;
+  room: string;
+  lesson_length_minutes: number;
+  capacity: number;
+}
+
+export interface LessonInstructor extends LessonInstructorFields {
+  id: string;
+  tags: { id: string; name: string }[];
+  availability_window_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type LessonInstructorImportField =
+  | "instructor_name"
+  | "instructor_email"
+  | "room"
+  | "lesson_length"
+  | "capacity";
+
+export interface LessonInstructorImportMapping {
+  instructor_name: string | null;
+  instructor_email: string | null;
+  room: string | null;
+  lesson_length: string | null;
+  capacity: string | null;
+  days: Record<string, string | null>;
+}
+
+export interface LessonInstructorImportInspection {
+  sheets: string[];
+  selected_sheet: string | null;
+  columns: string[];
+  sample_rows: Record<string, string>[];
+  suggested_mapping: LessonInstructorImportMapping;
+}
+
+export interface LessonInstructorImportPreviewRow {
+  row_number: number;
+  instructor_name: string;
+  instructor_email: string;
+  room: string;
+  lesson_length_minutes: number | null;
+  capacity: number | null;
+  tags: string[];
+  availability_window_count: number;
+  availability: string[];
+  warnings: string[];
+  errors: string[];
+}
+
+export interface LessonInstructorImportPreview {
+  selected_sheet: string | null;
+  tag_columns: string[];
+  total_rows: number;
+  valid_rows: number;
+  invalid_rows: number;
+  rows: LessonInstructorImportPreviewRow[];
+  new_tags: string[];
+  reused_tags: string[];
+  existing_instructor_count: number;
+  existing_placement_count: number;
+  can_apply: boolean;
+}
+
+export interface LessonInstructorImportResult {
+  instructors_removed: number;
+  placements_removed: number;
+  instructors_created: number;
+  tags_created: number;
+}
+
+export type LessonTagState = "neutral" | "required" | "preferred" | "restricted";
+
+export interface LessonStudentFields {
+  student_id: string;
+  name: string;
+  email: string;
+}
+
+export interface LessonStudent extends LessonStudentFields {
+  id: string;
+  availability_window_count: number;
+  // Neutral is the absence of an entry.
+  tag_states: Record<string, LessonTagState>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LessonStudentImportMapping {
+  student_id: string | null;
+  name: string | null;
+  email: string | null;
+  days: Record<string, string | null>;
+}
+
+export interface LessonStudentImportInspection {
+  sheets: string[];
+  selected_sheet: string | null;
+  columns: string[];
+  sample_rows: Record<string, string>[];
+  suggested_mapping: LessonStudentImportMapping;
+}
+
+export interface LessonStudentImportPreviewRow {
+  row_number: number;
+  student_id: string;
+  name: string;
+  email: string;
+  availability_window_count: number;
+  availability: string[];
+  warnings: string[];
+  errors: string[];
+}
+
+export interface LessonStudentImportPreview {
+  selected_sheet: string | null;
+  total_rows: number;
+  valid_rows: number;
+  invalid_rows: number;
+  availability_mapped: boolean;
+  rows: LessonStudentImportPreviewRow[];
+  existing_student_count: number;
+  existing_placement_count: number;
+  can_apply: boolean;
+}
+
+export interface LessonStudentImportResult {
+  students_removed: number;
+  placements_removed: number;
+  students_created: number;
+}
