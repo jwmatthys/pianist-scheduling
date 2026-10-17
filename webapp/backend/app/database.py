@@ -472,6 +472,11 @@ def _upgrade_to_v10(connection: Connection) -> None:
         ))
 
 
+def _upgrade_to_v11(connection: Connection) -> None:
+    """Persist each module's last generated report in the session."""
+    _create_module_tables(connection, {"saved_reports"})
+
+
 MIGRATIONS = (
     SchemaMigration(
         version=1,
@@ -522,6 +527,11 @@ MIGRATIONS = (
         version=10,
         name="add_clinical_placement_module_tables",
         upgrade=_upgrade_to_v10,
+    ),
+    SchemaMigration(
+        version=11,
+        name="add_saved_reports",
+        upgrade=_upgrade_to_v11,
     ),
 )
 LATEST_SCHEMA_VERSION = MIGRATIONS[-1].version

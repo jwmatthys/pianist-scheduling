@@ -95,6 +95,19 @@ class ModuleRevision(ModuleBase):
     modified_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
 
+class SavedReport(ModuleBase):
+    """The most recently generated report for one module in one session (local, part of the session file)."""
+
+    __tablename__ = "saved_reports"
+
+    session_uuid: Mapped[str] = mapped_column(String(36), primary_key=True)
+    module_id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    # Opaque module-defined marker of the source data the report was built from.
+    source_stamp: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False)
+    generated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
 class ModuleResult(ModuleBase):
     __tablename__ = "module_results"
     __table_args__ = (

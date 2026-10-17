@@ -229,6 +229,21 @@ class ClinicalRepository:
         self.record_source_change()
         return affected_students
 
+    def delete_unused_tags(self) -> int:
+        """Delete tags used by no Placement Opportunity and no student; returns the number removed."""
+        unused = [
+            summary.tag
+            for summary in self.tag_summaries()
+            if summary.opportunity_count == 0 and summary.student_count == 0
+        ]
+        for tag in unused:
+            self.db.query(ClinicalStudentTagState).filter(ClinicalStudentTagState.tag_id == tag.id).delete()
+            self.db.delete(tag)
+        if unused:
+            self.db.flush()
+            self.record_source_change()
+        return len(unused)
+
     def tag_summaries(self) -> list["ClinicalTagSummary"]:
         """Every registered tag with current-use information for the Tag Manager."""
         opportunity_counts = dict(

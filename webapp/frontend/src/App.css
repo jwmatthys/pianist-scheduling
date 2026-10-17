@@ -1690,3 +1690,50 @@ button {
 .clinical-schedule .clinical-placement-actions button {
   margin: 0 0.35rem 0.25rem 0;
 }
+
+.export-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 29, 39, 0.56);
+}
+
+.export-dialog {
+  display: grid;
+  gap: 0.9rem;
+  width: min(360px, calc(100vw - 32px));
+  padding: 1.4rem;
+  border: 1px solid #b9c4ce;
+  border-radius: 6px;
+  color: #1f2933;
+  background: #fff;
+  box-shadow: 0 18px 60px rgba(13, 35, 52, 0.28);
+}
+
+.export-dialog h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.export-dialog-formats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.stale-report-banner {
+  background: #ffe8a3;
+  border: 1px solid #e0a100;
+  border-left: 6px solid #e0a100;
+  color: #5c4000;
+  border-radius: 4px;
+  padding: 0.6rem 0.85rem;
+  margin: 0.5rem 0;
+}
+
+.report-generated-at {
+  margin: 0.25rem 0;
+  font-size: 0.85rem;
+}

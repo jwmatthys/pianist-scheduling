@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { useSavedReport, type ReportSourceState } from "../lib/savedReport";
+import { StaleReportBanner } from "../components/StaleReportBanner";
 import ReactMarkdown from "react-markdown";
 import { api } from "../lib/api";
-import { createMarkdownPdf } from "../lib/markdownPdf";
-import { saveBinaryFile, saveTextFile } from "../lib/platform";
+import { buildJuryReportTable } from "../lib/juryReportTable";
+import { ReportExportButton, type ExportStatus } from "../components/ReportExport";
 import { formatUtcTimestampLocally } from "../lib/time";
 import type { JuryScheduleEvent, JuryScheduleResult } from "../lib/types";
 
@@ -118,11 +120,14 @@ function errorText(error: unknown) {
   return error instanceof Error ? error.message : "The request could not be completed.";
 }
 
+async function fetchSourceState(): Promise<ReportSourceState> {
+  const result = await api.getCurrentJurySchedule();
+  return { stamp: result.result_uuid, sourceStale: result.stale };
+}
+
 export function JuryReportsPage() {
-  const [markdown, setMarkdown] = useState<string | null>(null);
-  const [panelPageBreaks, setPanelPageBreaks] = useState<string[]>([]);
+  const { report, generate: saveGenerated } = useSavedReport("jury", fetchSourceState);
   const [busy, setBusy] = useState(false);
-  const [saving, setSaving] = useState<"pdf" | "markdown" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -131,14 +136,19 @@ export function JuryReportsPage() {
     setError(null);
     setNotice(null);
     try {
-      const [result, entries, panels] = await Promise.all([
-        api.getCurrentJurySchedule(),
-        api.getJuryEntries(),
-        api.getJuryPanels(),
-      ]);
-      const report = reportMarkdown(result, entries, panels);
-      setMarkdown(report.markdown);
-      setPanelPageBreaks(report.pageBreakBeforeHeadings);
+      await saveGenerated(async () => {
+        const [result, entries, panels] = await Promise.all([
+          api.getCurrentJurySchedule(),
+          api.getJuryEntries(),
+          api.getJuryPanels(),
+        ]);
+        const built = reportMarkdown(result, entries, panels);
+        return {
+          markdown: built.markdown,
+          pageBreakBeforeHeadings: built.pageBreakBeforeHeadings,
+          table: buildJuryReportTable(result, entries),
+        };
+      });
     } catch (cause) {
       setError(errorText(cause));
     } finally {
@@ -146,55 +156,30 @@ export function JuryReportsPage() {
     }
   }
 
-  async function saveMarkdown() {
-    if (!markdown) return;
-    setSaving("markdown");
-    setError(null);
-    setNotice(null);
-    try {
-      const saved = await saveTextFile(markdown, "jury_schedule.md", "Markdown report", "md");
-      setNotice(saved ? "Jury Markdown report saved." : "Markdown save canceled.");
-    } catch (cause) {
-      setError(errorText(cause));
-    } finally {
-      setSaving(null);
-    }
-  }
-
-  async function savePdf() {
-    if (!markdown) return;
-    setSaving("pdf");
-    setError(null);
-    setNotice(null);
-    try {
-      const pdf = await createMarkdownPdf(markdown, { pageBreakBeforeHeadings: panelPageBreaks });
-      const saved = await saveBinaryFile(pdf, "jury_schedule.pdf", "PDF report", "pdf");
-      setNotice(saved ? "Jury PDF report saved." : "PDF save canceled.");
-    } catch (cause) {
-      setError(errorText(cause));
-    } finally {
-      setSaving(null);
-    }
+  function handleExportStatus(status: ExportStatus) {
+    setError(status.error ?? null);
+    setNotice(status.notice ?? null);
   }
 
   return (
     <section className="page reports-page jury-reports-page" aria-labelledby="jury-reports-title">
       <h2 id="jury-reports-title">Jury Reports</h2>
+      {report && <StaleReportBanner stale={report.stale} generatedAt={report.generatedAt} />}
       <p className="muted">Generate a report from the current saved Jury schedule.</p>
       <div className="reports-actions">
-        <button className="primary-btn" type="button" onClick={() => void generate()} disabled={busy || saving !== null}>
+        <button className="primary-btn" type="button" onClick={() => void generate()} disabled={busy}>
           {busy ? "Generating…" : "Generate report"}
         </button>
-        <button className="secondary-btn" type="button" onClick={() => void savePdf()} disabled={!markdown || saving !== null}>
-          {saving === "pdf" ? "Saving PDF…" : "Download .pdf"}
-        </button>
-        <button className="secondary-btn" type="button" onClick={() => void saveMarkdown()} disabled={!markdown || saving !== null}>
-          {saving === "markdown" ? "Saving Markdown…" : "Download .md"}
-        </button>
+        <ReportExportButton
+          reportId="jury.schedule"
+          title="Jury Schedule"
+          payload={report?.payload ?? null}
+          onStatus={handleExportStatus}
+        />
       </div>
       {error && <p className="error-banner" role="alert">{error}</p>}
       {notice && <p className="availability-success" role="status">{notice}</p>}
-      {markdown && <div className="markdown-preview"><ReactMarkdown>{markdown}</ReactMarkdown></div>}
+      {report && <div className="markdown-preview"><ReactMarkdown>{report.payload.markdown}</ReactMarkdown></div>}
     </section>
   );
 }

@@ -1,3 +1,4 @@
+import type { SavedReport, SavedReportInput } from "./savedReport";
 import type {
   AvailabilityImportApplyResult,
   AvailabilityImportInspection,
@@ -176,6 +177,13 @@ export const api = {
 
   // Reports
   markdownReport: () => request<string>("/api/reports/markdown"),
+  getSavedReport: (moduleId: string) =>
+    request<SavedReport | null>(`/api/reports/saved/${encodeURIComponent(moduleId)}`),
+  saveReport: (moduleId: string, body: SavedReportInput) =>
+    request<SavedReport>(`/api/reports/saved/${encodeURIComponent(moduleId)}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
 
   // Accompanist -> Jury source boundary
   getAccompanistFinalizationState: () =>
@@ -288,6 +296,8 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ name }),
     }),
+  deleteUnusedClinicalTags: () =>
+    request<{ deleted_count: number }>("/api/clinical/tags/delete-unused", { method: "POST" }),
   deleteClinicalTag: (id: string) =>
     request<{ affected_student_count: number }>(`/api/clinical/tags/${encodeURIComponent(id)}`, {
       method: "DELETE",

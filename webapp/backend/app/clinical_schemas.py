@@ -17,6 +17,10 @@ class ClinicalTagIn(BaseModel):
     name: str = Field(max_length=200)
 
 
+class ClinicalUnusedTagsDeleteOut(BaseModel):
+    deleted_count: int
+
+
 class ClinicalTagDeleteOut(BaseModel):
     affected_student_count: int
 

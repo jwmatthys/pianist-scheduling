@@ -47,6 +47,18 @@ class TagManagerRepositoryTests(ClinicalTestCase):
         self.assertEqual(list(opp.tags), [])
         self.assertEqual(self.repo.list_tags(), [])
 
+    def test_delete_unused_tags_keeps_tags_used_by_sites_or_students(self):
+        site_tag, student_tag, unused = (self.repo.create_tag(n) for n in ("site", "student", "unused"))
+        self.repo.create_opportunity(opportunity_input(), tag_ids=[site_tag.id])
+        student = self.repo.create_student(student_id="S1", name="Pat Test", email="")
+        self.repo.set_tag_state(student.id, student_tag.id, TagState.PREFERRED)
+        before = self.revision()
+        self.assertEqual(self.repo.delete_unused_tags(), 1)
+        self.assertEqual(sorted(tag.name for tag in self.repo.list_tags()), ["SITE", "STUDENT"])
+        self.assertEqual(self.revision(), before + 1)
+        self.assertEqual(self.repo.delete_unused_tags(), 0)
+        self.assertEqual(self.revision(), before + 1)
+
     def test_every_mutation_bumps_revision(self):
         seen = [self.revision()]
         tag = self.repo.create_tag("t"); seen.append(self.revision())

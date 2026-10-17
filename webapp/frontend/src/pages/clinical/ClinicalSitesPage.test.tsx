@@ -22,6 +22,14 @@ vi.mock("../../lib/api", () => {
     api: {
       listClinicalOpportunities: vi.fn(async () => store.opportunities.map((o) => ({ ...o }))),
       listClinicalTags: vi.fn(async () => store.tags.map(tagOut)),
+      deleteUnusedClinicalTags: vi.fn(async () => {
+        const keep = store.tags.filter(
+          (t) => t.student_count > 0 || store.opportunities.some((o) => o.tags.some((x) => x.id === t.id)),
+        );
+        const deleted_count = store.tags.length - keep.length;
+        store.tags = keep;
+        return { deleted_count };
+      }),
       createClinicalOpportunity: vi.fn(async (data: any) => {
         const { tag_ids, ...fields } = data;
         const item = {
@@ -235,5 +243,23 @@ describe("ClinicalSitesPage", () => {
     ).toBeTruthy();
     await user.click(within(confirm).getByRole("button", { name: "Cancel" }));
     expect(store.tags).toHaveLength(1);
+  });
+
+  it("deletes only tags unused by both sites and students", async () => {
+    store.tags = [
+      { id: "t1", name: "SITE", student_count: 0 },
+      { id: "t2", name: "STUDENT", student_count: 2 },
+      { id: "t3", name: "UNUSED", student_count: 0 },
+    ];
+    store.opportunities = [opportunity({ tags: [{ id: "t1", name: "SITE" }] })];
+    const user = userEvent.setup();
+    render(<ClinicalSitesPage />);
+    await user.click(await screen.findByRole("button", { name: "Manage Tags" }));
+    await user.click(await screen.findByRole("button", { name: "Delete Unused Tags (1)" }));
+    const confirm = screen.getByRole("dialog", { name: "Delete unused tags?", hidden: true });
+    await user.click(within(confirm).getByRole("button", { name: "Delete Unused Tags" }));
+    expect(await screen.findByText("Deleted 1 unused tag.")).toBeTruthy();
+    expect(store.tags.map((t) => t.name)).toEqual(["SITE", "STUDENT"]);
+    expect((screen.getByRole("button", { name: "Delete Unused Tags" }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

@@ -3,12 +3,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   markdownReport: vi.fn(),
+  listLessons: vi.fn(),
+  listPianists: vi.fn(),
+  getSavedReport: vi.fn(),
+  saveReport: vi.fn(),
+  getAccompanistFinalizationState: vi.fn(),
   saveTextFile: vi.fn(),
   saveBinaryFile: vi.fn(),
   createMarkdownPdf: vi.fn(),
 }));
 
-vi.mock("../lib/api", () => ({ api: { markdownReport: mocks.markdownReport } }));
+vi.mock("../lib/api", () => ({ api: { markdownReport: mocks.markdownReport, listLessons: mocks.listLessons, listPianists: mocks.listPianists, getSavedReport: mocks.getSavedReport, saveReport: mocks.saveReport, getAccompanistFinalizationState: mocks.getAccompanistFinalizationState } }));
 vi.mock("../lib/platform", () => ({
   saveTextFile: mocks.saveTextFile,
   saveBinaryFile: mocks.saveBinaryFile,
@@ -28,6 +33,11 @@ describe("Accompanist report exports", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mocks.markdownReport.mockResolvedValue(report);
+    mocks.listLessons.mockResolvedValue([]);
+    mocks.listPianists.mockResolvedValue([]);
+    mocks.getSavedReport.mockResolvedValue(null);
+    mocks.getAccompanistFinalizationState.mockResolvedValue({ source_revision: 3 });
+    mocks.saveReport.mockImplementation(async (_id: string, body: object) => ({ ...body, generated_at: "2026-10-02T14:00:00Z" }));
     mocks.saveTextFile.mockResolvedValue(true);
     mocks.saveBinaryFile.mockResolvedValue(true);
     mocks.createMarkdownPdf.mockResolvedValue(new Blob(["synthetic PDF bytes"], { type: "application/pdf" }));
@@ -41,11 +51,12 @@ describe("Accompanist report exports", () => {
   it("opens the Markdown save flow with the generated Markdown and suggested filename", async () => {
     render(<ReportsPage />);
     await generateReport();
-    fireEvent.click(screen.getByRole("button", { name: "Download .md" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export..." }));
+    fireEvent.click(screen.getByRole("button", { name: "Markdown" }));
 
     await waitFor(() => expect(mocks.saveTextFile).toHaveBeenCalledWith(
       report,
-      "lesson_pianists.md",
+      "Accompanist Schedule.md",
       "Markdown report",
       "md",
     ));
@@ -57,10 +68,11 @@ describe("Accompanist report exports", () => {
     mocks.createMarkdownPdf.mockResolvedValue(pdfBlob);
     render(<ReportsPage />);
     await generateReport();
-    fireEvent.click(screen.getByRole("button", { name: "Download .pdf" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export..." }));
+    fireEvent.click(screen.getByRole("button", { name: "PDF" }));
 
     await waitFor(() => expect(mocks.createMarkdownPdf).toHaveBeenCalledWith(report));
-    expect(mocks.saveBinaryFile).toHaveBeenCalledWith(pdfBlob, "lesson_pianists.pdf", "PDF report", "pdf");
+    expect(mocks.saveBinaryFile).toHaveBeenCalledWith(pdfBlob, "Accompanist Schedule.pdf", "PDF report", "pdf");
     expect((await screen.findByRole("status")).textContent).toContain("PDF report saved.");
   });
 
@@ -68,7 +80,8 @@ describe("Accompanist report exports", () => {
     mocks.saveTextFile.mockRejectedValue(new Error("Could not write the selected file."));
     render(<ReportsPage />);
     await generateReport();
-    fireEvent.click(screen.getByRole("button", { name: "Download .md" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export..." }));
+    fireEvent.click(screen.getByRole("button", { name: "Markdown" }));
 
     expect((await screen.findByRole("alert")).textContent).toContain("Could not write the selected file.");
   });

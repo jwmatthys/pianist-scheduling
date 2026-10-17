@@ -34,7 +34,8 @@ CLINICAL_TABLES_DROP_ORDER = (
 
 
 def drop_clinical_tables(connection):
-    """Simulate a pre-v10 database by removing the Clinical tables added in v10."""
+    """Simulate a pre-v10 database by removing the tables added in v10 and v11."""
+    connection.exec_driver_sql("DROP TABLE saved_reports")
     for table_name in CLINICAL_TABLES_DROP_ORDER:
         connection.exec_driver_sql(f"DROP TABLE {table_name}")
 

@@ -393,13 +393,14 @@ class ClinicalMigrationTests(ClinicalTestCase):
             for table in sorted(CLINICAL_TABLES - {"clinical_module_states"}, reverse=True):
                 connection.exec_driver_sql(f"DROP TABLE {table}")
             connection.exec_driver_sql("DROP TABLE clinical_module_states")
+            connection.exec_driver_sql("DROP TABLE saved_reports")
             connection.exec_driver_sql("PRAGMA user_version = 9")
 
         report = migrate_database(self.engine)
 
         self.assertEqual(report.initial_version, 9)
         self.assertEqual(report.current_version, LATEST_SCHEMA_VERSION)
-        self.assertEqual(report.applied_migrations, ("add_clinical_placement_module_tables",))
+        self.assertEqual(report.applied_migrations, ("add_clinical_placement_module_tables", "add_saved_reports"))
         with Session(self.engine) as db:
             self.assertEqual(db.get(models.Pianist, 7).name, "Synthetic Pianist")
             state = db.query(ClinicalModuleState).one()

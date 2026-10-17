@@ -1,60 +1,50 @@
 import { useState } from "react";
+import { useSavedReport, type ReportSourceState } from "../lib/savedReport";
+import { StaleReportBanner } from "../components/StaleReportBanner";
 import ReactMarkdown from "react-markdown";
 import { api } from "../lib/api";
-import { saveBinaryFile, saveTextFile } from "../lib/platform";
-import { createMarkdownPdf } from "../lib/markdownPdf";
+import { buildAccompanistReportTable } from "../lib/accompanistReportTable";
+import { ReportExportButton, type ExportStatus } from "../components/ReportExport";
+
+async function fetchSourceState(): Promise<ReportSourceState> {
+  const state = await api.getAccompanistFinalizationState();
+  return { stamp: String(state.source_revision), sourceStale: false };
+}
 
 export function ReportsPage() {
-  const [markdown, setMarkdown] = useState<string | null>(null);
+  const { report, generate: saveGenerated } = useSavedReport("accompanists", fetchSourceState);
   const [busy, setBusy] = useState(false);
-  const [saving, setSaving] = useState<"pdf" | "markdown" | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
 
   async function generate() {
     setBusy(true);
+    setExportError(null);
     try {
-      const text = await api.markdownReport();
-      setMarkdown(text);
+      await saveGenerated(async () => {
+        const [markdown, lessons, pianists] = await Promise.all([
+          api.markdownReport(),
+          api.listLessons(),
+          api.listPianists(),
+        ]);
+        return { markdown, table: buildAccompanistReportTable(lessons, pianists) };
+      });
+    } catch (cause) {
+      setExportError(cause instanceof Error ? cause.message : "The report could not be generated.");
     } finally {
       setBusy(false);
     }
   }
 
-  async function downloadMarkdown() {
-    if (!markdown) return;
-    setSaving("markdown");
-    setExportError(null);
-    setExportMessage(null);
-    try {
-      const saved = await saveTextFile(markdown, "lesson_pianists.md", "Markdown report", "md");
-      setExportMessage(saved ? "Markdown report saved." : "Markdown save canceled.");
-    } catch (error) {
-      setExportError(error instanceof Error ? error.message : "Could not save the Markdown report.");
-    } finally {
-      setSaving(null);
-    }
-  }
-
-  async function downloadPdf() {
-    if (!markdown) return;
-    setSaving("pdf");
-    setExportError(null);
-    setExportMessage(null);
-    try {
-      const pdf = await createMarkdownPdf(markdown);
-      const saved = await saveBinaryFile(pdf, "lesson_pianists.pdf", "PDF report", "pdf");
-      setExportMessage(saved ? "PDF report saved." : "PDF save canceled.");
-    } catch (error) {
-      setExportError(error instanceof Error ? error.message : "Could not generate or save the PDF report.");
-    } finally {
-      setSaving(null);
-    }
+  function handleExportStatus(status: ExportStatus) {
+    setExportError(status.error ?? null);
+    setExportMessage(status.notice ?? null);
   }
 
   return (
     <div className="page reports-page">
       <h2>Reports</h2>
+      {report && <StaleReportBanner stale={report.stale} generatedAt={report.generatedAt} />}
       <p className="muted">
         Generate a report from the current saved lesson roster.
       </p>
@@ -62,18 +52,18 @@ export function ReportsPage() {
         <button className="primary-btn" onClick={generate} disabled={busy}>
           {busy ? "Generating\u2026" : "Generate report"}
         </button>
-        <button className="secondary-btn" onClick={() => void downloadPdf()} disabled={!markdown || saving !== null}>
-          {saving === "pdf" ? "Saving PDF…" : "Download .pdf"}
-        </button>
-        <button className="secondary-btn" onClick={() => void downloadMarkdown()} disabled={!markdown || saving !== null}>
-          {saving === "markdown" ? "Saving Markdown…" : "Download .md"}
-        </button>
+        <ReportExportButton
+          reportId="accompanist.lesson-pianists"
+          title="Accompanist Schedule"
+          payload={report?.payload ?? null}
+          onStatus={handleExportStatus}
+        />
       </div>
       {exportError && <p className="error-banner" role="alert">{exportError}</p>}
       {exportMessage && <p className="availability-success" role="status">{exportMessage}</p>}
-      {markdown && (
+      {report && (
         <div className="markdown-preview">
-          <ReactMarkdown>{markdown}</ReactMarkdown>
+          <ReactMarkdown>{report.payload.markdown}</ReactMarkdown>
         </div>
       )}
     </div>

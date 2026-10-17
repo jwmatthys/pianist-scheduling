@@ -47,6 +47,8 @@ def update_lesson(lesson_id: int, payload: schemas.LessonUpdate, db: Session = D
     clear = data.pop("clear_assigned_pianist", False)
     jury_required = data.pop("jury_required", None)
     changed = any(getattr(lesson, key) != value for key, value in data.items())
+    previous_pianist_id = lesson.assigned_pianist_id
+    previous_required = lesson.required_pianist_name
     if clear and lesson.assigned_pianist_id is not None:
         changed = True
     for key, value in data.items():
@@ -63,6 +65,13 @@ def update_lesson(lesson_id: int, payload: schemas.LessonUpdate, db: Session = D
         else:
             lesson.manually_edited = True
             lesson.fit_quality = "Manual"
+    if (
+        lesson.assigned_pianist_id != previous_pianist_id
+        or lesson.required_pianist_name != previous_required
+    ):
+        # Notes and hours describe the previous pianist; validate recomputes derived ones.
+        lesson.notes = ""
+        lesson.hours = 0.0
     identity_changed = any(key in data for key in ("student", "student_id"))
     if identity_changed:
         db.flush()

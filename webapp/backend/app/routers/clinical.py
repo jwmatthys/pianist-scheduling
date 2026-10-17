@@ -217,6 +217,14 @@ def rename_tag(tag_id: str, payload: schemas.ClinicalTagIn, db: Session = Depend
     return _tag_summary(repo, tag_id)
 
 
+@router.post("/tags/delete-unused", response_model=schemas.ClinicalUnusedTagsDeleteOut)
+def delete_unused_tags(db: Session = Depends(get_db)):
+    repo = ClinicalRepository(db)
+    removed = repo.delete_unused_tags()
+    _commit(db)
+    return schemas.ClinicalUnusedTagsDeleteOut(deleted_count=removed)
+
+
 @router.delete("/tags/{tag_id}", response_model=schemas.ClinicalTagDeleteOut)
 def delete_tag(tag_id: str, db: Session = Depends(get_db)):
     repo = ClinicalRepository(db)

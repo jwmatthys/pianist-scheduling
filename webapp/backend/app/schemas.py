@@ -4,7 +4,17 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictFloat,
+    StrictInt,
+    StrictStr,
+    field_validator,
+    model_validator,
+)
 
 
 class SessionMetadataIn(BaseModel):
@@ -295,3 +305,26 @@ class ValidationResult(BaseModel):
     hours_by_pianist: dict[str, float]
     conflicts: list[str]
     unassigned_count: int
+
+
+ReportCell = StrictStr | StrictInt | StrictFloat | StrictBool | None
+
+
+class SavedReportTable(BaseModel):
+    name: str = Field(max_length=200)
+    columns: list[str]
+    rows: list[list[ReportCell]]
+
+
+class SavedReportContent(BaseModel):
+    markdown: str
+    page_break_headings: list[str] = Field(default_factory=list)
+    table: SavedReportTable
+
+
+class SavedReportIn(SavedReportContent):
+    source_stamp: str = Field(max_length=200)
+
+
+class SavedReportOut(SavedReportIn):
+    generated_at: datetime

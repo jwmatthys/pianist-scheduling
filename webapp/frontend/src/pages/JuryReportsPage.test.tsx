@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   getCurrentJurySchedule: vi.fn(),
   getJuryEntries: vi.fn(),
   getJuryPanels: vi.fn(),
+  getSavedReport: vi.fn(),
+  saveReport: vi.fn(),
   createMarkdownPdf: vi.fn(),
   saveBinaryFile: vi.fn(),
   saveTextFile: vi.fn(),
@@ -16,6 +18,8 @@ vi.mock("../lib/api", () => ({
     getCurrentJurySchedule: mocks.getCurrentJurySchedule,
     getJuryEntries: mocks.getJuryEntries,
     getJuryPanels: mocks.getJuryPanels,
+    getSavedReport: mocks.getSavedReport,
+    saveReport: mocks.saveReport,
   },
 }));
 vi.mock("../lib/markdownPdf", () => ({ createMarkdownPdf: mocks.createMarkdownPdf }));
@@ -122,6 +126,8 @@ describe("Jury reports", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mocks.getCurrentJurySchedule.mockResolvedValue(currentSchedule());
+    mocks.getSavedReport.mockResolvedValue(null);
+    mocks.saveReport.mockImplementation(async (_id: string, body: object) => ({ ...body, generated_at: "2026-10-02T14:00:00Z" }));
     mocks.getJuryEntries.mockResolvedValue(currentEntries);
     mocks.getJuryPanels.mockResolvedValue([
       { panel_uuid: "panel-voice", room: "Voice Studio" },
@@ -150,7 +156,8 @@ describe("Jury reports", () => {
   it("adds a pianist-grouped schedule after the Panel listings", async () => {
     render(<JuryReportsPage />);
     await generate();
-    fireEvent.click(screen.getByRole("button", { name: "Download .md" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export..." }));
+    fireEvent.click(screen.getByRole("button", { name: "Markdown" }));
 
     await waitFor(() => expect(mocks.saveTextFile).toHaveBeenCalled());
     const markdown = mocks.saveTextFile.mock.calls[0][0] as string;
@@ -167,7 +174,8 @@ describe("Jury reports", () => {
     render(<JuryReportsPage />);
     await generate();
 
-    fireEvent.click(screen.getByRole("button", { name: "Download .md" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export..." }));
+    fireEvent.click(screen.getByRole("button", { name: "Markdown" }));
     await waitFor(() => expect(mocks.saveTextFile).toHaveBeenCalled());
     const markdown = mocks.saveTextFile.mock.calls[0][0] as string;
     expect(markdown).toContain(`Generated: ${new Date(currentSchedule().created_at).toLocaleString()}`);
@@ -191,7 +199,8 @@ describe("Jury reports", () => {
     render(<JuryReportsPage />);
     fireEvent.click(screen.getByRole("button", { name: "Generate report" }));
     await screen.findByRole("heading", { name: /Break Panel/ });
-    fireEvent.click(screen.getByRole("button", { name: "Download .md" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export..." }));
+    fireEvent.click(screen.getByRole("button", { name: "Markdown" }));
 
     await waitFor(() => expect(mocks.saveTextFile).toHaveBeenCalled());
     const markdown = mocks.saveTextFile.mock.calls[0][0] as string;
@@ -203,7 +212,8 @@ describe("Jury reports", () => {
   it("requests a PDF page break before each Panel after the first", async () => {
     render(<JuryReportsPage />);
     await generate();
-    fireEvent.click(screen.getByRole("button", { name: "Download .pdf" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export..." }));
+    fireEvent.click(screen.getByRole("button", { name: "PDF" }));
 
     await waitFor(() => expect(mocks.createMarkdownPdf).toHaveBeenCalled());
     const [markdown, options] = mocks.createMarkdownPdf.mock.calls[0];
@@ -213,18 +223,19 @@ describe("Jury reports", () => {
       expect.stringContaining("Cello Panel"),
       "Schedule by Pianist",
     ]);
-    expect(mocks.saveBinaryFile).toHaveBeenCalledWith(expect.any(Blob), "jury_schedule.pdf", "PDF report", "pdf");
+    expect(mocks.saveBinaryFile).toHaveBeenCalledWith(expect.any(Blob), "Jury Schedule.pdf", "PDF report", "pdf");
   });
 
   it("saves the Markdown report through the Save As helper", async () => {
     render(<JuryReportsPage />);
     await generate();
-    fireEvent.click(screen.getByRole("button", { name: "Download .md" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export..." }));
+    fireEvent.click(screen.getByRole("button", { name: "Markdown" }));
 
     await waitFor(() => expect(mocks.saveTextFile).toHaveBeenCalled());
     expect(mocks.saveTextFile).toHaveBeenCalledWith(
       expect.stringContaining("Synthetic Instructor Two"),
-      "jury_schedule.md",
+      "Jury Schedule.md",
       "Markdown report",
       "md",
     );

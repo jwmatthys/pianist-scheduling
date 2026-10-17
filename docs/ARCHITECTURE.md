@@ -76,3 +76,39 @@ Microsoft Forms is a collection/export workflow only: coordinators may ask for a
 ## Privacy and Network
 
 Project and scheduling data remain local. App traffic is React-to-FastAPI HTTP on loopback, including selected workbook bytes sent only to the local service for parsing. There are no telemetry, analytics, cloud, licensing, or remote-service integrations. Tauri does not open a LAN listener. Future location/travel scoring and other module-specific algorithms remain out of scope.
+
+## Shared Report Export
+
+Report pages render a single `ReportExportButton` (`webapp/frontend/src/components/ReportExport.tsx`) that opens the shared Export dialog. `reportExportService` (`lib/reportExport.ts`) owns the format list (PDF, Markdown, Excel Workbook, CSV), filename/extension selection from the report title, and dispatch to the platform `saveBinaryFile`/`saveTextFile` helpers; adding a format is one registry entry. Everything is built locally; nothing is sent to a server.
+
+Modules own report definitions and supply `{ reportId, title, payload }`. The payload carries two module-built parts:
+
+- **Presentation (PDF and Markdown):** the module's Markdown, plus optional PDF page-break headings. These formats show only what the report presents.
+- **Data table (CSV and Excel Workbook):** a `ReportTable` (`lib/reportTable.ts`) holding the generated schedule or roster itself: **all of the fields (every column) shown on the module's Schedule/Roster view, one row per record**, with the same column names and order as that view. It is not a projection of the Markdown/PDF presentation. Each module builds its own table; the shared service only writes it (`lib/xlsxWriter.ts` for `.xlsx`, `tableToCsv` for `.csv`). Cells keep their types (numbers stay numeric in Excel; booleans export as Yes/No), and times use the same 12-hour format as the view. In addition to the view's columns, each row includes the per-student/per-lesson fields that can vary from record to record (for example teacher and pianist emails, student IDs, site contact details). Module setup data that is not per-record, such as Jury Panel settings and individual pianists' availability, is excluded, as are internal identifiers (database ids, UUIDs).
+
+Source view per module:
+
+| Module | Source view | Table |
+|---|---|---|
+| Accompanist Scheduling | Lesson Roster (Schedule tab) | `accompanistReportTable.ts`: Day, Start, End, Teacher, Teacher Email, Student, Student ID, Room, Instrument, Needs pianist?, Jury required?, Specific pianist, Assigned pianist, Assigned pianist Email, Hours, Fit, Manually Edited, Notes |
+| Performance Jury Scheduling | Schedule tab | `juryReportTable.ts`: every Panel entry (juries and breaks) plus unscheduled lessons, with Panel, Jury Date, Start, End, Student / entry, Instrument, Instructor, Assigned Pianist, Pianist Required, Status, Reason, Explanation |
+| Clinical Placements | Schedule tab (Placements and Unplaced Students) | `clinicalReportTable.ts`: Student, Student ID, Student Email, Placement Site, Site Address, Contact Name/Email/Phone, Opportunity Label, Tags, Day, Start Time, End Time, Session Length, Travel, Placement Type, Preferred Tag Matches, Tentative Minutes, Status, Warnings, Unplaced Reason |
+| Lesson Scheduling, Tutor Scheduling (planned) | Schedule tab | Same rule: all fields of the module's Schedule tab |
+
+When a module's Schedule/Roster view gains or changes a column, its table and table test must change with it.
+
+### Saved Reports and Stale Warning
+
+A generated report persists in the active session so it reappears when the Reports tab is reopened, including after the application is closed and reopened.
+
+- Storage: the `saved_reports` table (migration v11), one row per session and module (`accompanists`, `jury`, `clinical`; future modules add their own id). It holds the Markdown, page-break headings, and export table (see above) plus an opaque `source_stamp`. API: `GET`/`PUT /api/reports/saved/{module_id}`. Generating again replaces the previous row.
+- Shared client code: `useSavedReport` (`lib/savedReport.ts`) and `StaleReportBanner`. Modules supply only a source-state function returning `{ stamp, sourceStale }` and the report builder; the backend does not interpret the stamp.
+- Staleness: a report is stale when the current stamp differs from the saved one or the module's source result is itself flagged stale. An amber warning is shown at the top of the Reports page. The stamp is read before report data is fetched, so a concurrent edit can only make a report look stale, never wrongly fresh.
+
+| Module | Stamp | Also stale when |
+|--------|-------|-----------------|
+| Accompanist Scheduling | `source_revision` from the finalization state | — |
+| Performance Jury Scheduling | current Jury result UUID | the current result is flagged stale |
+| Clinical Placement Scheduling | `schedule_revision:source_data_revision` | the schedule is flagged stale |
+
+Saved reports contain student information. They remain in the local session database, are included in `.mpsession` archives and recovery snapshots, and are never sent to a remote service.

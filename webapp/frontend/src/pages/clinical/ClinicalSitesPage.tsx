@@ -235,6 +235,8 @@ function TagManagerDialog({
   const [newName, setNewName] = useState("");
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = useState<ClinicalTag | null>(null);
+  const [confirmingUnused, setConfirmingUnused] = useState(false);
+  const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
   async function run(action: () => Promise<unknown>) {
@@ -271,6 +273,17 @@ function TagManagerDialog({
     await run(() => api.deleteClinicalTag(target.id));
   }
 
+  const unusedTags = tags.filter((tag) => tag.opportunity_count === 0 && tag.student_count === 0);
+
+  async function confirmDeleteUnused() {
+    setConfirmingUnused(false);
+    let count = 0;
+    const ok = await run(async () => {
+      count = (await api.deleteUnusedClinicalTags()).deleted_count;
+    });
+    if (ok) setNotice(`Deleted ${count} unused ${count === 1 ? "tag" : "tags"}.`);
+  }
+
   return (
     <Modal title="Manage Tags" onClose={onClose} className="clinical-wide-dialog">
       <div className="clinical-tag-manager">
@@ -288,6 +301,20 @@ function TagManagerDialog({
           Add Tag
         </button>
       </form>
+      <div className="clinical-tag-add">
+        <button
+          type="button"
+          disabled={unusedTags.length === 0}
+          onClick={() => setConfirmingUnused(true)}
+        >
+          Delete Unused Tags{unusedTags.length > 0 ? ` (${unusedTags.length})` : ""}
+        </button>
+      </div>
+      {notice && (
+        <p className="availability-success" role="status">
+          {notice}
+        </p>
+      )}
       <p className="dialog-note">Greyed-out tags are not used by any Placement Opportunity. They remain available.</p>
       <ul className="clinical-tag-list">
         {tags.length === 0 && <li className="muted">No tags yet.</li>}
@@ -341,6 +368,17 @@ function TagManagerDialog({
         </button>
       </div>
       </div>
+      {confirmingUnused && (
+        <ConfirmDialog
+          title="Delete unused tags?"
+          message={`This removes ${unusedTags.length} ${
+            unusedTags.length === 1 ? "tag" : "tags"
+          } that no Placement Opportunity or student uses.`}
+          confirmLabel="Delete Unused Tags"
+          onConfirm={() => void confirmDeleteUnused()}
+          onCancel={() => setConfirmingUnused(false)}
+        />
+      )}
       {deleting && (
         <ConfirmDialog
           title={`Delete tag "${deleting.name}"?`}
