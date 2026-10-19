@@ -1,7 +1,7 @@
 """Core best-fit assignment engine.
 
 This is a direct adaptation of the fit-scoring / assignment-loop logic from
-the original ``generate_pianist_schedule.py`` CLI tool, retargeted to work
+the original ``generate_pianist_schedule.py`` CLI tool (now deleted), retargeted to work
 against the webapp's ORM objects (``Lesson`` / ``Pianist`` / ``AvailabilitySlot``)
 instead of pandas DataFrames read from Excel. The scoring tiers, tie-break
 order, required-pianist handling, conflict prevention, and workload-cap logic

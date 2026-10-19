@@ -1,133 +1,228 @@
 # Music Program Scheduler Desktop App
 
-A local-first desktop application for university music-program scheduling.
-Accompanist Scheduling is the first module. The current React workflow,
-Tauri 2 shell, and local FastAPI/SQLite service provide the supported desktop
-workflow. Scheduling data stays in the user's local application data.
+A local-first desktop application for scheduling and resource management in university and private music programs.
 
-1. **Import** lesson data from a CSV/XLSX file with a column-mapping wizard
-   (or add lessons manually in the schedule grid).
-2. **Pianists & Availability** — add pianists with a weekly hour cap, and
-   click cells on a Monday–Friday calendar to cycle each half-hour from its
-   default Unavailable state through Available and Tentative. Import pianist
-   availability from CSV, XLSX, or XLS, review mapped ranges and validation,
-   then continue editing the same persisted slots in the grid.
-3. **Schedule** — run the same best-fit assignment algorithm as
-   `generate_pianist_schedule.py` (fit tiers, required-pianist handling,
-   conflict prevention, workload caps, tie-breaks), then manually adjust the
-   result in an editable grid. Double-bookings, unassigned students, and
-   over-cap pianists are highlighted live, and each pianist's weekly hour
-   total recalculates (using the same union-of-time-windows rule as the
-   original CLI tool) as you edit.
-4. **Reports** — generate the same Markdown schedule report as
-   `generate_lesson_markdown.py` (pianist schedules, students by
-   instructor, students by name) from the current assignments, and
-   download it.
+The current application consists of a React/Tauri desktop frontend backed by a local FastAPI and SQLite service. All scheduling data remains on the user's device.
+
+## Current Modules
+
+### Lesson Scheduling
+
+- Import instructor and student roster data from CSV/XLSX files.
+- Manage instructor availability, teaching loads, lesson lengths, and teaching tags.
+- Run automated lesson assignment and schedule optimization.
+- Minimize instructor and student gaps while respecting scheduling constraints.
+- Manually adjust assignments when needed.
+- View readiness warnings, conflicts, and scheduling diagnostics.
+
+### Clinical Placement
+
+- Import students and clinical sites.
+- Use tag-based candidate matching and placement optimization.
+- Review placement recommendations and placement status.
+- Manually override placements while preserving optimization functionality.
+
+### Shared Features
+
+- Tag-based matching and filtering.
+- Import and export using CSV and XLSX.
+- Schedule and placement reporting.
+- Local SQLite data storage.
+- Session import/export and backup recovery.
 
 ## Architecture
 
-- `backend/` — FastAPI + SQLAlchemy + SQLite. Tauri launches the existing
-   Python service as a loopback-only child process and bundles it as a local
-   executable for production. SQLite is stored in the OS per-user app-data
-   folder.
-   The scheduling algorithm is
-   ported from `generate_pianist_schedule.py` into
-   `backend/app/services/scheduling.py`, operating on database rows instead
-   of an Excel workbook. The existing `Organization` row is a legacy
-   Accompanist persistence placeholder. Each active database represents one
-   Scheduling Session; this does not introduce account or multi-tenant storage.
-- `frontend/` — Vite + React + TypeScript single-page app, packaged by Tauri
-   for Windows, macOS, and Linux.
+### Backend
+
+Location:
+
+```text
+backend/
+```
+
+Technology stack:
+
+- FastAPI
+- SQLAlchemy
+- SQLite
+- Pandas
+- OpenPyXL
+
+Responsibilities:
+
+- Scheduling and optimization engines
+- Clinical placement logic
+- Import/export processing
+- Session management
+- Report generation
+- Local database storage
+
+Tauri launches the backend as a loopback-only local service and bundles it as a standalone executable for production builds.
+
+### Frontend
+
+Location:
+
+```text
+frontend/
+```
+
+Technology stack:
+
+- React
+- TypeScript
+- Vite
+- Tauri
+
+Responsibilities:
+
+- User interface
+- Scheduling workflows
+- Clinical placement workflows
+- Data management
+- Reporting and exports
+
+The frontend is packaged as a native desktop application for Windows, macOS, and Linux using Tauri.
 
 ## Build Desktop Installers
 
-Install frontend and backend dependencies as described in
-[`docs/BUILDING.md`](../docs/BUILDING.md). From `webapp/frontend`, use
-`npm run tauri:build` for the desktop installer. Build native installers on
-their target operating systems; signing credentials are not required for
-development builds.
+Install frontend and backend dependencies as described in:
 
-Tauri development uses `npm run tauri:dev`; it starts the local Python service
-itself. `npm run dev` remains available for browser-based frontend work, with
-the backend started separately.
+```text
+../docs/BUILDING.md
+```
 
-## Running locally
+From:
+
+```bash
+webapp/frontend
+```
+
+build the desktop application:
+
+```bash
+npm run tauri:build
+```
+
+Build native installers on their target operating systems. Code signing is optional for development builds.
+
+## Development Workflow
 
 ### Backend
 
 ```bash
 cd webapp/backend
+
 python3 -m venv .venv
 source .venv/bin/activate
+
 pip install -r requirements.txt
+
 uvicorn app.main:app --reload --port 8123
 ```
 
-The API is served at `http://localhost:8123` (interactive docs at
-`/docs`). A SQLite file `pianist_scheduling.db` is created next to
-`backend/` on first run.
+The API is available at:
+
+```text
+http://localhost:8123
+```
+
+Interactive API documentation:
+
+```text
+http://localhost:8123/docs
+```
 
 ### Frontend
 
 ```bash
 cd webapp/frontend
+
 npm install
 npm run dev
 ```
 
-Open the printed local URL (default `http://localhost:5173`). The
-frontend talks to the backend at the URL in `webapp/frontend/.env`
-(`VITE_API_BASE`, defaults to `http://localhost:8123`).
+Open the URL displayed by Vite (typically `http://localhost:5173`).
 
-Use this development workflow while making changes. Vite refreshes frontend
-edits, and Uvicorn reloads backend edits. Rebuild an installer only when
-validating a release.
+The frontend communicates with the backend using the URL configured in:
 
-## Notes on the assignment algorithm
+```text
+webapp/frontend/.env
+```
 
-`backend/app/services/scheduling.py` mirrors the CLI tool's fit-scoring and
-assignment-loop logic (see that file's docstring and
-`generate_pianist_schedule.py` for the full rules). Manually reassigning a
-lesson in the UI marks it as "manually edited"; re-running the algorithm
-leaves manually edited lessons untouched but still accounts for them when
-assigning everyone else (so it won't double-book a pianist you've already
-placed by hand).
+via:
+
+```text
+VITE_API_BASE
+```
+
+### Tauri Development
+
+Run the desktop application in development mode:
+
+```bash
+npm run tauri:dev
+```
+
+Tauri automatically launches the local backend service.
 
 ## Scheduling Sessions
 
-The active session identifies one institution/program and academic term. Its
-metadata and Accompanist data are saved automatically in the local database.
-Use **Export Session** to create a portable `.mpsession` copy or **Open Session**
-to validate and restore one. Replacing the active session requires confirmation
-and first creates a local recovery archive; the application retains the three
-most recent recovery archives under its application-data directory. Session
-archives are unencrypted and may contain student educational information.
+A Scheduling Session represents a single institution, program, and academic term.
 
-## Import Pianist Availability
+Session features include:
 
-Use **Import Availability** beside the existing pianist grid. The importer
-accepts CSV, XLSX, and XLS, supports normalized one-window-per-row files and
-wide respondent rows with configurable weekday start/end columns, and lets
-you choose a workbook sheet and correct suggested column mappings. A normalized
-example is available at
-[`frontend/public/availability-template.csv`](frontend/public/availability-template.csv).
+- Automatic local persistence
+- Session export/import
+- Recovery archives
+- Session replacement protection
+- Local-only storage
 
-For a Microsoft Forms workflow, ask respondents for their name and one or more
-weekday availability ranges (start and end time). Export responses to Excel,
-select the workbook locally, map the respondent name and time columns, review
-matches/warnings/errors, then apply the ranges and correct them in the normal
-availability grid. Do not send the workbook to a Forms integration; no Forms
-or Graph API is used.
+The application automatically maintains recent recovery archives in the user's application-data directory.
 
-Pianists match by exact case-insensitive name. Unknown names and duplicate
-matches block apply; the importer does not create or merge pianist records.
-Every accepted submission completely replaces availability for each matched
-pianist; absent pianists remain unchanged. In a valid complete submission,
-blank days/times mean no availability. Incomplete mappings or malformed rows
-block the entire import rather than clearing a person's week. A wide Forms
-workbook must map every weekday's start/end columns; a respondent with all
-mapped windows blank is a valid zero-availability response. Existing manual
-edits for matched pianists are replaced, with confirmation. The app stores
-Available/Tentative windows sparsely and records weekly completeness separately;
-absent slots in a complete week are Unavailable to the Accompanist solver.
-Imported ranges must align to the existing 30-minute grid and are not rounded.
+> Session archives are unencrypted and may contain student educational information.
+
+## Reporting
+
+The application can generate reports from current scheduling and placement data, including:
+
+- Lesson schedules
+- Instructor schedules
+- Student schedules
+- Clinical placement reports
+- Administrative summaries
+
+Reports may be viewed, exported, or converted to PDF depending on the workflow.
+
+## Documentation
+
+Additional specifications and architecture documents are available in:
+
+```text
+../docs/
+```
+
+Notable documents include:
+
+- ARCHITECTURE.md
+- MODULE-ARCHITECTURE.md
+- PRODUCT-MODULE-ARCHITECTURE.md
+- LESSON-SCHEDULING-MODULE-SPEC.md
+- CLINICAL-PLACEMENT-MODULE-SPEC.md
+- SHARED-TAG-ARCHITECTURE.md
+- PRIVACY-ARCHITECTURE.md
+
+## Project Status
+
+Music Program Scheduler has evolved from its original prototype command-line scheduling tools into a unified desktop application with:
+
+- React/Tauri frontend
+- FastAPI backend
+- SQLite persistence
+- Modern import/export workflows
+- Piano accompanist scheduling module
+- Performance jury scheduling module
+- Lesson Scheduling module
+- Clinical Placement module
+
+All active functionality resides within the current webapp architecture.

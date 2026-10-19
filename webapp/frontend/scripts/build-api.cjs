@@ -35,8 +35,6 @@ const result = spawnSync(python, [
   "--clean",
   "--onefile",
   "--name", executableName,
-  "--collect-all", "pandas",
-  "--collect-all", "openpyxl",
   "desktop_server.py",
 ], { cwd: backendPath, stdio: "inherit" });
 
