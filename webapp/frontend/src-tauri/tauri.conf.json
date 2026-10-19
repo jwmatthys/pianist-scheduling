@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Music Program Scheduler",
-  "version": "0.0.0",
-  "identifier": "com.example.musicprogramscheduler",
+  "productName": "Scheduling Maestro",
+  "version": "0.0.5",
+  "identifier": "com.example.schedulingmaestro",
   "build": {
     "beforeDevCommand": "npm run build:tauri-api && npm run dev",
     "devUrl": "http://127.0.0.1:5173",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Music Program Scheduler",
+        "title": "Scheduling Maestro",
         "width": 1440,
         "height": 920,
         "minWidth": 1024,

@@ -30,7 +30,7 @@ export function DashboardPage({
   return (
     <main className="app-dashboard">
       <header className="dashboard-header">
-        <h1 ref={headingRef} tabIndex={-1}>Music Program Scheduler</h1>
+        <h1 ref={headingRef} tabIndex={-1}>Scheduling Maestro</h1>
       </header>
 
       <section className="dashboard-session" aria-labelledby="active-session-heading">
