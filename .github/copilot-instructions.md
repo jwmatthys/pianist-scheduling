@@ -1,14 +1,15 @@
-# Music Program Scheduler - Copilot Instructions
+# Scheduling Maestro - Copilot Instructions
 
 ## Product
 
-This project is a modular scheduling application for university and conservatory music programs.
+This project is a modular scheduling application for university and conservatory music programs and summer camps. It was previously known as "Accompanist Scheduler" or "Music Program Scheduler", but that name is now deprecated. The product is now called "Scheduling Maestro."
 
-The current production has a module schedules accompanists for student lessons, and uses that module's finalized results to schedule performance juries. Another module for music therapy clinical placements is implemented. Future modules for scheduling individual music lessons and tutoring sessions are planned.
+The current production has a module for scheduling accompanists for student lessons, and uses that module's finalized results to schedule performance juries. Another module for music therapy clinical placements is implemented. A music lesson scheduling module is in development, and a music tutor scheduling module is planned.
+
+The performance jury scheduling module is downstream of the accompanist scheduling module. The clinical placement scheduling module is independent of the other modules. The music lesson scheduling module and planned music tutor scheduling module are independent of the other modules
 
 Planned future modules include:
-- Music Lesson Scheduling
-- Tutor Scheduling
+- Music Tutor Scheduling
 
 Other music-program scheduling modules may be added later.
 
@@ -17,6 +18,10 @@ Do not treat this application internally as only an "Accompanist Scheduler."
 The accompanist scheduler is a module within the larger Music Program Scheduler product.
 
 One Scheduling Session represents exactly one institution/program and one academic term. “Project” is a user-facing synonym, not a separate persisted entity. Initially, only one session/database is active at a time; do not build an in-app session history library.
+
+Each module is organized around the concept of a scheduling problem, which is solved by a module-specific optimizer. Each module may have its own input data, constraints, objective functions, algorithms, workflows, and outputs. Modules may share concepts and infrastructure where appropriate.
+
+Only the jury scheduling module schedules for a specific dates; all other modules assume ongoing weekly recurring schedules. A student, instructor, accompanist, or tutor's daily availability is assumed to be the same for every week of the academic term. The jury scheduling module uses a single date for each jury panel, and the jury pianist's availability is specific to that date.
 
 ## Core Architectural Principle
 
@@ -343,8 +348,9 @@ Accompanist Scheduling owns accompanist assignments.
 Jury Scheduling must not maintain an independent editable copy of
 Accompanist-owned assignment data.
 
-The eventual Jury optimizer will combine:
+Jury optimizer combines:
 
+1. Specific jury panel availability and preferences
 1. typed finalized results from Accompanist Scheduling
 2. shared session/person information where appropriate
 3. additional Jury-specific inputs
