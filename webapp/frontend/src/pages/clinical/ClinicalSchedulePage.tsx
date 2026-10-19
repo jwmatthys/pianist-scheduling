@@ -14,7 +14,7 @@ import { ConfirmDialog } from "./ClinicalDialogs";
 const UNPLACED_REASONS: Record<string, string> = {
   NO_FEASIBLE_CANDIDATE: "No feasible opportunity",
   CAPACITY_LIMIT: "Capacity limit",
-  MANUALLY_UNPLACED: "Manually unplaced",
+  MANUALLY_UNPLACED: "Manually Unplaced",
 };
 
 const CATEGORY_TITLES: Record<ClinicalReadinessCategory, string> = {
@@ -99,10 +99,29 @@ function displayType(kind: ClinicalScheduleEntry["kind"]): string {
   if (kind === "automatic") return "Automatic";
   if (kind === "manual") return "Manual";
   if (kind === "manuallyUnplaced") return "Manually Unplaced";
-  return "Unplaced";
+  return "Unassigned";
 }
 
 const MANUALLY_UNPLACED_OPTION = "__manually_unplaced__";
+const UNASSIGNED_OPTION = "__unassigned__";
+
+// Unassigned first, then placement options, then Manually Unplaced.
+function PlacementOptions({ opportunities }: { opportunities: PlacementOpportunity[] }) {
+  return (
+    <>
+      <option value={UNASSIGNED_OPTION}>Unassigned</option>
+      <option disabled>────────────</option>
+      {opportunities.map((item) => (
+        <option key={item.id} value={item.id}>
+          {item.site_name} | {item.day_of_week.slice(0, 3)} {formatMinutes(item.start_minute)}–
+          {formatMinutes(item.end_minute)}
+        </option>
+      ))}
+      <option disabled>────────────</option>
+      <option value={MANUALLY_UNPLACED_OPTION}>Manually Unplaced</option>
+    </>
+  );
+}
 
 function PlacementRow({
   entry,
@@ -110,12 +129,14 @@ function PlacementRow({
   busy,
   onMove,
   onUnplace,
+  onUnassign,
 }: {
   entry: ClinicalScheduleEntry;
   opportunities: PlacementOpportunity[];
   busy: boolean;
   onMove: (opportunityId: string, startMinute: number) => Promise<boolean>;
   onUnplace: () => Promise<boolean>;
+  onUnassign: () => Promise<boolean>;
 }) {
   const [opportunityId, setOpportunityId] = useState(entry.opportunity_id ?? "");
   const [startTime, setStartTime] = useState(entry.start_minute === null ? "" : formatMinutes(entry.start_minute));
@@ -154,9 +175,9 @@ function PlacementRow({
           disabled={busy || saving}
           onChange={(event) => {
             const value = event.target.value;
-            if (value === MANUALLY_UNPLACED_OPTION) {
+            if (value === MANUALLY_UNPLACED_OPTION || value === UNASSIGNED_OPTION) {
               setSaving(true);
-              void onUnplace().then((ok) => {
+              void (value === UNASSIGNED_OPTION ? onUnassign() : onUnplace()).then((ok) => {
                 if (!ok) setSaving(false);
               });
               return;
@@ -168,13 +189,7 @@ function PlacementRow({
             void commit(value, nextTime);
           }}
         >
-          {opportunities.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.site_name} | {item.day_of_week.slice(0, 3)} {formatMinutes(item.start_minute)}–
-              {formatMinutes(item.end_minute)}
-            </option>
-          ))}
-          <option value={MANUALLY_UNPLACED_OPTION}>Manually unplaced</option>
+          <PlacementOptions opportunities={opportunities} />
         </select>
         <div className="muted">{entry.tags.length ? `Tags: ${entry.tags.join(", ")}` : "No tags"}</div>
       </td>
@@ -398,6 +413,7 @@ export function ClinicalSchedulePage() {
                       busy={busy}
                       onMove={(opportunityId, startMinute) => saveManual(entry.student_id, opportunityId, startMinute, true)}
                       onUnplace={() => run(() => api.markClinicalStudentManuallyUnplaced(entry.student_id))}
+                      onUnassign={() => run(() => api.removeClinicalPlacement(entry.student_id))}
                     />
                   ))}
                 </tbody>
@@ -422,28 +438,21 @@ export function ClinicalSchedulePage() {
                         <td>
                           <select
                             aria-label={`Placement Site for ${entry.student_name}`}
-                            value={entry.kind === "manuallyUnplaced" ? MANUALLY_UNPLACED_OPTION : ""}
+                            value={entry.placement_state === "manuallyUnplaced" ? MANUALLY_UNPLACED_OPTION : UNASSIGNED_OPTION}
                             disabled={busy}
                             onChange={(event) => {
                               const value = event.target.value;
                               if (value === MANUALLY_UNPLACED_OPTION) {
                                 void run(() => api.markClinicalStudentManuallyUnplaced(entry.student_id));
-                              } else if (value === "") {
-                                void run(() => api.removeClinicalPlacementOverride(entry.student_id));
+                              } else if (value === UNASSIGNED_OPTION) {
+                                void run(() => api.removeClinicalPlacement(entry.student_id));
                               } else {
                                 const option = opportunities.find((item) => item.id === value);
                                 if (option) void saveManual(entry.student_id, value, option.start_minute, false);
                               }
                             }}
                           >
-                            <option value="">Unplaced - select a site</option>
-                            {opportunities.map((item) => (
-                              <option key={item.id} value={item.id}>
-                                {item.site_name} | {item.day_of_week.slice(0, 3)} {formatMinutes(item.start_minute)}–
-                                {formatMinutes(item.end_minute)}
-                              </option>
-                            ))}
-                            <option value={MANUALLY_UNPLACED_OPTION}>Manually unplaced</option>
+                            <PlacementOptions opportunities={opportunities} />
                           </select>
                         </td>
                         <td>{UNPLACED_REASONS[entry.unplaced_reason ?? "NO_FEASIBLE_CANDIDATE"]}</td>
@@ -477,6 +486,11 @@ export function ClinicalSchedulePage() {
                 </li>
                 <li>Preferred-tag matches: {schedule.preferred_tag_matches}</li>
                 <li>Tentative minutes: {schedule.tentative_minutes}</li>
+                <li>Unassigned: {unplacedEntries.filter((entry) => entry.placement_state === "unassigned").length}</li>
+                <li>
+                  Manually Unplaced:{" "}
+                  {unplacedEntries.filter((entry) => entry.placement_state === "manuallyUnplaced").length}
+                </li>
               </ul>
             </div>
           )}

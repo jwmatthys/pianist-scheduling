@@ -1,8 +1,8 @@
-"""Lesson Scheduling persistence and module-state repository.
+"""Lesson Scheduling persistence and typed orchestration repository.
 
-Pure persistence: CRUD for instructors, students, tags, tag states, availability
-windows, and placement records, plus per-session revision/staleness state. It
-contains no candidate generation, readiness analysis, or optimizer logic.
+The repository owns roster, availability, placement, and schedule persistence,
+revision/staleness state, and orchestration over pure candidate, readiness, and
+optimizer services.
 """
 
 from __future__ import annotations
@@ -24,15 +24,46 @@ from ..lesson_models import (
     LessonModuleState,
     LessonPlacement,
     LessonPlacementType,
+    LessonSchedulePlacement,
+    LessonScheduleResult,
     LessonStudent,
     LessonStudentAvailabilityWindow,
     LessonStudentTagState,
     LessonTag,
     LessonTagState,
+    LessonUnplacedReason,
+    LessonUnplacedStudent,
     lesson_tag_identity_key,
     normalize_lesson_tag_name,
 )
-from .availability import AvailabilityWindow, normalize_day, normalize_windows
+from .availability import AvailabilityWindow, WEEKDAYS, normalize_day, normalize_windows
+from .lesson_candidates import generate_lesson_candidates
+from .lesson_scheduling_models import (
+    LessonCandidate,
+    LessonCandidateSet,
+    LessonInstructorInput,
+    LessonOptimizationResult,
+    LessonPlacementVerification,
+    LessonReadinessReport,
+    LessonSchedule,
+    LessonScheduleEntry,
+    LessonScheduleStatistics,
+    LessonScheduledPlacement,
+    LessonSchedulingInput,
+    LessonStoredAssignment,
+    LessonStoredUnplaced,
+    LessonStudentInput,
+    LessonTagInput,
+    LessonUnplacedStudentResult,
+)
+from .lesson_readiness import analyze_lesson_readiness
+from .lesson_optimizer import (
+    _gap_cost,
+    _schedulable_lesson_capacity,
+    _usable_coverage,
+    optimize_lesson_schedule,
+)
+from .lesson_placement_review import review_lesson_schedule
 
 
 class LessonValidationError(ValueError):
@@ -72,6 +103,7 @@ class StudentInput:
 class LessonStudentReplaceResult:
     students_removed: int
     placements_removed: int
+    placements_preserved: int
     students_created: int
 
 
@@ -79,6 +111,7 @@ class LessonStudentReplaceResult:
 class LessonReplaceResult:
     instructors_removed: int
     placements_removed: int
+    placements_preserved: int
     instructors_created: int
     tags_created: int
 
@@ -118,11 +151,13 @@ class LessonRepository:
             self.db.flush()
         return state
 
-    def record_source_change(self) -> LessonModuleState:
+    def record_source_change(self, *, schedule_exists: bool | None = None) -> LessonModuleState:
         """Bump the source revision; flag an existing schedule stale without altering it."""
         state = self.get_state()
         state.source_data_revision += 1
-        if self.db.query(LessonPlacement.id).first() is not None:
+        if schedule_exists is None:
+            schedule_exists = self._has_schedule_data()
+        if schedule_exists:
             state.is_schedule_stale = True
         state.modified_at = _now()
         self.db.flush()
@@ -133,6 +168,12 @@ class LessonRepository:
         state.schedule_revision += 1
         state.modified_at = _now()
         self.db.flush()
+
+    def _has_schedule_data(self) -> bool:
+        return (
+            self.db.query(LessonPlacement.id).first() is not None
+            or self.db.query(LessonScheduleResult.session_uuid).first() is not None
+        )
 
     # --- tags ---------------------------------------------------------
 
@@ -283,11 +324,8 @@ class LessonRepository:
         return instructor
 
     def delete_instructor(self, instructor_id: str) -> int:
-        """Delete an instructor and only their placements; returns the removed placement count."""
+        """Delete an instructor without deleting schedule decisions that reference it."""
         instructor = self.get_instructor(instructor_id)
-        removed = self.db.query(LessonPlacement).filter(
-            LessonPlacement.lesson_instructor_id == instructor.id
-        ).delete()
         self.db.query(LessonInstructorTag).filter(LessonInstructorTag.instructor_id == instructor.id).delete()
         self.db.query(LessonInstructorAvailabilityWindow).filter(
             LessonInstructorAvailabilityWindow.instructor_id == instructor.id
@@ -295,7 +333,7 @@ class LessonRepository:
         self.db.delete(instructor)
         self.db.flush()
         self.record_source_change()
-        return removed
+        return 0
 
     def _replace_instructor_tags(self, instructor: LessonInstructor, tag_ids: Iterable[str]) -> None:
         wanted = list(dict.fromkeys(tag_ids))
@@ -310,11 +348,7 @@ class LessonRepository:
     def replace_instructors(
         self, instructors: Iterable[tuple[InstructorInput, Sequence[AvailabilityWindow], Iterable[str]]]
     ) -> "LessonReplaceResult":
-        """Full replacement of instructors as one source-data change (caller owns the transaction).
-
-        Clears every placement, reuses tags by normalized name, creates missing tags, never
-        deletes tags, and leaves students and their availability and tag states untouched.
-        """
+        """Replace instructors without deleting schedule decisions."""
         prepared = [
             (
                 self._clean_instructor_values(
@@ -326,7 +360,8 @@ class LessonRepository:
             for values, windows, names in instructors
         ]
         instructors_removed = self.db.query(func.count(LessonInstructor.id)).scalar() or 0
-        placements_removed = self.clear_all_placements()
+        placements_removed = 0
+        placements_preserved = self.db.query(func.count(LessonPlacement.id)).scalar() or 0
         self.db.query(LessonInstructorTag).delete()
         self.db.query(LessonInstructorAvailabilityWindow).delete()
         self.db.query(LessonInstructor).delete()
@@ -356,6 +391,7 @@ class LessonRepository:
         return LessonReplaceResult(
             instructors_removed=instructors_removed,
             placements_removed=placements_removed,
+            placements_preserved=placements_preserved,
             instructors_created=len(prepared),
             tags_created=tags_created,
         )
@@ -463,21 +499,21 @@ class LessonRepository:
         name: str,
         email: str,
         exclude_id: str | None = None,
-        require_name: bool = False,
         check_unique: bool = True,
     ) -> tuple[str, str, str]:
         cleaned_id = (student_id or "").strip()
         if not cleaned_id:
             raise LessonValidationError("INVALID_STUDENT_ID", "Student ID is required.")
-        if require_name and not (name or "").strip():
-            raise LessonValidationError("INVALID_STUDENT_NAME", "Name is required.")
         if check_unique:
             query = self.db.query(LessonStudent.id).filter(func.lower(LessonStudent.student_id) == cleaned_id.lower())
             if exclude_id is not None:
                 query = query.filter(LessonStudent.id != exclude_id)
             if query.first() is not None:
                 raise LessonValidationError("DUPLICATE_STUDENT_ID", "A student with that Student ID already exists.")
-        return cleaned_id, (name or "").strip(), (email or "").strip()
+        cleaned_name = " ".join((name or "").split())
+        if not cleaned_name:
+            raise LessonValidationError("INVALID_STUDENT_NAME", "Name is required.")
+        return cleaned_id, cleaned_name, (email or "").strip()
 
     def create_student(
         self,
@@ -485,11 +521,10 @@ class LessonRepository:
         name: str = "",
         email: str = "",
         availability: Sequence[AvailabilityWindow] = (),
-        require_name: bool = False,
         tag_states: Mapping[str, LessonTagState | str] | None = None,
     ) -> LessonStudent:
         cleaned_id, cleaned_name, cleaned_email = self._clean_student_values(
-            student_id, name, email, require_name=require_name
+            student_id, name, email
         )
         validated_states = self._validated_tag_states(tag_states or {})
         student = LessonStudent(student_id=cleaned_id, name=cleaned_name, email=cleaned_email)
@@ -512,13 +547,12 @@ class LessonRepository:
         student_id: str,
         name: str,
         email: str = "",
-        require_name: bool = False,
         tag_states: Mapping[str, LessonTagState | str] | None = None,
     ) -> LessonStudent:
         """Update fields (and, when given, the full tag-state set) as one source-data change."""
         student = self.get_student(lesson_student_id)
         cleaned = self._clean_student_values(
-            student_id, name, email, exclude_id=student.id, require_name=require_name
+            student_id, name, email, exclude_id=student.id
         )
         validated_states = self._validated_tag_states(tag_states) if tag_states is not None else None
         student.student_id, student.name, student.email = cleaned
@@ -531,7 +565,6 @@ class LessonRepository:
 
     def delete_student(self, lesson_student_id: str) -> None:
         student = self.get_student(lesson_student_id)
-        self.db.query(LessonPlacement).filter(LessonPlacement.lesson_student_id == student.id).delete()
         self.db.query(LessonStudentTagState).filter(LessonStudentTagState.student_id == student.id).delete()
         self.db.query(LessonStudentAvailabilityWindow).filter(
             LessonStudentAvailabilityWindow.lesson_student_id == student.id
@@ -548,6 +581,547 @@ class LessonRepository:
         for row in self.db.query(LessonStudentTagState).all():
             states.setdefault(row.student_id, {})[row.tag_id] = LessonTagState(row.state)
         return states
+
+    def get_scheduling_input(self) -> LessonSchedulingInput:
+        """Return a typed Lesson scheduling snapshot at the current source revision."""
+        source_data_revision = self.get_state().source_data_revision
+        instructors = self.list_instructors()
+        students = self.list_students()
+
+        instructor_ids = [item.id for item in instructors]
+        student_ids = [item.id for item in students]
+        instructor_windows: dict[str, list[AvailabilityWindow]] = {key: [] for key in instructor_ids}
+        student_windows: dict[str, list[AvailabilityWindow]] = {key: [] for key in student_ids}
+        instructor_tags: dict[str, set[str]] = {key: set() for key in instructor_ids}
+        student_states: dict[str, list[tuple[str, LessonTagState]]] = {key: [] for key in student_ids}
+
+        for row in (
+            self.db.query(LessonInstructorAvailabilityWindow)
+            .order_by(LessonInstructorAvailabilityWindow.day, LessonInstructorAvailabilityWindow.start_minute)
+            .all()
+        ):
+            if row.instructor_id in instructor_windows:
+                instructor_windows[row.instructor_id].append(_window(row))
+        for row in (
+            self.db.query(LessonStudentAvailabilityWindow)
+            .order_by(LessonStudentAvailabilityWindow.day, LessonStudentAvailabilityWindow.start_minute)
+            .all()
+        ):
+            if row.lesson_student_id in student_windows:
+                student_windows[row.lesson_student_id].append(_window(row))
+        for row in self.db.query(LessonInstructorTag).all():
+            if row.instructor_id in instructor_tags:
+                instructor_tags[row.instructor_id].add(row.tag_id)
+        for row in self.db.query(LessonStudentTagState).all():
+            if row.student_id in student_states:
+                student_states[row.student_id].append((row.tag_id, LessonTagState(row.state)))
+
+        return LessonSchedulingInput(
+            source_data_revision=source_data_revision,
+            students=tuple(
+                LessonStudentInput(
+                    id=student.id,
+                    name=student.name,
+                    availability=tuple(student_windows[student.id]),
+                    tag_states=tuple(sorted(student_states[student.id])),
+                )
+                for student in students
+            ),
+            instructors=tuple(
+                LessonInstructorInput(
+                    id=instructor.id,
+                    name=instructor.name,
+                    lesson_length_minutes=instructor.lesson_length_minutes,
+                    capacity=instructor.capacity,
+                    tag_ids=frozenset(instructor_tags[instructor.id]),
+                    availability=tuple(instructor_windows[instructor.id]),
+                )
+                for instructor in instructors
+            ),
+            tags=tuple(
+                LessonTagInput(id=tag.id, name=tag.name)
+                for tag in self.list_tags()
+            ),
+        )
+
+    def generate_candidate_set(self) -> LessonCandidateSet:
+        """Generate Lesson candidates from the current typed snapshot."""
+        return generate_lesson_candidates(self.get_scheduling_input())
+
+    def get_readiness_report(self) -> LessonReadinessReport:
+        """Orchestrate a revision-consistent snapshot, candidate set, and readiness analysis."""
+        scheduling_input = self.get_scheduling_input()
+        candidate_set = generate_lesson_candidates(scheduling_input)
+        return analyze_lesson_readiness(scheduling_input, candidate_set)
+
+    def _stored_assignments(
+        self, scheduling_input: LessonSchedulingInput
+    ) -> tuple[LessonStoredAssignment, ...]:
+        students = {item.id: item for item in scheduling_input.students}
+        instructors = {item.id: item for item in scheduling_input.instructors}
+        previous = {
+            item.student_id: item
+            for item in self.db.query(LessonSchedulePlacement).all()
+        }
+        assignments: list[LessonStoredAssignment] = []
+        for row in self.list_placements():
+            if row.placement_type == LessonPlacementType.MANUALLY_UNPLACED.value:
+                continue
+            if row.lesson_instructor_id is None or row.start_minute is None:
+                continue
+            prior = previous.get(row.lesson_student_id)
+            instructor = instructors.get(row.lesson_instructor_id)
+            student = students.get(row.lesson_student_id)
+            end_minute = row.end_minute or (
+                prior.end_minute if prior is not None
+                else row.start_minute + (
+                    instructor.lesson_length_minutes if instructor is not None
+                    else DEFAULT_LESSON_LENGTH_MINUTES
+                )
+            )
+            preferred, tentative = self._placement_metrics(
+                student, instructor, row.day, row.start_minute, end_minute
+            ) if student is not None and instructor is not None else (
+                prior.preferred_tag_match_count if prior is not None else 0,
+                prior.tentative_minutes if prior is not None else 0,
+            )
+            assignments.append(LessonStoredAssignment(
+                student_id=row.lesson_student_id,
+                placement_type=row.placement_type,
+                instructor_id=row.lesson_instructor_id,
+                instructor_name=instructor.name if instructor is not None else (
+                    prior.instructor_name if prior is not None else row.lesson_instructor_id
+                ),
+                student_name=student.name if student is not None else (
+                    prior.student_name if prior is not None else row.lesson_student_id
+                ),
+                day=row.day,
+                start_minute=row.start_minute,
+                end_minute=end_minute,
+                preferred_tag_match_count=preferred,
+                tentative_minutes=tentative,
+            ))
+        return tuple(assignments)
+
+    @staticmethod
+    def _placement_metrics(student, instructor, day: str, start: int, end: int) -> tuple[int, int]:
+        states = dict(student.tag_states)
+        preferred = sum(
+            state is LessonTagState.PREFERRED and tag_id in instructor.tag_ids
+            for tag_id, state in states.items()
+        )
+        student_tentative = sum(
+            max(0, min(end, window.end_minute) - max(start, window.start_minute))
+            for window in student.availability
+            if window.day == day and window.status == "Tentative"
+        )
+        instructor_tentative = sum(
+            max(0, min(end, window.end_minute) - max(start, window.start_minute))
+            for window in instructor.availability
+            if window.day == day and window.status == "Tentative"
+        )
+        return preferred, student_tentative + instructor_tentative
+
+    def _stored_unplaced(self) -> tuple[LessonStoredUnplaced, ...]:
+        students = {item.id: item.name for item in self.list_students()}
+        decisions = {
+            item.lesson_student_id: item for item in self.list_placements()
+            if item.placement_type == LessonPlacementType.MANUALLY_UNPLACED.value
+        }
+        stored = {
+            item.student_id: item for item in self.db.query(LessonUnplacedStudent).all()
+        }
+        for student_id, row in decisions.items():
+            snapshot = stored.get(student_id)
+            stored[student_id] = LessonUnplacedStudent(
+                student_id=student_id,
+                student_name=students.get(student_id, snapshot.student_name if snapshot else student_id),
+                reason=LessonUnplacedReason.MANUALLY_UNPLACED.value,
+                placement_type=LessonPlacementType.MANUALLY_UNPLACED.value,
+            )
+        return tuple(
+            LessonStoredUnplaced(
+                student_id=row.student_id,
+                student_name=students.get(row.student_id, row.student_name or row.student_id),
+                placement_type=row.placement_type,
+                reason=row.reason,
+            )
+            for row in stored.values()
+        )
+
+    def _schedule_review(
+        self, scheduling_input: LessonSchedulingInput | None = None
+    ) -> tuple[
+        LessonSchedulingInput,
+        tuple[LessonStoredAssignment, ...],
+        tuple[LessonStoredUnplaced, ...],
+        tuple[LessonScheduleEntry, ...],
+        tuple[LessonPlacementVerification, ...],
+    ]:
+        scheduling_input = scheduling_input or self.get_scheduling_input()
+        candidates = generate_lesson_candidates(scheduling_input)
+        assignments = self._stored_assignments(scheduling_input)
+        unplaced = self._stored_unplaced()
+        entries, verification = review_lesson_schedule(
+            scheduling_input, candidates, assignments, unplaced
+        )
+        return scheduling_input, assignments, unplaced, entries, verification
+
+    def _schedule_statistics(
+        self,
+        scheduling_input: LessonSchedulingInput,
+        assignments: Sequence[LessonStoredAssignment],
+        entries: Sequence[LessonScheduleEntry],
+    ) -> LessonScheduleStatistics:
+        instructor_by_id = {item.id: item for item in scheduling_input.instructors}
+        capacities = {
+            item.id: _schedulable_lesson_capacity(item)
+            for item in scheduling_input.instructors
+        }
+        candidate_rows = []
+        for item in assignments:
+            instructor = instructor_by_id.get(item.instructor_id)
+            if instructor is None or item.day not in WEEKDAYS:
+                continue
+            candidate_rows.append(LessonCandidate(
+                student_id=item.student_id,
+                instructor_id=item.instructor_id,
+                day=item.day,
+                lesson_start_minute=item.start_minute,
+                lesson_end_minute=item.end_minute,
+                preferred_tag_match_count=item.preferred_tag_match_count,
+                tentative_minutes=item.tentative_minutes,
+                issues=(),
+                is_feasible=True,
+                instructor_capacity=instructor.capacity,
+            ))
+        coverage = {
+            item.id: _usable_coverage(item.availability)
+            for item in scheduling_input.instructors
+        }
+        placed_count = len(assignments)
+        return LessonScheduleStatistics(
+            students_scheduled=placed_count,
+            students_unscheduled=max(0, len(entries) - placed_count),
+            instructor_utilization=placed_count / sum(capacities.values()) if sum(capacities.values()) else 0.0,
+            preferred_tag_matches=sum(item.preferred_tag_match_count for item in assignments),
+            tentative_minutes=sum(item.tentative_minutes for item in assignments),
+            gap_cost_minutes=_gap_cost(candidate_rows, coverage),
+        )
+
+    def _refresh_schedule_snapshots(
+        self,
+        scheduling_input: LessonSchedulingInput,
+        *,
+        automatic_unplaced: Sequence[LessonUnplacedStudentResult] | None = None,
+    ) -> tuple[LessonStoredAssignment, ...]:
+        old_assignments = {
+            item.student_id: item for item in self.db.query(LessonSchedulePlacement).all()
+        }
+        old_unplaced = {
+            item.student_id: item for item in self.db.query(LessonUnplacedStudent).all()
+        }
+        students = {item.id: item for item in scheduling_input.students}
+        instructors = {item.id: item for item in scheduling_input.instructors}
+        rows: list[LessonStoredAssignment] = []
+        self.db.query(LessonSchedulePlacement).delete()
+        for decision in self.list_placements():
+            if decision.placement_type == LessonPlacementType.MANUALLY_UNPLACED.value:
+                continue
+            if decision.lesson_instructor_id is None or decision.start_minute is None:
+                continue
+            old = old_assignments.get(decision.lesson_student_id)
+            student = students.get(decision.lesson_student_id)
+            instructor = instructors.get(decision.lesson_instructor_id)
+            end_minute = decision.end_minute or (
+                old.end_minute if old else decision.start_minute + (
+                    instructor.lesson_length_minutes if instructor else DEFAULT_LESSON_LENGTH_MINUTES
+                )
+            )
+            preferred, tentative = self._placement_metrics(
+                student, instructor, decision.day, decision.start_minute, end_minute
+            ) if student is not None and instructor is not None else (
+                old.preferred_tag_match_count if old else 0,
+                old.tentative_minutes if old else 0,
+            )
+            item = LessonStoredAssignment(
+                student_id=decision.lesson_student_id,
+                placement_type=decision.placement_type,
+                instructor_id=decision.lesson_instructor_id,
+                instructor_name=instructor.name if instructor else (
+                    old.instructor_name if old else decision.lesson_instructor_id
+                ),
+                student_name=student.name if student else (
+                    old.student_name if old else decision.lesson_student_id
+                ),
+                day=decision.day,
+                start_minute=decision.start_minute,
+                end_minute=end_minute,
+                preferred_tag_match_count=preferred,
+                tentative_minutes=tentative,
+            )
+            rows.append(item)
+            self.db.add(LessonSchedulePlacement(
+                student_id=item.student_id,
+                instructor_id=item.instructor_id,
+                placement_type=item.placement_type,
+                student_name=item.student_name,
+                instructor_name=item.instructor_name,
+                day=item.day,
+                start_minute=item.start_minute,
+                end_minute=item.end_minute,
+                preferred_tag_match_count=item.preferred_tag_match_count,
+                tentative_minutes=item.tentative_minutes,
+            ))
+
+        automatic_unplaced_ids: set[str] = set()
+        if automatic_unplaced is not None:
+            self.db.query(LessonUnplacedStudent).filter(
+                LessonUnplacedStudent.placement_type == LessonPlacementType.AUTOMATIC.value
+            ).delete()
+            for item in automatic_unplaced:
+                student = students.get(item.student_id)
+                automatic_unplaced_ids.add(item.student_id)
+                self.db.add(LessonUnplacedStudent(
+                    student_id=item.student_id,
+                    student_name=student.name if student else (
+                        old_unplaced[item.student_id].student_name
+                        if item.student_id in old_unplaced else item.student_id
+                    ),
+                    reason=item.reason.value,
+                    placement_type=LessonPlacementType.AUTOMATIC.value,
+                ))
+
+        assigned_ids = {item.student_id for item in rows}
+        manual_unplaced_ids = {
+            item.lesson_student_id for item in self.list_placements()
+            if item.placement_type == LessonPlacementType.MANUALLY_UNPLACED.value
+        }
+        self.db.query(LessonUnplacedStudent).filter(
+            LessonUnplacedStudent.placement_type == LessonPlacementType.MANUALLY_UNPLACED.value
+        ).delete()
+        if manual_unplaced_ids:
+            # An earlier automatic unplaced row for the same student must be replaced.
+            self.db.query(LessonUnplacedStudent).filter(
+                LessonUnplacedStudent.student_id.in_(manual_unplaced_ids)
+            ).delete(synchronize_session=False)
+        for student_id in manual_unplaced_ids:
+            previous = old_unplaced.get(student_id)
+            student = students.get(student_id)
+            self.db.add(LessonUnplacedStudent(
+                student_id=student_id,
+                student_name=student.name if student else (previous.student_name if previous else student_id),
+                reason=LessonUnplacedReason.MANUALLY_UNPLACED.value,
+                placement_type=LessonPlacementType.MANUALLY_UNPLACED.value,
+            ))
+        if automatic_unplaced is not None:
+            decisions = {item.lesson_student_id for item in self.list_placements()}
+            for student in scheduling_input.students:
+                if (
+                    student.id not in assigned_ids
+                    and student.id not in manual_unplaced_ids
+                    and student.id not in decisions
+                    and student.id not in automatic_unplaced_ids
+                ):
+                    self.db.add(LessonUnplacedStudent(
+                        student_id=student.id,
+                        student_name=student.name,
+                        reason=LessonUnplacedReason.NO_FEASIBLE_CANDIDATE.value,
+                        placement_type=LessonPlacementType.AUTOMATIC.value,
+                    ))
+        self.db.flush()
+        return tuple(rows)
+
+    def generate_schedule(self) -> LessonSchedule:
+        """Replace automatic assignments while preserving manual decisions."""
+        scheduling_input = self.get_scheduling_input()
+        candidate_set = generate_lesson_candidates(scheduling_input)
+        readiness = analyze_lesson_readiness(scheduling_input, candidate_set)
+        if not readiness.is_ready:
+            raise LessonValidationError(
+                "NOT_READY", "Lesson Scheduling inputs are not ready for schedule generation."
+            )
+
+        decisions = self.list_placements()
+        manual_ids = {
+            item.lesson_student_id for item in decisions
+            if item.placement_type in {
+                LessonPlacementType.MANUAL.value,
+                LessonPlacementType.MANUALLY_UNPLACED.value,
+            }
+        }
+        fixed = tuple(
+            item for item in self._stored_assignments(scheduling_input)
+            if item.placement_type == LessonPlacementType.MANUAL.value
+        )
+        manually_unplaced_ids = frozenset(
+            item.lesson_student_id for item in decisions
+            if item.placement_type == LessonPlacementType.MANUALLY_UNPLACED.value
+        )
+        optimized = optimize_lesson_schedule(
+            scheduling_input,
+            candidate_set,
+            fixed_placements=tuple(
+                LessonScheduledPlacement(
+                    student_id=item.student_id,
+                    instructor_id=item.instructor_id,
+                    day=item.day,
+                    start_minute=item.start_minute,
+                    end_minute=item.end_minute,
+                    preferred_tag_match_count=item.preferred_tag_match_count,
+                    tentative_minutes=item.tentative_minutes,
+                )
+                for item in fixed
+            ),
+            excluded_student_ids=manually_unplaced_ids,
+        )
+        session_uuid = self._session_uuid()
+        state = self.get_state()
+        self.db.query(LessonPlacement).filter(
+            LessonPlacement.placement_type == LessonPlacementType.AUTOMATIC.value
+        ).delete()
+        for placement in optimized.placements:
+            if placement.student_id in manual_ids:
+                continue
+            self.db.add(LessonPlacement(
+                lesson_student_id=placement.student_id,
+                lesson_instructor_id=placement.instructor_id,
+                day=placement.day,
+                start_minute=placement.start_minute,
+                end_minute=placement.end_minute,
+                placement_type=LessonPlacementType.AUTOMATIC.value,
+                created_at=_now(),
+                updated_at=_now(),
+            ))
+        assignment_rows = self._refresh_schedule_snapshots(
+            scheduling_input, automatic_unplaced=optimized.unplaced_students
+        )
+        _, _, _, entries, _ = self._schedule_review(scheduling_input)
+        statistics = self._schedule_statistics(scheduling_input, assignment_rows, entries)
+        optimized = LessonOptimizationResult(
+            source_data_revision=optimized.source_data_revision,
+            placements=optimized.placements,
+            unplaced_students=optimized.unplaced_students,
+            statistics=statistics,
+        )
+        self._save_schedule_result(optimized, state.schedule_revision + 1, session_uuid)
+        state.schedule_revision += 1
+        state.is_schedule_stale = False
+        state.modified_at = _now()
+        self.db.flush()
+        return self.get_schedule()
+
+    def _save_schedule_result(
+        self, result: LessonOptimizationResult, schedule_revision: int, session_uuid: str
+    ) -> None:
+        stats = result.statistics
+        row = self.db.get(LessonScheduleResult, session_uuid)
+        if row is None:
+            row = LessonScheduleResult(session_uuid=session_uuid)
+            self.db.add(row)
+        row.schedule_revision = schedule_revision
+        row.source_data_revision = result.source_data_revision
+        row.students_scheduled = stats.students_scheduled
+        row.students_unscheduled = stats.students_unscheduled
+        row.instructor_utilization = stats.instructor_utilization
+        row.preferred_tag_matches = stats.preferred_tag_matches
+        row.tentative_minutes = stats.tentative_minutes
+        row.gap_cost_minutes = stats.gap_cost_minutes
+        row.modified_at = _now()
+
+    def get_schedule(self) -> LessonSchedule:
+        """Retrieve assignments, status, verification, and summary from current snapshots."""
+        state = self.get_state()
+        result = self.db.get(LessonScheduleResult, self._session_uuid())
+        scheduling_input, assignments, _, entries, verification = self._schedule_review()
+        placements = tuple(
+            LessonScheduledPlacement(
+                student_id=item.student_id,
+                instructor_id=item.instructor_id,
+                day=item.day,
+                start_minute=item.start_minute,
+                end_minute=item.end_minute,
+                preferred_tag_match_count=item.preferred_tag_match_count,
+                tentative_minutes=item.tentative_minutes,
+            )
+            for item in assignments
+        )
+        unplaced_students = tuple(
+            LessonUnplacedStudentResult(
+                student_id=item.student_id,
+                reason=LessonUnplacedReason(item.reason),
+            )
+            for item in self._stored_unplaced()
+        )
+        has_schedule = (
+            result is not None
+            or bool(self.list_placements())
+            or bool(self.db.query(LessonUnplacedStudent.student_id).first())
+        )
+        statistics = (
+            self._schedule_statistics(scheduling_input, assignments, entries)
+            if has_schedule else LessonScheduleStatistics(0, 0, 0.0, 0, 0, 0)
+        )
+        source_data_revision = (
+            result.source_data_revision if result is not None else state.source_data_revision
+        )
+        verification_count = sum(item.verified is False for item in entries)
+        return LessonSchedule(
+            schedule_revision=result.schedule_revision if result is not None else state.schedule_revision,
+            source_data_revision=source_data_revision,
+            is_schedule_stale=(
+                state.is_schedule_stale
+                or source_data_revision != state.source_data_revision
+            ),
+            has_schedule=has_schedule,
+            placements=placements,
+            unplaced_students=unplaced_students,
+            statistics=statistics,
+            entries=entries,
+            verification=verification,
+            automatic_count=sum(item.placement_type == LessonPlacementType.AUTOMATIC.value for item in entries),
+            manual_count=sum(item.placement_type == LessonPlacementType.MANUAL.value for item in entries),
+            manually_unplaced_count=sum(
+                item.placement_type == LessonPlacementType.MANUALLY_UNPLACED.value for item in entries
+            ),
+            verified_count=sum(item.verified is True for item in entries),
+            unverified_count=verification_count,
+        )
+
+    def clear_schedule(self) -> LessonSchedule:
+        """Clear automatic assignments while retaining manual decisions and their state."""
+        session_uuid = self._session_uuid()
+        self.db.query(LessonPlacement).filter(
+            LessonPlacement.placement_type == LessonPlacementType.AUTOMATIC.value
+        ).delete()
+        self.db.query(LessonUnplacedStudent).filter(
+            LessonUnplacedStudent.placement_type == LessonPlacementType.AUTOMATIC.value
+        ).delete()
+        state = self.get_state()
+        state.schedule_revision += 1
+        state.modified_at = _now()
+        assignments = self._refresh_schedule_snapshots(self.get_scheduling_input())
+        if assignments or self.db.query(LessonUnplacedStudent.student_id).first() is not None:
+            scheduling_input, _, _, entries, _ = self._schedule_review()
+            stats = self._schedule_statistics(scheduling_input, assignments, entries)
+            result = LessonOptimizationResult(
+                source_data_revision=(
+                    self.db.get(LessonScheduleResult, session_uuid).source_data_revision
+                    if self.db.get(LessonScheduleResult, session_uuid) is not None
+                    else state.source_data_revision
+                ),
+                placements=(),
+                unplaced_students=(),
+                statistics=stats,
+            )
+            self._save_schedule_result(result, state.schedule_revision, session_uuid)
+        else:
+            self.db.query(LessonScheduleResult).filter(
+                LessonScheduleResult.session_uuid == session_uuid
+            ).delete()
+            state.is_schedule_stale = False
+        self.db.flush()
+        return self.get_schedule()
 
     def set_tag_state(self, lesson_student_id: str, tag_id: str, state: LessonTagState) -> None:
         """Persist a student/tag state; Neutral is represented by the absence of a row."""
@@ -609,22 +1183,23 @@ class LessonRepository:
     ) -> LessonStudentReplaceResult:
         """Full replacement of students as one source-data change (caller owns the transaction).
 
-        Clears every placement, student availability, and student tag state. Instructors,
-        instructor availability, and the tag registry are untouched.
+        Existing placement decisions are retained and the resulting schedule becomes stale.
+        Student availability and tag state are replaced; instructors and the tag registry remain.
         """
         prepared: list[tuple[tuple[str, str, str], list[AvailabilityWindow]]] = []
         seen: set[str] = set()
         for values, windows in students:
             # Existing students are about to be replaced, so only uniqueness within the batch matters.
             cleaned = self._clean_student_values(
-                values.student_id, values.name, values.email, require_name=True, check_unique=False
+                values.student_id, values.name, values.email, check_unique=False
             )
             if cleaned[0].casefold() in seen:
                 raise LessonValidationError("DUPLICATE_STUDENT_ID", "A student with that Student ID already exists.")
             seen.add(cleaned[0].casefold())
             prepared.append((cleaned, self._validated_windows(windows)))
         students_removed = self.db.query(func.count(LessonStudent.id)).scalar() or 0
-        placements_removed = self.clear_all_placements()
+        placements_removed = 0
+        placements_preserved = self.db.query(func.count(LessonPlacement.id)).scalar() or 0
         self.db.query(LessonStudentTagState).delete()
         self.db.query(LessonStudentAvailabilityWindow).delete()
         self.db.query(LessonStudent).delete()
@@ -638,6 +1213,7 @@ class LessonRepository:
         return LessonStudentReplaceResult(
             students_removed=students_removed,
             placements_removed=placements_removed,
+            placements_preserved=placements_preserved,
             students_created=len(prepared),
         )
 
@@ -653,8 +1229,9 @@ class LessonRepository:
         placement_type: LessonPlacementType,
         lesson_instructor_id: str | None = None,
         start_minute: int | None = None,
+        day: str = "Monday",
     ) -> LessonPlacement:
-        """Create or replace the student's single placement decision (persistence only)."""
+        """Create or replace the student's single placement decision."""
         self.get_student(lesson_student_id)
         try:
             placement_type = LessonPlacementType(placement_type)
@@ -665,23 +1242,51 @@ class LessonRepository:
                 raise LessonValidationError(
                     "INVALID_PLACEMENT", "A manually unplaced decision has no instructor or start time."
                 )
+            end_minute = None
+            day = "Monday"
         else:
             if lesson_instructor_id is None or start_minute is None:
                 raise LessonValidationError("INVALID_PLACEMENT", "A placement requires an instructor and a start time.")
             if not _is_int(start_minute) or not 0 <= start_minute < 24 * 60:
                 raise LessonValidationError("INVALID_PLACEMENT", "The start time is not a valid time of day.")
-            self.get_instructor(lesson_instructor_id)
+            normalized_day = normalize_day(day)
+            if normalized_day is None:
+                raise LessonValidationError("INVALID_PLACEMENT", "Choose a valid day of the week.")
+            day = normalized_day
+            instructor = self.get_instructor(lesson_instructor_id)
+            end_minute = start_minute + instructor.lesson_length_minutes
+            if end_minute > 24 * 60:
+                raise LessonValidationError(
+                    "INVALID_PLACEMENT", "The lesson must end before the end of the day."
+                )
         placement = self.get_placement(lesson_student_id)
         if placement is None:
             placement = LessonPlacement(lesson_student_id=lesson_student_id)
             self.db.add(placement)
         placement.placement_type = placement_type.value
         placement.lesson_instructor_id = lesson_instructor_id
+        placement.day = day
         placement.start_minute = start_minute
+        placement.end_minute = end_minute
         placement.updated_at = _now()
         self.db.flush()
         self._record_schedule_edit()
+        self._persist_schedule_after_edit()
         return placement
+
+    def set_manual_placement(
+        self, lesson_student_id: str, instructor_id: str, day: str, start_minute: int
+    ) -> LessonPlacement:
+        return self.set_placement(
+            lesson_student_id,
+            LessonPlacementType.MANUAL,
+            instructor_id,
+            start_minute,
+            day,
+        )
+
+    def set_manually_unplaced(self, lesson_student_id: str) -> LessonPlacement:
+        return self.set_placement(lesson_student_id, LessonPlacementType.MANUALLY_UNPLACED)
 
     def get_placement(self, lesson_student_id: str) -> LessonPlacement | None:
         return (
@@ -698,13 +1303,66 @@ class LessonRepository:
         if placement is None:
             raise LessonValidationError("PLACEMENT_NOT_FOUND", "The student has no placement decision to remove.")
         self.db.delete(placement)
+        self.db.query(LessonUnplacedStudent).filter(
+            LessonUnplacedStudent.student_id == lesson_student_id,
+            LessonUnplacedStudent.placement_type == placement.placement_type,
+        ).delete()
         self.db.flush()
         self._record_schedule_edit()
+        self._persist_schedule_after_edit()
         return True
+
+    def remove_manual_override(self, lesson_student_id: str) -> bool:
+        placement = self.get_placement(lesson_student_id)
+        if placement is None or placement.placement_type == LessonPlacementType.AUTOMATIC.value:
+            raise LessonValidationError(
+                "NO_MANUAL_OVERRIDE", "The student does not have a manual placement override to remove."
+            )
+        return self.remove_placement(lesson_student_id)
+
+    def _persist_schedule_after_edit(self) -> None:
+        scheduling_input = self.get_scheduling_input()
+        existing_result = self.db.get(LessonScheduleResult, self._session_uuid())
+        assignments = self._refresh_schedule_snapshots(scheduling_input)
+        _, _, _, entries, _ = self._schedule_review(scheduling_input)
+        if not self.list_placements() and not self.db.query(LessonUnplacedStudent.student_id).first():
+            if existing_result is not None:
+                self.db.delete(existing_result)
+            return
+        statistics = self._schedule_statistics(scheduling_input, assignments, entries)
+        result = LessonOptimizationResult(
+            source_data_revision=(
+                existing_result.source_data_revision
+                if existing_result is not None else scheduling_input.source_data_revision
+            ),
+            placements=tuple(
+                LessonScheduledPlacement(
+                    student_id=item.student_id,
+                    instructor_id=item.instructor_id,
+                    day=item.day,
+                    start_minute=item.start_minute,
+                    end_minute=item.end_minute,
+                    preferred_tag_match_count=item.preferred_tag_match_count,
+                    tentative_minutes=item.tentative_minutes,
+                )
+                for item in assignments
+            ),
+            unplaced_students=(),
+            statistics=statistics,
+        )
+        state = self.get_state()
+        self._save_schedule_result(result, state.schedule_revision, self._session_uuid())
+        state.is_schedule_stale = (
+            state.is_schedule_stale
+            or result.source_data_revision != state.source_data_revision
+        )
 
     def clear_all_placements(self) -> int:
         """Delete every placement decision and reset result/staleness state."""
         removed = self.db.query(LessonPlacement).delete()
+        self.db.query(LessonSchedulePlacement).delete()
+        self.db.query(LessonUnplacedStudent).delete()
+        self.db.query(LessonScheduleResult).delete()
         state = self.get_state()
         state.schedule_revision = 0
         state.is_schedule_stale = False

@@ -53,7 +53,7 @@ export function buildClinicalReportTable(
         entry.start_minute === null ? "" : formatMinutes(entry.start_minute),
         end === null ? "" : `${formatMinutes(end % 1440)}${end >= 1440 ? ` (+${Math.floor(end / 1440)} day)` : ""}`,
         opportunity?.session_length_minutes ?? null, opportunity?.travel_minutes ?? null,
-        PLACEMENT_TYPES[entry.kind ?? ""] ?? "Unplaced",
+        PLACEMENT_TYPES[entry.kind ?? ""] ?? "Unassigned",
         placed ? entry.preferred_tag_match_count : null, entry.tentative_minutes,
         placed ? status(entry) : "",
         entry.warnings.map((warning) => warning.message).join("; "),

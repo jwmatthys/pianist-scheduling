@@ -79,16 +79,33 @@ Each optimizer remains module-specific. A common time-window/conflict primitive 
 - `SchedulingSession` and `AcademicTerm` metadata.
 - Stable basic identity for people who recur across workflows (students, faculty, pianists), without putting module records into a universal person row. The authoritative internal Person id is an application-generated UUID; institutional id and email are optional attributes, not required keys.
 - Minimal location/resource identity where multiple modules actually refer to the same place/person.
+- Shared tag infrastructure for Tag identity, normalization, assignment mechanics, explicit import/export parsing, validation primitives, filtering, and reporting support. As with `AvailabilityWindow`, sharing the mechanism does not share meaning or policy. Tags use `(module_id, tag_uuid)` identity; catalogs, meanings, assignment states, validation policy, optimizer behavior, workflow behavior, and reporting semantics remain module-owned. Identical names in different module catalogs are unrelated; there is no global catalog, taxonomy, or cross-module tag dependency. See [SHARED-TAG-ARCHITECTURE.md](SHARED-TAG-ARCHITECTURE.md).
 - Time values, recurring/date-specific windows, import batches, mapping profiles, structured validation issues, file/session operations, report rendering primitives, and finalized-result envelopes.
 
 ### Keep module-specific
 
 - Accompanist lesson rows, instruments, pianist requirements, lesson-level Jury Required, workload caps, fit tiers, overlap eligibility, manual locks, schedule consolidation, and assignment scoring.
-- Clinical-owned student profiles and recurring Availability Windows; Required, Preferred, and Restricted student tag states; Clinical Tags; Placement Opportunities and total automatic-assignment capacity; travel/session feasibility; manual placement and Manually unplaced decisions; and Clinical-specific validation, optimization, placement results, and reports. The complete approved domain and optimizer contract is maintained in [CLINICAL-PLACEMENT-MODULE-SPEC.md](CLINICAL-PLACEMENT-MODULE-SPEC.md); do not add unspecified placement-history, transport/car-access, equity-scoring, or population/service-capability policies.
+- Clinical-owned student profiles and recurring Availability Windows; its own tag catalog and Required, Preferred, and Restricted student-tag assignment semantics; Placement Opportunities and total automatic-assignment capacity; travel/session feasibility; manual placement and Manually unplaced decisions; and Clinical-specific validation, optimization, placement results, and reports. Required/Preferred/Restricted are not global tag states. The complete approved domain and optimizer contract is maintained in [CLINICAL-PLACEMENT-MODULE-SPEC.md](CLINICAL-PLACEMENT-MODULE-SPEC.md); do not add unspecified placement-history, transport/car-access, equity-scoring, or population/service-capability policies.
+- Lesson Scheduling's own tag catalog and Lesson-specific assignment/optimizer semantics; it must not reuse Clinical's catalog or meaning, even when tag names match.
 - Jury areas/panels, jury durations, room sequencing, breaks, jury-day pianist unavailability, jury conflict rules, and jury schedule output.
 - Each module's import target fields, validation policy, report catalog, and result payload.
 
 A shared `Person` should contain only identity/display/contact properties and an application-generated UUID. Accompanist-specific pianism/availability belongs to an Accompanist profile; Clinical student data and availability belong to a Clinical-owned profile; repertoire/duration/panel requirements belong to a Jury profile. Institutional identifiers are optional and may be scoped by institution. Never merge records automatically based only on matching display names. A single `Assignment`, `Schedule`, or universal optimizer is explicitly rejected.
+
+Clinical Placements and Lesson Scheduling should present a familiar shared
+workflow where practical:
+
+```text
+Data Entry → Readiness → Generate Schedule → Manual Adjustments → Reports
+```
+
+Align interaction patterns for readiness, source revisions/stale results,
+automatic regeneration, manual overrides, imports, and report/export
+presentation without sharing module-owned records, tag meanings, validation
+rules, objective functions, or optimizer implementations. The primary
+optimizer constraint distinction is that Clinical permits concurrent
+placements while Lesson prohibits overlapping lessons for the same
+instructor. Objective functions remain module-owned.
 
 ## 6. Shared AvailabilityWindow Concept
 
@@ -275,7 +292,7 @@ The legacy name join is historical behavior only. The integrated boundary uses s
 
 ## 13. Relationship to Current SQLite and Tauri
 
-The application currently uses the Tauri → React → local FastAPI/SQLAlchemy → SQLite runtime on loopback. Schema version 9 contains shared identities, the finalized-result registry, Accompanist-owned Jury Required facts, and Jury-owned inputs. The `.mpsession` archive remains format version 1. Runtime, migration, and staged restore mechanics are maintained in [ARCHITECTURE.md](ARCHITECTURE.md); do not duplicate those implementation details here.
+The application currently uses the Tauri → React → local FastAPI/SQLAlchemy → SQLite runtime on loopback. Schema version 14 contains shared identities, the finalized-result registry, Accompanist-owned Jury Required facts, Jury-owned inputs, Clinical Placement data, saved reports, and Lesson Scheduling data. Version 13 added Lesson schedule snapshots and summaries; version 14 aligns placement-decision persistence with stale-schedule retention and lifecycle verification. The `.mpsession` archive remains format version 1. Existing Clinical and Lesson tag tables are module-specific representations; adopting shared tag persistence requires a forward migration that preserves module-qualified identity and each module's associations and state semantics. Runtime, migration, and staged restore mechanics are maintained in [ARCHITECTURE.md](ARCHITECTURE.md); do not duplicate those implementation details here.
 
 ## 14. Future Browser Compatibility
 
@@ -285,9 +302,19 @@ Keep product and module contracts independent of Tauri and HTTP. A browser versi
 
 The Accompanist and Jury boundaries are implemented and documented in [MODULE-ARCHITECTURE.md](MODULE-ARCHITECTURE.md), [ACCOMPANIST-BEHAVIOR-CHARACTERIZATION.md](ACCOMPANIST-BEHAVIOR-CHARACTERIZATION.md), and [JURY-OPTIMIZER-CONTRACT.md](JURY-OPTIMIZER-CONTRACT.md). Clinical Placement workflow and optimizer policies have been approved with input from the Music Therapy director and are authoritative in [CLINICAL-PLACEMENT-MODULE-SPEC.md](CLINICAL-PLACEMENT-MODULE-SPEC.md). Clinical implementation must follow that specification; update it through explicit review if policy changes.
 
+Lesson Scheduling has implemented its foundation, rosters, candidate
+generation, readiness analysis, optimizer, automatic generation, manual
+assignment lifecycle, stale-state handling, verification, and Clinical-aligned
+regeneration. The remaining Lesson work is reports and exports. The Lesson
+optimizer remains distinct because its constraints and objectives are
+Lesson-owned. See
+[LESSON-SCHEDULING-MODULE-SPEC.md](LESSON-SCHEDULING-MODULE-SPEC.md) for the
+phase checklist and remaining work.
+
 ## 16. Canonical References
 
 - Current runtime, schema, platform permissions, and session archive behavior: [ARCHITECTURE.md](ARCHITECTURE.md).
+- Shared tag identity and infrastructure versus module-owned catalogs and semantics: [SHARED-TAG-ARCHITECTURE.md](SHARED-TAG-ARCHITECTURE.md).
 - Module ownership and cross-module boundaries: [MODULE-ARCHITECTURE.md](MODULE-ARCHITECTURE.md).
 - Jury data, optimizer, generation, and result lifecycle: [JURY-MODULE-DATA-DESIGN.md](JURY-MODULE-DATA-DESIGN.md) and [JURY-OPTIMIZER-CONTRACT.md](JURY-OPTIMIZER-CONTRACT.md).
 - Clinical Placement workflow, domain rules, optimizer contract, persistence, and test requirements: [CLINICAL-PLACEMENT-MODULE-SPEC.md](CLINICAL-PLACEMENT-MODULE-SPEC.md).

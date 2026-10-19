@@ -90,7 +90,7 @@ describe("module report tables include all fields", () => {
       "Tentative Minutes": 15,
       Tags: "adult, hospital", Day: "Tuesday", "Start Time": "9:00 AM", "End Time": "10:00 AM",
       "Placement Type": "Manual", Status: "Placement warning", Warnings: "Tentative", "Unplaced Reason": "" });
-    expect(rows[1]).toMatchObject({ Student: "Bo Example", "Placement Type": "Unplaced", Status: "",
+    expect(rows[1]).toMatchObject({ Student: "Bo Example", "Placement Type": "Unassigned", Status: "",
       "Unplaced Reason": "Capacity limit" });
   });
 });

@@ -506,6 +506,99 @@ def _upgrade_to_v12(connection: Connection) -> None:
         ))
 
 
+def _upgrade_to_v13(connection: Connection) -> None:
+    """Persist Lesson automatic schedule dates, provenance, summary, and unplaced reasons."""
+    _create_module_tables(connection, {
+        "lesson_schedule_placements",
+        "lesson_schedule_results",
+        "lesson_unplaced_students",
+    })
+
+
+def _upgrade_to_v14(connection: Connection) -> None:
+    """Keep Lesson placement decisions and display snapshots across roster changes."""
+    placement_columns = _column_names(connection, "lesson_placements")
+    day_expression = "day" if "day" in placement_columns else "'Monday'"
+    end_expression = (
+        "end_minute" if "end_minute" in placement_columns else
+        "CASE WHEN placement_type = 'manuallyUnplaced' THEN NULL ELSE "
+        "start_minute + COALESCE((SELECT lesson_length_minutes FROM lesson_instructors "
+        "WHERE lesson_instructors.id = lesson_placements.lesson_instructor_id), 60) END"
+    )
+    connection.exec_driver_sql(
+        "CREATE TABLE lesson_placements_v14 ("
+        "id VARCHAR(36) NOT NULL PRIMARY KEY, "
+        "lesson_student_id VARCHAR(36) NOT NULL, "
+        "lesson_instructor_id VARCHAR(36), "
+        "day VARCHAR(20) NOT NULL DEFAULT 'Monday', "
+        "start_minute INTEGER, "
+        "end_minute INTEGER, "
+        "placement_type VARCHAR(20) NOT NULL, "
+        "created_at DATETIME NOT NULL, "
+        "updated_at DATETIME NOT NULL, "
+        "CONSTRAINT uq_lesson_placements_student UNIQUE (lesson_student_id), "
+        "CONSTRAINT ck_lesson_placement_type CHECK "
+        "(placement_type IN ('automatic', 'manual', 'manuallyUnplaced')), "
+        "CONSTRAINT ck_lesson_placement_shape CHECK "
+        "((placement_type = 'manuallyUnplaced' AND lesson_instructor_id IS NULL "
+        "AND start_minute IS NULL AND end_minute IS NULL) OR (placement_type <> 'manuallyUnplaced' "
+        "AND lesson_instructor_id IS NOT NULL AND start_minute IS NOT NULL AND end_minute IS NOT NULL "
+        "AND start_minute >= 0 AND start_minute < end_minute AND end_minute <= 1440)))"
+    )
+    connection.exec_driver_sql(
+        "INSERT INTO lesson_placements_v14 "
+        "(id, lesson_student_id, lesson_instructor_id, day, start_minute, end_minute, "
+        "placement_type, created_at, updated_at) "
+        f"SELECT id, lesson_student_id, lesson_instructor_id, {day_expression}, start_minute, "
+        f"{end_expression}, placement_type, created_at, updated_at FROM lesson_placements"
+    )
+    connection.exec_driver_sql("DROP TABLE lesson_placements")
+    connection.exec_driver_sql("ALTER TABLE lesson_placements_v14 RENAME TO lesson_placements")
+    connection.exec_driver_sql(
+        "CREATE INDEX ix_lesson_placements_lesson_instructor_id "
+        "ON lesson_placements (lesson_instructor_id)"
+    )
+
+    schedule_columns = _column_names(connection, "lesson_schedule_placements")
+    if "placement_type" not in schedule_columns:
+        connection.exec_driver_sql(
+            "ALTER TABLE lesson_schedule_placements "
+            "ADD COLUMN placement_type VARCHAR(20) NOT NULL DEFAULT 'automatic'"
+        )
+    if "student_name" not in schedule_columns:
+        connection.exec_driver_sql(
+            "ALTER TABLE lesson_schedule_placements "
+            "ADD COLUMN student_name VARCHAR(200) NOT NULL DEFAULT ''"
+        )
+    if "instructor_name" not in schedule_columns:
+        connection.exec_driver_sql(
+            "ALTER TABLE lesson_schedule_placements "
+            "ADD COLUMN instructor_name VARCHAR(200) NOT NULL DEFAULT ''"
+        )
+    connection.exec_driver_sql(
+        "UPDATE lesson_schedule_placements SET "
+        "student_name = COALESCE((SELECT name FROM lesson_students "
+        "WHERE lesson_students.id = lesson_schedule_placements.student_id), ''), "
+        "instructor_name = COALESCE((SELECT name FROM lesson_instructors "
+        "WHERE lesson_instructors.id = lesson_schedule_placements.instructor_id), '')"
+    )
+    unplaced_columns = _column_names(connection, "lesson_unplaced_students")
+    if "student_name" not in unplaced_columns:
+        connection.exec_driver_sql(
+            "ALTER TABLE lesson_unplaced_students "
+            "ADD COLUMN student_name VARCHAR(200) NOT NULL DEFAULT ''"
+        )
+    if "placement_type" not in unplaced_columns:
+        connection.exec_driver_sql(
+            "ALTER TABLE lesson_unplaced_students "
+            "ADD COLUMN placement_type VARCHAR(20) NOT NULL DEFAULT 'automatic'"
+        )
+    connection.exec_driver_sql(
+        "UPDATE lesson_unplaced_students SET student_name = COALESCE("
+        "(SELECT name FROM lesson_students WHERE lesson_students.id = lesson_unplaced_students.student_id), '')"
+    )
+
+
 MIGRATIONS = (
     SchemaMigration(
         version=1,
@@ -566,6 +659,16 @@ MIGRATIONS = (
         version=12,
         name="add_lesson_scheduling_module_tables",
         upgrade=_upgrade_to_v12,
+    ),
+    SchemaMigration(
+        version=13,
+        name="add_lesson_automatic_schedule_results",
+        upgrade=_upgrade_to_v13,
+    ),
+    SchemaMigration(
+        version=14,
+        name="align_lesson_schedule_lifecycle",
+        upgrade=_upgrade_to_v14,
     ),
 )
 LATEST_SCHEMA_VERSION = MIGRATIONS[-1].version

@@ -17,6 +17,7 @@ from ..services.availability import AvailabilityWindow, normalize_day
 from ..services import clinical_students_importer as students_importer
 from ..services.clinical_candidates import generate_candidates
 from ..services.clinical_import_common import ClinicalImportError
+from ..services.clinical_scheduling_models import PlacementState
 from ..services.clinical_readiness import analyze_readiness
 from ..services.clinical_repository import (
     ClinicalRepository,
@@ -656,6 +657,7 @@ def _schedule_out(db: Session) -> schemas.ClinicalScheduleOut:
                 student_name=item.student_name,
                 student_number=item.student_number,
                 kind=item.kind.value if item.kind else None,
+                placement_state=PlacementState.from_kind(item.kind).value,
                 opportunity_id=item.opportunity_id,
                 site_name=item.site_name,
                 opportunity_label=item.opportunity_label,

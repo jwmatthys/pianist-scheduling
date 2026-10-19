@@ -90,14 +90,15 @@ class InstructorApiTests(LessonTestCase):
             lesson.update_instructor("missing", self.payload(), db=self.db)
         self.assertEqual(caught.exception.status_code, 404)
 
-    def test_delete_removes_only_that_instructors_placements(self):
+    def test_delete_preserves_assignments_and_reports_them_for_review(self):
         first = self.repo.create_instructor("First")
         second = self.repo.create_instructor("Second")
         a, b = self.repo.create_student("S1", "Pat Test"), self.repo.create_student("S2", "Sam Test")
         self.repo.set_placement(a.id, LessonPlacementType.MANUAL, first.id, 540)
         self.repo.set_placement(b.id, LessonPlacementType.MANUAL, second.id, 540)
-        self.assertEqual(lesson.delete_instructor(first.id, db=self.db).removed_placement_count, 1)
-        self.assertIsNone(self.repo.get_placement(a.id))
+        result = lesson.delete_instructor(first.id, db=self.db)
+        self.assertEqual((result.removed_placement_count, result.placements_preserved), (0, 1))
+        self.assertIsNotNone(self.repo.get_placement(a.id))
         self.assertIsNotNone(self.repo.get_placement(b.id))
 
     def test_update_with_tags_is_one_revision_and_none_keeps_tags(self):
@@ -262,6 +263,21 @@ class ImportParsingTests(unittest.TestCase):
         row = parse([row_with(monday="9:00 AM-11:00 AM; T 10:00 AM-12:00 PM")]).rows[0]
         self.assertTrue(any("overlaps" in e for e in row.errors))
 
+    def test_unmarked_reversed_availability_ranges_assume_afternoon_end(self):
+        for value, expected in (
+            ("9:00-3:00", (540, 900)),
+            ("8:00-1:00", (480, 780)),
+            ("10:30-2:15", (630, 855)),
+        ):
+            with self.subTest(value=value):
+                row = parse([row_with(monday=value)]).rows[0]
+                self.assertEqual([(window.start_minute, window.end_minute) for window in row.windows], [expected])
+                self.assertEqual(row.errors, [])
+
+    def test_explicit_meridiem_availability_is_not_adjusted(self):
+        row = parse([row_with(monday="9:00 AM-3:00 AM")]).rows[0]
+        self.assertTrue(any("ends at or before" in error for error in row.errors), row.errors)
+
     def test_same_status_overlaps_merge(self):
         row = parse([row_with(monday="9:00 AM-11:00 AM; 10:00 AM-12:00 PM")]).rows[0]
         self.assertEqual([(w.start_minute, w.end_minute) for w in row.windows], [(540, 720)])
@@ -334,8 +350,11 @@ class ImportFlowTests(LessonTestCase):
         before = self.revision()
         result = self.call(lesson.apply_instructor_import, confirmed=True)
         self.assertEqual(
-            (result.instructors_removed, result.placements_removed, result.instructors_created, result.tags_created),
-            (1, 1, 1, 1),
+            (
+                result.instructors_removed, result.placements_removed, result.placements_preserved,
+                result.instructors_created, result.tags_created,
+            ),
+            (1, 0, 1, 1, 1),
         )
         instructors = self.repo.list_instructors()
         self.assertEqual([i.name for i in instructors], ["Synthetic Teacher"])
@@ -344,10 +363,10 @@ class ImportFlowTests(LessonTestCase):
         self.assertEqual([s.name for s in self.repo.list_students()], ["Pat Test"])
         windows = self.repo.instructor_availability(instructors[0].id)
         self.assertEqual((len(windows), windows[0].source), (2, "import"))
-        self.assertIsNone(self.repo.get_placement(student.id))
+        self.assertIsNotNone(self.repo.get_placement(student.id))
         state = self.repo.get_state()
         self.assertEqual(state.source_data_revision, before + 1)
-        self.assertFalse(state.is_schedule_stale)
+        self.assertTrue(state.is_schedule_stale)
 
     def test_apply_reparses_and_rejects_invalid_rows_atomically(self):
         student = self.seed()

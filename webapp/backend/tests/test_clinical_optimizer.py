@@ -262,6 +262,24 @@ class SchedulePersistenceTests(ClinicalTestCase):
         with self.assertRaises(ClinicalValidationError):
             self.repo.remove_manual_override(self.a.id)
 
+    def test_unassigned_students_are_eligible_but_manually_unplaced_are_not(self):
+        self.repo.generate_schedule()
+        placed = next(r for r in self.repo.list_placement_records() if r.kind.value == "automatic")
+        other = self.b.id if placed.student_id == self.a.id else self.a.id
+
+        self.repo.remove_placement_decision(placed.student_id)
+        self.assertIsNone(self.repo.get_placement(placed.student_id))
+        self.repo.set_manually_unplaced(other)
+        self.repo.generate_schedule()
+        kinds = {r.student_id: r.kind.value for r in self.repo.list_placement_records()}
+        self.assertEqual(kinds, {placed.student_id: "automatic", other: "manuallyUnplaced"})
+
+        self.repo.remove_placement_decision(other)
+        self.assertIsNone(self.repo.get_placement(other))
+        self.repo.remove_placement_decision(placed.student_id)
+        self.repo.generate_schedule()
+        self.assertEqual(len(self.repo.list_placement_records()), 1)
+
     def test_verification_detects_source_change_and_removed_override_becomes_ordinary_unplaced(self):
         self.repo.set_manual_placement(self.a.id, self.site.id, 9 * H)
         self.repo.set_student_availability(self.a.id, [AvailabilityWindow("Monday", 8 * H, 10 * H, "Available")])
@@ -347,8 +365,19 @@ class ScheduleApiTests(ClinicalTestCase):
         self.assertEqual(moved.entries[0].start_minute, 8 * H + 20)
         manually_unplaced = clinical.manually_unplace_student(entry.id, self.db)
         self.assertEqual(manually_unplaced.entries[0].kind, "manuallyUnplaced")
+        self.assertEqual(manually_unplaced.entries[0].placement_state, "manuallyUnplaced")
         removed = clinical.remove_manual_placement_override(entry.id, self.db)
         self.assertIsNone(removed.entries[0].kind)
+        self.assertEqual(removed.entries[0].placement_state, "unassigned")
+        reassigned = clinical.create_manual_placement(
+            clinical.schemas.ClinicalManualPlacementIn(
+                student_id=entry.id, opportunity_id=opportunity.id, start_minute=8 * H + 10
+            ),
+            self.db,
+        )
+        self.assertEqual(reassigned.entries[0].placement_state, "assigned")
+        unassigned = clinical.remove_placement_decision(entry.id, self.db)
+        self.assertEqual(unassigned.entries[0].placement_state, "unassigned")
 
 
 if __name__ == "__main__":

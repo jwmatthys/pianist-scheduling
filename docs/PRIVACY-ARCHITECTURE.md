@@ -8,8 +8,9 @@ and that listener is not exposed to the LAN. No workbook or availability data
 is sent to the application provider or another remote service.
 
 `.mpsession` archives are unencrypted and contain the session database, which
-may include student educational information. Users should store and transfer
-archives only under institutional policy. Export writes a user-selected
+may include student educational information, including module-owned tag
+catalogs and tag assignments. Users should store and transfer archives only
+under institutional policy. Export writes a user-selected
 portable copy. Automatic replacement recovery archives are stored locally in
 the application-data `recovery/` directory and limited to the latest three.
 Generated reports are saved in the session database so they survive restarts; they

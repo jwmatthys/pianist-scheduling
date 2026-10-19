@@ -1,6 +1,7 @@
 """Pydantic request/response schemas for the Clinical Placement module."""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -174,6 +175,7 @@ class ClinicalScheduleEntryOut(BaseModel):
     student_name: str
     student_number: str
     kind: str | None
+    placement_state: Literal["unassigned", "assigned", "manuallyUnplaced"]
     opportunity_id: str | None
     site_name: str | None
     opportunity_label: str | None

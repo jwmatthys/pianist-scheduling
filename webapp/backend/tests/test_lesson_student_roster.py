@@ -105,14 +105,14 @@ class StudentApiTests(LessonTestCase):
             lesson.get_student_availability("missing", db=self.db)
         self.assertEqual(caught.exception.status_code, 404)
 
-    def test_delete_removes_dependents(self):
+    def test_delete_removes_source_dependents_but_preserves_schedule_decision(self):
         tag = self.repo.create_tag("violin")
         instructor = self.repo.create_instructor("Synthetic Teacher")
         student = self.repo.create_student("S1", "Pat Test", availability=[window()], tag_states={tag.id: "required"})
         self.repo.set_placement(student.id, LessonPlacementType.MANUAL, instructor.id, 540)
         self.db.commit()
         lesson.delete_student(student.id, db=self.db)
-        self.assertEqual(self.repo.list_placements(), [])
+        self.assertEqual(len(self.repo.list_placements()), 1)
         self.assertEqual(self.repo.student_tag_states(), {})
         self.assertEqual(self.repo.student_availability_counts(), {})
 
@@ -238,11 +238,11 @@ class RevisionTests(LessonTestCase):
     def test_each_student_change_bumps_once_and_marks_an_existing_schedule_stale(self):
         student, tag = self.seed_schedule()
         operations = (
-            lambda: self.repo.update_student(student.id, "S1", "Renamed", require_name=True),
+            lambda: self.repo.update_student(student.id, "S1", "Renamed"),
             lambda: self.repo.set_student_availability(student.id, [window()]),
             lambda: self.repo.set_student_tag_states(student.id, {tag.id: "required"}),
             lambda: self.repo.set_tag_state(student.id, tag.id, LessonTagState.PREFERRED),
-            lambda: self.repo.create_student("S2", "Other", require_name=True),
+            lambda: self.repo.create_student("S2", "Other"),
         )
         for operation in operations:
             self.repo.get_state().is_schedule_stale = False
@@ -271,10 +271,18 @@ class RevisionTests(LessonTestCase):
         student, _ = self.seed_schedule()
         before = self.revision()
         with self.assertRaises(LessonValidationError):
-            self.repo.update_student(student.id, "S1", "  ", require_name=True)
+            self.repo.update_student(student.id, "S1", "  ")
         with self.assertRaises(LessonValidationError):
             self.repo.set_student_tag_states(student.id, {"missing": "required"})
         self.assertEqual(self.revision(), before)
+
+    def test_deleting_last_placed_student_keeps_remaining_schedule_stale(self):
+        student, _ = self.seed_schedule()
+        before = self.revision()
+        self.repo.delete_student(student.id)
+        self.assertEqual(self.revision(), before + 1)
+        self.assertEqual(len(self.repo.list_placements()), 1)
+        self.assertTrue(self.repo.get_state().is_schedule_stale)
 
 
 class ImportParsingTests(unittest.TestCase):
@@ -308,6 +316,21 @@ class ImportParsingTests(unittest.TestCase):
     def test_invalid_availability_is_a_row_error(self):
         parsed = parse([row_with(monday="not a time")])
         self.assertTrue(parsed.rows[0].errors)
+
+    def test_unmarked_reversed_availability_ranges_assume_afternoon_end(self):
+        for value, expected in (
+            ("9:00-3:00", (540, 900)),
+            ("8:00-1:00", (480, 780)),
+            ("10:30-2:15", (630, 855)),
+        ):
+            with self.subTest(value=value):
+                row = parse([row_with(monday=value)]).rows[0]
+                self.assertEqual([(window.start_minute, window.end_minute) for window in row.windows], [expected])
+                self.assertEqual(row.errors, [])
+
+    def test_explicit_meridiem_availability_is_not_adjusted(self):
+        row = parse([row_with(monday="9:00 AM-3:00 AM")]).rows[0]
+        self.assertTrue(any("ends at or before" in error for error in row.errors), row.errors)
 
     def test_availability_columns_are_optional(self):
         parsed = importer.parse_students(
@@ -378,22 +401,28 @@ class ImportFlowTests(LessonTestCase):
         self.assertEqual(caught.exception.detail["code"], "CONFIRMATION_REQUIRED")
         self.assertEqual([s.student_id for s in self.repo.list_students()], ["OLD1"])
 
-    def test_apply_replaces_students_availability_tag_states_and_placements_but_preserves_the_rest(self):
+    def test_apply_replaces_student_source_data_and_preserves_old_placement_for_review(self):
         _, instructor, tag = self.seed()
         before = self.revision()
         result = self.call(lesson.apply_student_import, confirmed=True)
-        self.assertEqual((result.students_removed, result.placements_removed, result.students_created), (1, 1, 1))
+        self.assertEqual(
+            (
+                result.students_removed, result.placements_removed,
+                result.placements_preserved, result.students_created,
+            ),
+            (1, 0, 1, 1),
+        )
         students = self.repo.list_students()
         self.assertEqual([(s.student_id, s.name) for s in students], [("S100", "Synthetic Student")])
         self.assertEqual(len(self.repo.student_availability(students[0].id)), 2)
         self.assertEqual(self.repo.student_tag_states(), {})
-        self.assertEqual(self.repo.list_placements(), [])
+        self.assertEqual(len(self.repo.list_placements()), 1)
         self.assertEqual([i.name for i in self.repo.list_instructors()], ["Old Teacher"])
         self.assertEqual(len(self.repo.instructor_availability(instructor.id)), 1)
         self.assertEqual(sorted(t.name for t in self.repo.list_tags()), ["ORPHAN", "VIOLIN"])
         self.assertEqual([t.name for t in self.repo.get_instructor(instructor.id).tags], ["VIOLIN"])
         self.assertEqual(self.revision(), before + 1)
-        self.assertFalse(self.repo.get_state().is_schedule_stale)
+        self.assertTrue(self.repo.get_state().is_schedule_stale)
 
     def test_apply_reparses_the_file_and_rejects_invalid_rows_atomically(self):
         self.seed()

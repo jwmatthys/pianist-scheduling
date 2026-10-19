@@ -56,6 +56,7 @@ const generated: ClinicalSchedule = {
     student_name: "Dee Demo",
     student_number: "DEMO-1",
     kind: null,
+    placement_state: "unassigned",
     opportunity_id: null,
     site_name: null,
     opportunity_label: null,
@@ -91,6 +92,7 @@ const studentEntry: ClinicalScheduleEntry = {
   student_name: "Ada Example",
   student_number: "A-001",
   kind: null,
+  placement_state: "unassigned",
   opportunity_id: null,
   site_name: null,
   opportunity_label: null,
@@ -107,6 +109,7 @@ const studentEntry: ClinicalScheduleEntry = {
 const manualEntry: ClinicalScheduleEntry = {
   ...studentEntry,
   kind: "manual",
+  placement_state: "assigned",
   opportunity_id: opportunity.id,
   site_name: opportunity.site_name,
   opportunity_label: "Mercy Clinic, Tue 8:00 AM-11:00 AM",
@@ -280,6 +283,7 @@ describe("ClinicalSchedulePage generation", () => {
     const manuallyUnplaced: ClinicalScheduleEntry = {
       ...studentEntry,
       kind: "manuallyUnplaced",
+      placement_state: "manuallyUnplaced",
       unplaced_reason: "MANUALLY_UNPLACED",
     };
     const marked: ClinicalSchedule = {
@@ -291,7 +295,7 @@ describe("ClinicalSchedulePage generation", () => {
     };
     vi.mocked(api.getClinicalSchedule).mockResolvedValueOnce({ ...emptySchedule, entries: [studentEntry], student_count: 1, unplaced_count: 1 });
     vi.mocked(api.markClinicalStudentManuallyUnplaced).mockResolvedValue(marked);
-    vi.mocked(api.removeClinicalPlacementOverride).mockResolvedValue({
+    vi.mocked(api.removeClinicalPlacement).mockResolvedValue({
       ...emptySchedule,
       entries: [studentEntry],
       student_count: 1,
@@ -301,9 +305,35 @@ describe("ClinicalSchedulePage generation", () => {
     expect(screen.queryByRole("button", { name: /Mark Manually Unplaced|Remove Manual Unplaced/ })).toBeNull();
     await userEvent.selectOptions(await screen.findByLabelText(/Placement Site for/), "__manually_unplaced__");
     await waitFor(() => expect(api.markClinicalStudentManuallyUnplaced).toHaveBeenCalledWith(studentEntry.student_id));
-    expect(await screen.findByText("Manually Unplaced")).toBeTruthy();
-    await userEvent.selectOptions(screen.getByLabelText(/Placement Site for/), "");
-    await waitFor(() => expect(api.removeClinicalPlacementOverride).toHaveBeenCalledWith(studentEntry.student_id));
+    await waitFor(() => expect(
+      (screen.getByLabelText(/Placement Site for/) as HTMLSelectElement).value,
+    ).toBe("__manually_unplaced__"));
+    await userEvent.selectOptions(screen.getByLabelText(/Placement Site for/), "__unassigned__");
+    await waitFor(() => expect(api.removeClinicalPlacement).toHaveBeenCalledWith(studentEntry.student_id));
+  });
+
+  it("lists Unassigned first and Manually Unplaced last in every placement dropdown", async () => {
+    vi.mocked(api.getClinicalSchedule).mockResolvedValue({ ...generated, entries: [manualEntry, { ...studentEntry, student_id: "other" }] });
+    vi.mocked(api.listClinicalOpportunities).mockResolvedValue([opportunity]);
+    render(<ClinicalSchedulePage />);
+    const selects = (await screen.findAllByLabelText(/Placement Site for/)) as HTMLSelectElement[];
+    expect(selects).toHaveLength(2);
+    for (const select of selects) {
+      const labels = Array.from(select.options).filter((option) => !option.disabled).map((option) => option.textContent);
+      expect(labels[0]).toBe("Unassigned");
+      expect(labels[labels.length - 1]).toBe("Manually Unplaced");
+      expect(labels).toHaveLength(3);
+    }
+  });
+
+  it("returns an assigned placement to Unassigned from its dropdown", async () => {
+    vi.mocked(api.getClinicalSchedule).mockResolvedValue({ ...generated, entries: [manualEntry] });
+    vi.mocked(api.listClinicalOpportunities).mockResolvedValue([opportunity]);
+    vi.mocked(api.removeClinicalPlacement).mockResolvedValue({ ...generated, entries: [] });
+    render(<ClinicalSchedulePage />);
+    await userEvent.selectOptions(await screen.findByLabelText(/Placement Site for/), "__unassigned__");
+    await waitFor(() => expect(api.removeClinicalPlacement).toHaveBeenCalledWith(manualEntry.student_id));
+    expect(api.markClinicalStudentManuallyUnplaced).not.toHaveBeenCalled();
   });
 
   it("no longer shows a Placement Verification section and keeps the summary at the bottom", async () => {

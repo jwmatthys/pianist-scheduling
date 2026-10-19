@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from .. import lesson_schemas as schemas
 from ..database import get_db
-from ..lesson_models import LessonInstructor, LessonPlacement, LessonStudent
+from ..lesson_models import LessonInstructor, LessonPlacement, LessonPlacementState, LessonStudent
 from ..services import lesson_instructor_importer as importer
 from ..services import lesson_student_importer as student_importer
 from ..services.availability import AvailabilityWindow, normalize_day
@@ -22,11 +22,17 @@ from ..services.lesson_repository import (
     LessonValidationError,
     StudentInput,
 )
+from ..services.lesson_scheduling_models import LessonSchedule
 
 router = APIRouter(prefix="/api/lesson", tags=["lesson scheduling"])
 
 _NOT_FOUND_CODES = {"TAG_NOT_FOUND", "INSTRUCTOR_NOT_FOUND", "STUDENT_NOT_FOUND"}
-_CONFLICT_CODES = {"DUPLICATE_TAG", "DUPLICATE_STUDENT_ID"}
+_CONFLICT_CODES = {
+    "DUPLICATE_TAG",
+    "DUPLICATE_STUDENT_ID",
+    "NOT_READY",
+    "MANUAL_PLACEMENTS_PRESENT",
+}
 
 
 def _http_error(error: LessonValidationError) -> HTTPException:
@@ -103,6 +109,192 @@ def read_state(db: Session = Depends(get_db)):
     )
 
 
+@router.get("/readiness", response_model=schemas.LessonReadinessOut)
+def get_readiness(db: Session = Depends(get_db)):
+    report = LessonRepository(db).get_readiness_report()
+    db.commit()
+    return schemas.LessonReadinessOut(
+        source_data_revision=report.source_data_revision,
+        is_ready=report.is_ready,
+        student_count=report.student_count,
+        instructor_count=report.instructor_count,
+        feasible_candidate_count=report.feasible_candidate_count,
+        total_candidate_count=report.total_candidate_count,
+        students_with_candidates=report.students_with_candidates,
+        instructors_with_schedulable_lessons=report.instructors_with_schedulable_lessons,
+        warnings=[
+            schemas.LessonReadinessWarningOut(
+                code=warning.code.value,
+                severity=warning.severity.value,
+                category=warning.category.value,
+                subjects=[
+                    schemas.LessonReadinessSubjectOut(
+                        kind=subject.kind.value,
+                        id=subject.id,
+                        label=subject.label,
+                    )
+                    for subject in warning.subjects
+                ],
+            )
+            for warning in report.warnings
+        ],
+    )
+
+
+def _schedule_out(schedule: LessonSchedule) -> schemas.LessonScheduleOut:
+    stats = schedule.statistics
+    return schemas.LessonScheduleOut(
+        schedule_revision=schedule.schedule_revision,
+        source_data_revision=schedule.source_data_revision,
+        is_schedule_stale=schedule.is_schedule_stale,
+        has_schedule=schedule.has_schedule,
+        students_scheduled=stats.students_scheduled,
+        students_unscheduled=stats.students_unscheduled,
+        instructor_utilization=stats.instructor_utilization,
+        preferred_tag_matches=stats.preferred_tag_matches,
+        tentative_minutes=stats.tentative_minutes,
+        gap_cost_minutes=stats.gap_cost_minutes,
+        automatic_count=schedule.automatic_count,
+        manual_count=schedule.manual_count,
+        manually_unplaced_count=schedule.manually_unplaced_count,
+        verified_count=schedule.verified_count,
+        unverified_count=schedule.unverified_count,
+        entries=[
+            schemas.LessonScheduleEntryOut(
+                student_id=item.student_id,
+                student_name=item.student_name,
+                placement_type=item.placement_type,
+                placement_state=LessonPlacementState.from_placement_type(item.placement_type).value,
+                instructor_id=item.instructor_id,
+                instructor_name=item.instructor_name,
+                day=item.day,
+                start_minute=item.start_minute,
+                end_minute=item.end_minute,
+                preferred_tag_match_count=item.preferred_tag_match_count,
+                tentative_minutes=item.tentative_minutes,
+                verified=item.verified,
+                warnings=[
+                    schemas.LessonPlacementWarningOut(code=warning.code.value, message=warning.message)
+                    for warning in item.warnings
+                ],
+                unplaced_reason=item.unplaced_reason,
+            )
+            for item in schedule.entries
+        ],
+        verification=[
+            schemas.LessonPlacementVerificationOut(
+                student_id=item.student_id,
+                student_name=item.student_name,
+                instructor_id=item.instructor_id,
+                instructor_name=item.instructor_name,
+                day=item.day,
+                start_minute=item.start_minute,
+                warnings=[
+                    schemas.LessonPlacementWarningOut(code=warning.code.value, message=warning.message)
+                    for warning in item.warnings
+                ],
+            )
+            for item in schedule.verification
+        ],
+    )
+
+
+@router.get("/schedule", response_model=schemas.LessonScheduleOut)
+def get_schedule(db: Session = Depends(get_db)):
+    result = LessonRepository(db).get_schedule()
+    db.commit()
+    return _schedule_out(result)
+
+
+@router.post("/schedule/generate", response_model=schemas.LessonScheduleOut)
+def generate_schedule(db: Session = Depends(get_db)):
+    repo = LessonRepository(db)
+    try:
+        result = repo.generate_schedule()
+        _commit(db)
+    except LessonValidationError as error:
+        db.rollback()
+        raise _http_error(error) from error
+    return _schedule_out(result)
+
+
+@router.post("/schedule/clear", response_model=schemas.LessonScheduleOut)
+def clear_schedule(db: Session = Depends(get_db)):
+    result = LessonRepository(db).clear_schedule()
+    _commit(db)
+    return _schedule_out(result)
+
+
+@router.get("/schedule/verification", response_model=list[schemas.LessonPlacementVerificationOut])
+def get_schedule_verification(db: Session = Depends(get_db)):
+    return _schedule_out(LessonRepository(db).get_schedule()).verification
+
+
+def _save_manual_placement(
+    payload: schemas.LessonManualPlacementIn, db: Session
+) -> schemas.LessonScheduleOut:
+    try:
+        LessonRepository(db).set_manual_placement(
+            payload.student_id, payload.instructor_id, payload.day, payload.start_minute
+        )
+        _commit(db)
+    except LessonValidationError as error:
+        db.rollback()
+        raise _http_error(error) from error
+    return _schedule_out(LessonRepository(db).get_schedule())
+
+
+@router.post("/schedule/placements", response_model=schemas.LessonScheduleOut)
+def create_manual_placement(payload: schemas.LessonManualPlacementIn, db: Session = Depends(get_db)):
+    return _save_manual_placement(payload, db)
+
+
+@router.put("/schedule/placements/{student_id}", response_model=schemas.LessonScheduleOut)
+def move_manual_placement(
+    student_id: str, payload: schemas.LessonManualPlacementIn, db: Session = Depends(get_db)
+):
+    if payload.student_id != student_id:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "INVALID_PLACEMENT", "message": "Student identifier does not match the placement URL."},
+        )
+    return _save_manual_placement(payload, db)
+
+
+@router.post("/schedule/students/{student_id}/manually-unplace", response_model=schemas.LessonScheduleOut)
+def manually_unplace_student(student_id: str, db: Session = Depends(get_db)):
+    try:
+        LessonRepository(db).set_manually_unplaced(student_id)
+        _commit(db)
+    except LessonValidationError as error:
+        db.rollback()
+        raise _http_error(error) from error
+    return _schedule_out(LessonRepository(db).get_schedule())
+
+
+@router.delete("/schedule/placements/{student_id}", response_model=schemas.LessonScheduleOut)
+def remove_placement_decision(student_id: str, db: Session = Depends(get_db)):
+    """Return a student to Unassigned: remove any automatic, manual, or Manually Unplaced decision."""
+    try:
+        LessonRepository(db).remove_placement(student_id)
+        _commit(db)
+    except LessonValidationError as error:
+        db.rollback()
+        raise _http_error(error) from error
+    return _schedule_out(LessonRepository(db).get_schedule())
+
+
+@router.delete("/schedule/placements/{student_id}/override", response_model=schemas.LessonScheduleOut)
+def remove_manual_placement_override(student_id: str, db: Session = Depends(get_db)):
+    try:
+        LessonRepository(db).remove_manual_override(student_id)
+        _commit(db)
+    except LessonValidationError as error:
+        db.rollback()
+        raise _http_error(error) from error
+    return _schedule_out(LessonRepository(db).get_schedule())
+
+
 # --- Instructors ------------------------------------------------------------
 
 
@@ -152,12 +344,19 @@ def set_instructor_tags(instructor_id: str, payload: schemas.LessonInstructorTag
 def delete_instructor(instructor_id: str, db: Session = Depends(get_db)):
     repo = LessonRepository(db)
     try:
+        preserved = sum(
+            placement.lesson_instructor_id == instructor_id
+            for placement in repo.list_placements()
+        )
         removed = repo.delete_instructor(instructor_id)
         _commit(db)
     except LessonValidationError as error:
         db.rollback()
         raise _http_error(error) from error
-    return schemas.LessonInstructorDeleteOut(removed_placement_count=removed)
+    return schemas.LessonInstructorDeleteOut(
+        removed_placement_count=removed,
+        placements_preserved=preserved,
+    )
 
 
 def _availability_response(repo: LessonRepository, instructor_id: str) -> schemas.LessonInstructorAvailabilityIO:
@@ -244,7 +443,6 @@ def create_student(payload: schemas.LessonStudentIn, db: Session = Depends(get_d
             payload.student_id,
             payload.name,
             payload.email,
-            require_name=True,
             tag_states=payload.tag_states,
         )
         _commit(db)
@@ -263,7 +461,6 @@ def update_student(student_pk: str, payload: schemas.LessonStudentIn, db: Sessio
             payload.student_id,
             payload.name,
             payload.email,
-            require_name=True,
             tag_states=payload.tag_states,
         )
         _commit(db)
@@ -395,6 +592,7 @@ def delete_tag(tag_id: str, db: Session = Depends(get_db)):
 class LessonInstructorImportResult(BaseModel):
     instructors_removed: int
     placements_removed: int
+    placements_preserved: int
     instructors_created: int
     tags_created: int
 
@@ -506,6 +704,7 @@ async def apply_instructor_import(
 class LessonStudentImportResult(BaseModel):
     students_removed: int
     placements_removed: int
+    placements_preserved: int
     students_created: int
 
 

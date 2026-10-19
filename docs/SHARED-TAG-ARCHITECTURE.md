@@ -2,12 +2,14 @@
 
 ## Status
 
-Proposed shared infrastructure specification.
+Canonical and authoritative shared infrastructure architecture.
 
 Tags are a shared infrastructure concept within Music Program Scheduler.
 
-The application provides one common tag model that may be reused across
-multiple modules. Tags themselves remain module-owned data.
+The application provides shared tag identity and infrastructure that may be
+used by multiple modules. Each module owns its own catalog and tag data. This
+document supersedes conflicting tag-related statements elsewhere in the
+repository.
 
 This follows the established architectural principle of sharing proven
 infrastructure while keeping business rules, workflows, optimization logic,
@@ -75,13 +77,19 @@ The shared tag infrastructure owns:
 - Tag assignment mechanics
 - Tag import parsing
 - Tag export formatting
-- Tag validation
+- Tag validation primitives
 - Tag filtering support
 - Tag reporting support
 
 This infrastructure is shared across all modules.
 
-The goal is to provide one consistent implementation and user experience.
+The infrastructure supplies mechanisms and primitives, not a global tag
+catalog, taxonomy, or business policy. Module-qualified identity is mandatory:
+every tag is identified by `(module_id, tag_uuid)`. Catalog operations and
+assignments must remain scoped to that module identity.
+
+The goal is to provide consistent shared mechanisms while allowing
+module-owned workflows and presentation.
 
 ---
 
@@ -220,6 +228,10 @@ Before comparison:
 3. Collapse repeated internal whitespace.
 4. Apply case-insensitive normalization.
 
+The resulting normalized value is for comparison and uniqueness. The display
+name remains a presentation value; any module-specific display formatting
+must not change tag identity.
+
 Examples:
 
 ```text
@@ -334,6 +346,11 @@ This behavior is difficult to explain, easy to misuse, and produces
 unpredictable imports.
 
 Imports must use explicit tag mappings.
+
+Only source columns explicitly mapped to tag fields defined by the importing
+module are parsed as tags. An unmapped column is never implicitly a tag
+column. The importing module chooses which tag fields it supports and how
+they relate to its entities and assignment states.
 
 ---
 
@@ -565,6 +582,22 @@ Cross-module tag reporting is not supported.
 
 ---
 
+# Persistence and Migration
+
+Shared persistence must preserve the `(module_id, tag_uuid)` identity and
+module-scoped catalog uniqueness. Tag assignment mechanics may be shared,
+while entity relationships and any assignment-state values remain scoped to
+the owning module. No tag assignment creates a relationship between modules.
+
+Existing module-specific tag tables and references must be brought into
+conformance through the application's ordered, forward-only migration
+registry. Migration must preserve each module's tag UUIDs, catalog entries,
+assignments, and module-specific states, and must support staged `.mpsession`
+restore. It must not merge tags by display name across modules. See
+[ARCHITECTURE.md](ARCHITECTURE.md) for current schema and migration planning.
+
+---
+
 # Clinical Placement Usage
 
 ## Clinical Sites
@@ -630,6 +663,12 @@ A placement site containing the tag receives a higher preference score.
 These behaviors belong exclusively to the Clinical Placement module.
 
 They are not part of the shared tag infrastructure.
+
+`Required`, `Preferred`, and `Restricted` are Clinical assignment-state
+semantics only. They are not global states, and another module may define
+different states or none. Clinical tag identity remains
+`(clinical-placements, tag_uuid)`; an identically named tag in another module
+is unrelated.
 
 ---
 

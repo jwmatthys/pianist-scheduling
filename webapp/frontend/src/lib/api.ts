@@ -40,6 +40,10 @@ import type {
   LessonStudentImportMapping,
   LessonStudentImportPreview,
   LessonStudentImportResult,
+  LessonReadiness,
+  LessonSchedule,
+  LessonPlacementVerification,
+  LessonModuleState,
   LessonTagState,
   LessonTag,
   ClinicalSitesImportMapping,
@@ -356,9 +360,11 @@ export const api = {
       body: JSON.stringify(data),
     }),
   deleteLessonInstructor: (id: string) =>
-    request<{ removed_placement_count: number }>(`/api/lesson/instructors/${encodeURIComponent(id)}`, {
+    request<{ removed_placement_count: number; placements_preserved: number }>(
+      `/api/lesson/instructors/${encodeURIComponent(id)}`, {
       method: "DELETE",
-    }),
+      },
+    ),
   getLessonInstructorAvailability: (id: string) =>
     request<{ windows: RecurringAvailabilityWindow[] }>(
       `/api/lesson/instructors/${encodeURIComponent(id)}/availability`
@@ -412,6 +418,45 @@ export const api = {
     });
   },
   getClinicalReadiness: () => request<ClinicalReadiness>("/api/clinical/readiness"),
+  getLessonReadiness: () => request<LessonReadiness>("/api/lesson/readiness"),
+  getLessonSchedule: () => request<LessonSchedule>("/api/lesson/schedule"),
+  generateLessonSchedule: () =>
+    request<LessonSchedule>("/api/lesson/schedule/generate", { method: "POST" }),
+  clearLessonSchedule: () =>
+    request<LessonSchedule>("/api/lesson/schedule/clear", { method: "POST" }),
+  getLessonScheduleVerification: () =>
+    request<LessonPlacementVerification[]>("/api/lesson/schedule/verification"),
+  createLessonManualPlacement: (data: {
+    student_id: string;
+    instructor_id: string;
+    day: string;
+    start_minute: number;
+  }) => request<LessonSchedule>("/api/lesson/schedule/placements", {
+    method: "POST",
+    body: JSON.stringify(data),
+  }),
+  moveLessonManualPlacement: (
+    studentId: string,
+    data: { student_id: string; instructor_id: string; day: string; start_minute: number },
+  ) => request<LessonSchedule>(`/api/lesson/schedule/placements/${encodeURIComponent(studentId)}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  }),
+  manuallyUnplaceLessonStudent: (studentId: string) =>
+    request<LessonSchedule>(
+      `/api/lesson/schedule/students/${encodeURIComponent(studentId)}/manually-unplace`,
+      { method: "POST" },
+    ),
+  removeLessonPlacement: (studentId: string) =>
+    request<LessonSchedule>(`/api/lesson/schedule/placements/${encodeURIComponent(studentId)}`, {
+      method: "DELETE",
+    }),
+  removeLessonPlacementOverride: (studentId: string) =>
+    request<LessonSchedule>(
+      `/api/lesson/schedule/placements/${encodeURIComponent(studentId)}/override`,
+      { method: "DELETE" },
+    ),
+  getLessonModuleState: () => request<LessonModuleState>("/api/lesson/state"),
   listLessonStudents: () => request<LessonStudent[]>("/api/lesson/students"),
   // Omitting tag_states leaves a student's tag states unchanged; an object replaces the whole set.
   createLessonStudent: (data: LessonStudentFields & { tag_states?: Record<string, LessonTagState> }) =>

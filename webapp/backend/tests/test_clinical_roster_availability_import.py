@@ -67,6 +67,21 @@ class ParserTests(unittest.TestCase):
         parsed = parse([["S1", "13:00-15:30", "", "", ""]])
         self.assertEqual(triples(parsed.rows[0]), [("Monday", 780, 930, "Available")])
 
+    def test_unmarked_reversed_ranges_assume_afternoon_end(self):
+        for text, expected in (
+            ("9:00-3:00", (540, 900)),
+            ("8:00-1:00", (480, 780)),
+            ("10:30-2:15", (630, 855)),
+        ):
+            with self.subTest(text=text):
+                row = parse([["S1", text, "", "", ""]]).rows[0]
+                self.assertEqual([(window.start_minute, window.end_minute) for window in row.windows], [expected])
+                self.assertEqual(row.errors, [])
+
+    def test_explicit_meridiem_is_not_adjusted(self):
+        row = parse([["S1", "9:00 AM-3:00 AM", "", "", ""]]).rows[0]
+        self.assertTrue(any("ends at or before" in error for error in row.errors), row.errors)
+
     def test_tentative_prefixes(self):
         for text in ("T 1:00 PM-4:00 PM", "Tentative 1:00 PM-4:00 PM", "t 13:00-16:00", "T 1:00-4:00"):
             parsed = parse([["S1", text, "", "", ""]])
@@ -113,7 +128,7 @@ class ParserTests(unittest.TestCase):
         cases = {
             "noon-5": "could not be read",
             "8:00": "not a valid time range",
-            "12:00-8:00": "ends at or before",
+            "12:00 PM-8:00 AM": "ends at or before",
             "9-9": "ends at or before",
             "8-10-12": "not a valid time range",
         }

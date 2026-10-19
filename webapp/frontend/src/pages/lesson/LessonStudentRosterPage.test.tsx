@@ -199,7 +199,8 @@ describe("Lesson Student Roster", () => {
     vi.mocked(api.previewLessonStudentImport).mockResolvedValue(preview);
     vi.mocked(api.applyLessonStudentImport).mockResolvedValue({
       students_removed: 5,
-      placements_removed: 3,
+      placements_removed: 0,
+      placements_preserved: 3,
       students_created: 1,
     });
     const user = userEvent.setup();
@@ -216,7 +217,7 @@ describe("Lesson Student Roster", () => {
     await user.click(within(dialog).getByRole("button", { name: "Import Students" }));
     const confirm = await screen.findByRole("dialog", { name: "Replace Students?" });
     expect(within(confirm).getByText(/Delete all current students \(5 currently\)/)).toBeTruthy();
-    expect(within(confirm).getByText(/Remove any existing lesson placements \(3 currently\)/)).toBeTruthy();
+    expect(within(confirm).getByText(/Preserve existing placement decisions \(3\); the schedule will be marked stale/)).toBeTruthy();
     expect(within(confirm).getByText("Preserve Instructor records and Instructor availability")).toBeTruthy();
     expect(within(confirm).getByText("Preserve the Lesson Tag registry")).toBeTruthy();
     expect(api.applyLessonStudentImport).not.toHaveBeenCalled();

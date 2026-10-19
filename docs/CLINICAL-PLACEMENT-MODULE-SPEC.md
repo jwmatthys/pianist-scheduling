@@ -85,6 +85,9 @@ Editing source data must not silently delete an existing schedule. See Section 9
 ## 4. Clinical Site import
 
 Accept local CSV and XLSX through the application's existing local import/mapping/preview infrastructure.
+Tag behavior follows the canonical [Shared Tag Architecture](SHARED-TAG-ARCHITECTURE.md).
+Each imported tag column must be explicitly mapped to the Clinical `Tags` field;
+unmapped columns never become tags.
 
 The intended source data includes the standard fields:
 
@@ -99,24 +102,32 @@ The intended source data includes the standard fields:
 - Session length
 - Travel time
 - Capacity (optional; default 1)
+- Tags (optional; explicitly mapped)
 
-Any additional imported columns are **tag-value columns**. Their headings have no semantic meaning after mapping the standard fields.
-
-Tag import rules:
-
-- Each nonblank cell in an additional column contributes exactly **one tag** to that Placement Opportunity.
-- Blank cells contribute no tag.
-- Do not split a cell on commas, semicolons, or other delimiters. One cell equals one tag.
-- Trim surrounding whitespace.
-- Tag identity is case-insensitive.
-- Normalize tag display text to **UPPERCASE** when tags are created/imported.
-- Duplicate normalized tags on the same Placement Opportunity collapse to one association.
+The explicitly mapped `Tags` field uses the shared semicolon-separated tag
+format. Parsing trims whitespace, ignores empty values, removes duplicates,
+and matches or creates tags only in the Clinical catalog. An unmapped or
+otherwise unused source column is not interpreted as a tag. Clinical may
+display tag names in uppercase; that is Clinical presentation policy, while
+shared normalization determines case-insensitive identity.
 
 Import should use explicit preview/validation before commit. Do not silently infer or consolidate separate Placement Opportunities.
 
+Implementation alignment: the current Clinical Sites importer still treats
+unmapped columns as tag columns. That legacy behavior conflicts with the
+canonical Shared Tag Architecture and is not the approved import contract; the
+import UI and parser must require explicit tag-field mappings before this
+import path is considered aligned.
+
 ## 5. Clinical Tags
 
-Tags are first-class Clinical module concepts and are not hardcoded categories. Examples such as `MENTAL HEALTH`, `ADVANCED`, and `VIRTUAL` are illustrative only.
+Clinical owns its tag catalog. Tags are first-class Clinical module concepts
+and are not hardcoded categories. Examples such as `MENTAL HEALTH`,
+`ADVANCED`, and `VIRTUAL` are illustrative only. A Clinical tag is identified
+by `(clinical-placements, tag_uuid)`, never by name; an identically named tag
+in another module is unrelated. Shared identity, normalization, assignment
+mechanics, parsing, validation primitives, filtering, and reporting support
+are specified in [Shared Tag Architecture](SHARED-TAG-ARCHITECTURE.md).
 
 The **Clinical Sites** tab includes a **Manage Tags** action/dialog. The user may:
 
@@ -126,8 +137,8 @@ The **Clinical Sites** tab includes a **Manage Tags** action/dialog. The user ma
 
 Rules:
 
-- Normalize newly created/renamed tags to uppercase.
-- Compare tag identity case-insensitively.
+- Clinical displays newly created/renamed tags in uppercase; shared
+  normalization provides case-insensitive identity and comparison.
 - Renaming a tag must preserve Placement Opportunity associations and all student tag states.
 - A tag remains in the Clinical tag registry even if no current Placement Opportunity uses it.
 - In Manage Tags, tags not currently used by any Placement Opportunity are visually greyed out. Grey means **unused by a current Clinical Site**, not disabled.
@@ -162,7 +173,7 @@ The two-phase model applies: Phase A (inspect, map, preview) writes nothing; Pha
 - Columns: **Student ID** (required), Name, Email, and optional weekday columns Monday–Sunday (Mon–Sun accepted). The user maps them in one dialog.
 - Students are matched by Student ID (case-insensitive; the stored ID spelling is kept). Unknown IDs create a student (Name then required); known IDs are updated. Email, when mapped, is authoritative (blank clears it); a blank or unmapped Name keeps the existing name. Duplicate IDs in a file are row errors.
 - When at least one weekday column is mapped, each listed student's availability is **replaced**; blank cells mean no availability, so all-blank mapped days clear it. When none is mapped, availability is left unchanged (including for new students, who start with none).
-- A weekday cell holds `;`-separated ranges such as `8:00-10:00; T 1:00 PM-4:00 PM`. Entries are Available unless prefixed `T`/`Tentative`; an optional `Available` prefix is accepted. Times use the shared `time_parsing` parser; bare hours (`8`) are accepted, and unmarked hours before 7:00 (the grid's first hour) are read as afternoon, so `T 1:00-4:00` means 1:00-4:00 PM. Same-status overlaps merge; conflicting-status overlaps and invalid/reversed ranges are row errors.
+- A weekday cell holds `;`-separated ranges such as `8:00-10:00; T 1:00 PM-4:00 PM`. Entries are Available unless prefixed `T`/`Tentative`; an optional `Available` prefix is accepted. Times use the shared `time_parsing` parser and bare hours (`8`) are accepted. When neither time includes AM/PM and the end time is earlier than the start time, the importer assumes an afternoon end time: `9:00-3:00` means `9:00 AM-3:00 PM`, and `8:00-1:00` means `8:00 AM-1:00 PM`. Existing unmarked ranges beginning before 7:00 (the grid's first hour) continue to be read as afternoon, so `T 1:00-4:00` means 1:00-4:00 PM. Explicit AM/PM values are not adjusted. Same-status overlaps merge; conflicting-status overlaps, malformed times, zero-length ranges, and invalid ranges are row errors.
 - Preview shows per row: Student ID, Name, Create/Update, student change (`Create student`, `Update name and email`, `Update name`, `Update email`, `No student change`), and availability change (`Replace 5 availability windows with 8`, `Add N …`, `Clear availability (N windows)`, `No availability change`).
 - Any row error rejects the entire import. Roster-only, availability-only, and combined imports each increment `source_data_revision` exactly once and flag an existing schedule stale.
 
@@ -218,6 +229,13 @@ Preferred site-tag matching has higher optimization priority than avoidance of T
 ## 7. Student tag requirements, preferences, and restrictions
 
 Selecting a student from the roster exposes the student's availability plus **every tag currently defined in the Clinical tag registry**.
+
+`Required`, `Preferred`, and `Restricted` are Clinical-owned assignment
+states, not shared/global tag states. They apply only to Clinical student-tag
+assignments; other modules may use different states or no states. The
+Student Roster import does not currently import tag assignments. If tag
+columns are supported by that import in future, each must be explicitly
+mapped to a Clinical state field.
 
 Each student/tag pair has one of four states:
 
@@ -367,6 +385,35 @@ When manually assigning/editing a placement:
 
 Manual start times may extend outside student availability or the Placement Opportunity window. Permit the edit and show warnings rather than blocking it.
 
+### Three-State Placement Model (Unassigned / Assigned / Manually Unplaced)
+
+Clinical Placement and Lesson Scheduling share the same placement-state model. The API exposes it as the typed `placement_state` field (`unassigned`, `assigned`, `manuallyUnplaced`) on every schedule entry. It is derived, not stored: Unassigned is the absence of a placement record.
+
+| State | Placement | Generate Schedule |
+|---|---|---|
+| Unassigned | None | Eligible; may be assigned automatically |
+| Assigned (Automatic or Manual) | Exists | Automatic is replaceable; Manual is preserved |
+| Manually Unplaced | None (explicit coordinator decision) | Excluded; never assigned |
+
+Placement dropdown order is always: `Unassigned`, a separator, the Placement Opportunity sites, a separator, `Manually Unplaced`.
+
+Example:
+
+```
+Unassigned
+────────────
+Mercy Behavioral Health
+Campus Counseling Center
+Hope Community Clinic
+────────────
+Manually Unplaced
+```
+
+- Choosing Unassigned removes any placement or Manually Unplaced decision (`DELETE /api/clinical/schedule/placements/{student_id}`) and returns the student to the automatic pool. It does not regenerate.
+- Choosing a placement option saves a manual placement; choosing Manually Unplaced saves the exclusion decision.
+- The summary reports Unassigned and Manually Unplaced counts separately.
+- Both modules use identical terminology; this is the same model in both specifications.
+
 ### 10.2 Manual override principle
 
 The automatic optimizer is strict; the human coordinator is authoritative.
@@ -436,10 +483,9 @@ Add module-specific automated tests at the pure-domain/service level before depe
 
 - multiple rows sharing a site name remain distinct Placement Opportunities;
 - capacity default = 1;
-- nonstandard column values create tags while headers do not;
-- blank extra cells create no tag;
-- one cell remains one tag (no delimiter splitting);
-- whitespace trimming and uppercase/case-insensitive tag normalization;
+- only explicitly mapped Clinical tag fields are parsed; unmapped columns never create tags;
+- semicolon-separated mapped values, blank values, duplicate removal, and preview behavior follow the Shared Tag Architecture;
+- Clinical uppercase display and shared case-insensitive tag identity;
 - duplicate normalized tags collapse;
 - deleting a student-used tag requires warning/confirmation behavior;
 - roster import upserts by Student ID (preserving absent students, tag states, and placements) and optionally replaces listed students' availability.
@@ -504,7 +550,7 @@ Add module-specific automated tests at the pure-domain/service level before depe
 Keep commits/phases narrow and testable. A sensible sequence is:
 
 1. **Clinical persistence and migrations**: module-owned entities, tag registry, Placement Opportunities, students, student-tag state, Clinical placement result/revision state.
-2. **Clinical Sites UI/import**: flat Placement Opportunity list, add/edit/delete, CSV/XLSX mapping/preview, capacity, tag-value import, Manage Tags.
+2. **Clinical Sites UI/import**: flat Placement Opportunity list, add/edit/delete, CSV/XLSX mapping/preview, capacity, explicitly mapped Clinical tag import, Manage Tags.
 3. **Student Roster UI/import**: destructive replacement import with warning; manual student editing.
 4. **Shared availability reuse/generalization**: adapt the existing Pianist Availability grid for Clinical students while preserving Pianist behavior; Monday-Sunday, 7 AM-9 PM, 30-minute cells, three-state cycle, right-click, drag painting, closed-world save.
 5. **Clinical validation services**: candidate eligibility, travel/session feasibility, capacity, tags, manual warning calculation, stale-input revision tracking.

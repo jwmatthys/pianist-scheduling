@@ -43,12 +43,21 @@ Shared concepts may include:
 - sites
 - dates/times
 - availability
+- tag identity, normalization, assignment mechanics, import/export parsing,
+  validation primitives, filtering, and reporting support
 - travel
 - assignments
 - imports/exports
 - validation
 
 Keep module-specific concepts inside their modules.
+
+Tags follow the shared-mechanism/module-owned-meaning pattern: every tag is
+identified by `(module_id, tag_uuid)`, and each module owns its catalog,
+meaning, assignment states, validation, optimizer, workflow, and reporting
+semantics. Matching names in different modules are unrelated. Import tag
+values only from explicitly mapped fields; unmapped columns never become
+tags. See [the canonical Shared Tag Architecture](../docs/SHARED-TAG-ARCHITECTURE.md).
 
 ## Application Structure
 

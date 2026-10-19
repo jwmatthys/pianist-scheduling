@@ -15,6 +15,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -40,6 +41,29 @@ class LessonPlacementType(str, Enum):
     AUTOMATIC = "automatic"
     MANUAL = "manual"
     MANUALLY_UNPLACED = "manuallyUnplaced"
+
+
+class LessonPlacementState(str, Enum):
+    """Coordinator-facing state of a student: no placement record is UNASSIGNED."""
+
+    UNASSIGNED = "unassigned"
+    ASSIGNED = "assigned"
+    MANUALLY_UNPLACED = "manuallyUnplaced"
+
+    @classmethod
+    def from_placement_type(cls, placement_type: str | None) -> "LessonPlacementState":
+        if placement_type is None:
+            return cls.UNASSIGNED
+        if placement_type == LessonPlacementType.MANUALLY_UNPLACED.value:
+            return cls.MANUALLY_UNPLACED
+        return cls.ASSIGNED
+
+
+class LessonUnplacedReason(str, Enum):
+    NO_FEASIBLE_CANDIDATE = "NO_FEASIBLE_CANDIDATE"
+    CAPACITY_LIMIT = "CAPACITY_LIMIT"
+    INSTRUCTOR_OVERLAP = "INSTRUCTOR_OVERLAP"
+    MANUALLY_UNPLACED = "MANUALLY_UNPLACED"
 
 
 def normalize_lesson_tag_name(value: str | None) -> str:
@@ -208,22 +232,22 @@ class LessonPlacement(ModuleBase):
         CheckConstraint(_in_list("placement_type", LessonPlacementType), name="ck_lesson_placement_type"),
         CheckConstraint(
             "(placement_type = 'manuallyUnplaced' "
-            "AND lesson_instructor_id IS NULL AND start_minute IS NULL) "
+            "AND lesson_instructor_id IS NULL AND start_minute IS NULL AND end_minute IS NULL) "
             "OR (placement_type <> 'manuallyUnplaced' "
-            "AND lesson_instructor_id IS NOT NULL AND start_minute IS NOT NULL "
-            "AND start_minute >= 0 AND start_minute < 1440)",
+            "AND lesson_instructor_id IS NOT NULL AND start_minute IS NOT NULL AND end_minute IS NOT NULL "
+            "AND start_minute >= 0 AND start_minute < end_minute AND end_minute <= 1440)",
             name="ck_lesson_placement_shape",
         ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_id)
-    lesson_student_id: Mapped[str] = mapped_column(
-        ForeignKey("lesson_students.id", ondelete="CASCADE"), nullable=False
-    )
+    lesson_student_id: Mapped[str] = mapped_column(String(36), nullable=False)
     lesson_instructor_id: Mapped[str | None] = mapped_column(
-        ForeignKey("lesson_instructors.id", ondelete="CASCADE"), nullable=True, index=True
+        String(36), nullable=True, index=True
     )
+    day: Mapped[str] = mapped_column(String(20), nullable=False, default="Monday", server_default="Monday")
     start_minute: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    end_minute: Mapped[int | None] = mapped_column(Integer, nullable=True)
     placement_type: Mapped[str] = mapped_column(String(20), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
@@ -237,3 +261,54 @@ class LessonModuleState(ModuleBase):
     source_data_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     is_schedule_stale: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     modified_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class LessonScheduleResult(ModuleBase):
+    """Persisted summary and source provenance for the current automatic schedule."""
+
+    __tablename__ = "lesson_schedule_results"
+
+    session_uuid: Mapped[str] = mapped_column(String(36), primary_key=True)
+    schedule_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_data_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    students_scheduled: Mapped[int] = mapped_column(Integer, nullable=False)
+    students_unscheduled: Mapped[int] = mapped_column(Integer, nullable=False)
+    instructor_utilization: Mapped[float] = mapped_column(Float, nullable=False)
+    preferred_tag_matches: Mapped[int] = mapped_column(Integer, nullable=False)
+    tentative_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    gap_cost_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    modified_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class LessonSchedulePlacement(ModuleBase):
+    """Current assigned-placement snapshot, retained when roster identities change."""
+
+    __tablename__ = "lesson_schedule_placements"
+
+    student_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    instructor_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    placement_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=LessonPlacementType.AUTOMATIC.value,
+        server_default=LessonPlacementType.AUTOMATIC.value,
+    )
+    student_name: Mapped[str] = mapped_column(String(200), nullable=False, default="", server_default="")
+    instructor_name: Mapped[str] = mapped_column(String(200), nullable=False, default="", server_default="")
+    day: Mapped[str] = mapped_column(String(20), nullable=False)
+    start_minute: Mapped[int] = mapped_column(Integer, nullable=False)
+    end_minute: Mapped[int] = mapped_column(Integer, nullable=False)
+    preferred_tag_match_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    tentative_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class LessonUnplacedStudent(ModuleBase):
+    """Unplaced student decision retained with the current schedule."""
+
+    __tablename__ = "lesson_unplaced_students"
+
+    student_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    student_name: Mapped[str] = mapped_column(String(200), nullable=False, default="", server_default="")
+    reason: Mapped[str] = mapped_column(String(40), nullable=False)
+    placement_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=LessonPlacementType.AUTOMATIC.value,
+        server_default=LessonPlacementType.AUTOMATIC.value,
+    )

@@ -17,15 +17,12 @@ from typing import Mapping
 
 from .availability import WEEKDAYS, AvailabilityStatus, AvailabilityWindow, normalize_day, normalize_windows
 from .clinical_import_common import cell_text
-from .time_parsing import format_time_of_day, parse_time_of_day
+from .time_parsing import format_time_of_day, parse_time_range
 
 MAX_ENTRIES_PER_CELL = 20
 
 _STATUS_PREFIX = re.compile(r"^(tentative|available|t)(?=[\s:\d])\s*:?\s*", re.IGNORECASE)
 _RANGE_SPLIT = re.compile(r"\s*(?:-|–|—|\bto\b)\s*", re.IGNORECASE)
-_BARE_HOUR = re.compile(r"^\d{1,2}$")
-_HAS_MERIDIEM = re.compile(r"[ap]\.?m", re.IGNORECASE)
-_EARLIEST_AM_MINUTE = 7 * 60
 
 
 @dataclass
@@ -51,13 +48,6 @@ def mapped_day_columns(days: Mapping[str, str | None]) -> dict[str, str]:
     return {day: column for day in WEEKDAYS if (column := days.get(day))}
 
 
-def _parse_time(text: str) -> int | None:
-    text = text.strip()
-    if _BARE_HOUR.match(text):
-        text = f"{text}:00"
-    return parse_time_of_day(text)
-
-
 def parse_cell(day: str, text: str, row_number: int) -> tuple[list[AvailabilityWindow], list[str]]:
     """Parse one weekday cell into Availability Windows and error messages."""
     windows: list[AvailabilityWindow] = []
@@ -75,14 +65,10 @@ def parse_cell(day: str, text: str, row_number: int) -> tuple[list[AvailabilityW
         if len(parts) != 2 or not all(parts):
             errors.append(f"{day}: '{entry}' is not a valid time range such as 8:00-12:00.")
             continue
-        start, end = _parse_time(parts[0]), _parse_time(parts[1])
+        start, end = parse_time_range(parts[0], parts[1])
         if start is None or end is None:
             errors.append(f"{day}: '{entry}' contains a time that could not be read.")
             continue
-        if not _HAS_MERIDIEM.search(body) and start < _EARLIEST_AM_MINUTE and 0 < end < 12 * 60:
-            # Unmarked times before 7:00 are read as afternoon (e.g. "T 1:00-4:00"), because
-            # the product's availability grid starts at 7:00 AM.
-            start, end = start + 12 * 60, end + 12 * 60
         if end <= start:
             errors.append(f"{day}: '{entry}' ends at or before it starts.")
             continue

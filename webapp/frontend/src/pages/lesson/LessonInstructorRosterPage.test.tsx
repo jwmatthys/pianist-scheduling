@@ -172,7 +172,7 @@ describe("Lesson Instructor Roster", () => {
 
   it("deletes an instructor only after confirmation", async () => {
     vi.mocked(api.listLessonInstructors).mockResolvedValue([instructor()]);
-    vi.mocked(api.deleteLessonInstructor).mockResolvedValue({ deleted: true, placements_removed: 0 } as never);
+    vi.mocked(api.deleteLessonInstructor).mockResolvedValue({ deleted: true, placements_preserved: 0 } as never);
     const user = userEvent.setup();
     render(<LessonInstructorRosterPage />);
     await user.click(await screen.findByRole("button", { name: "Delete Ada Example" }));
@@ -250,7 +250,8 @@ describe("Lesson Instructor Roster", () => {
     vi.mocked(api.previewLessonInstructorImport).mockResolvedValue(preview);
     vi.mocked(api.applyLessonInstructorImport).mockResolvedValue({
       instructors_removed: 4,
-      placements_removed: 2,
+      placements_removed: 0,
+      placements_preserved: 2,
       instructors_created: 1,
       tags_created: 1,
     });

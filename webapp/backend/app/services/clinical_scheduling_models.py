@@ -191,6 +191,22 @@ class PlacementKind(str, Enum):
     MANUALLY_UNPLACED = "manuallyUnplaced"
 
 
+class PlacementState(str, Enum):
+    """Coordinator-facing state of a student: no placement record is UNASSIGNED."""
+
+    UNASSIGNED = "unassigned"
+    ASSIGNED = "assigned"
+    MANUALLY_UNPLACED = "manuallyUnplaced"
+
+    @classmethod
+    def from_kind(cls, kind: "PlacementKind | None") -> "PlacementState":
+        if kind is None:
+            return cls.UNASSIGNED
+        if kind is PlacementKind.MANUALLY_UNPLACED:
+            return cls.MANUALLY_UNPLACED
+        return cls.ASSIGNED
+
+
 @dataclass(frozen=True)
 class PreservedPlacement:
     """A manual decision the optimizer must schedule around.

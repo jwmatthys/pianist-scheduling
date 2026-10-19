@@ -34,6 +34,9 @@ LESSON_TABLES = {
     "lesson_student_tag_states",
     "lesson_placements",
     "lesson_module_states",
+    "lesson_schedule_placements",
+    "lesson_schedule_results",
+    "lesson_unplaced_students",
 }
 
 
@@ -94,8 +97,18 @@ class LessonPersistenceTests(LessonTestCase):
             self.repo.create_student("  ")
         self.assertEqual(missing.exception.code, "INVALID_STUDENT_ID")
         with self.assertRaises(LessonValidationError) as duplicate:
-            self.repo.create_student("s-1")
+            self.repo.create_student("s-1", "Another Student")
         self.assertEqual(duplicate.exception.code, "DUPLICATE_STUDENT_ID")
+
+    def test_student_creation_and_update_require_a_name(self):
+        with self.assertRaises(LessonValidationError) as missing:
+            self.repo.create_student("S-1", "  ")
+        self.assertEqual(missing.exception.code, "INVALID_STUDENT_NAME")
+
+        student = self.repo.create_student("S-1", "Pat")
+        with self.assertRaises(LessonValidationError) as blank:
+            self.repo.update_student(student.id, "S-1", "  ")
+        self.assertEqual(blank.exception.code, "INVALID_STUDENT_NAME")
 
     def test_tags_are_uppercase_and_case_insensitively_unique(self):
         tag = self.repo.create_tag("  voice ")
@@ -122,7 +135,7 @@ class LessonPersistenceTests(LessonTestCase):
         tag = self.repo.create_tag("piano")
         instructor = self.repo.create_instructor("T", tag_ids=[tag.id])
         self.assertEqual([t.name for t in instructor.tags], ["PIANO"])
-        student = self.repo.create_student("S-1")
+        student = self.repo.create_student("S-1", "Pat Test")
         self.repo.set_tag_state(student.id, tag.id, LessonTagState.REQUIRED)
         self.repo.delete_tag(tag.id)
         self.db.refresh(instructor)
@@ -131,7 +144,7 @@ class LessonPersistenceTests(LessonTestCase):
 
     def test_availability_persists_separately_and_merges_same_status(self):
         instructor = self.repo.create_instructor("T")
-        student = self.repo.create_student("S-1")
+        student = self.repo.create_student("S-1", "Pat Test")
         self.repo.set_instructor_availability(
             instructor.id,
             [window(start=540, end=600), window(start=600, end=660), window(day="Tuesday", status="Tentative")],
@@ -156,7 +169,7 @@ class LessonPersistenceTests(LessonTestCase):
 
     def test_placement_types_and_single_placement_per_student(self):
         instructor = self.repo.create_instructor("T")
-        student = self.repo.create_student("S-1")
+        student = self.repo.create_student("S-1", "Pat Test")
         self.repo.set_placement(student.id, LessonPlacementType.AUTOMATIC, instructor.id, 540)
         self.repo.set_placement(student.id, LessonPlacementType.MANUAL, instructor.id, 600)
         placements = self.repo.list_placements()
@@ -170,7 +183,7 @@ class LessonPersistenceTests(LessonTestCase):
 
     def test_placement_shape_validation(self):
         instructor = self.repo.create_instructor("T")
-        student = self.repo.create_student("S-1")
+        student = self.repo.create_student("S-1", "Pat Test")
         with self.assertRaises(LessonValidationError):
             self.repo.set_placement(student.id, LessonPlacementType.MANUAL)
         with self.assertRaises(LessonValidationError):
@@ -181,7 +194,7 @@ class LessonPersistenceTests(LessonTestCase):
             self.repo.set_placement(student.id, LessonPlacementType.MANUAL, "missing", 540)
 
     def test_database_rejects_malformed_placement_rows(self):
-        student = self.repo.create_student("S-1")
+        student = self.repo.create_student("S-1", "Pat Test")
         self.db.add(lesson_models.LessonPlacement(
             lesson_student_id=student.id, placement_type="manuallyUnplaced", start_minute=540
         ))
@@ -189,15 +202,15 @@ class LessonPersistenceTests(LessonTestCase):
             self.db.flush()
         self.db.rollback()
 
-    def test_deleting_student_or_instructor_removes_dependent_placements(self):
+    def test_deleting_student_or_instructor_preserves_dependent_placements(self):
         instructor = self.repo.create_instructor("T")
-        first, second = self.repo.create_student("S-1"), self.repo.create_student("S-2")
+        first, second = self.repo.create_student("S-1", "Pat"), self.repo.create_student("S-2", "Sam")
         self.repo.set_placement(first.id, LessonPlacementType.MANUAL, instructor.id, 540)
         self.repo.set_placement(second.id, LessonPlacementType.MANUAL, instructor.id, 600)
         self.repo.delete_student(first.id)
-        self.assertEqual(len(self.repo.list_placements()), 1)
+        self.assertEqual(len(self.repo.list_placements()), 2)
         self.repo.delete_instructor(instructor.id)
-        self.assertEqual(self.repo.list_placements(), [])
+        self.assertEqual(len(self.repo.list_placements()), 2)
 
     def test_module_state_persists_revisions_and_staleness(self):
         state = self.repo.get_state()
@@ -205,7 +218,7 @@ class LessonPersistenceTests(LessonTestCase):
             (state.schedule_revision, state.source_data_revision, state.is_schedule_stale), (0, 0, False)
         )
         instructor = self.repo.create_instructor("T")
-        student = self.repo.create_student("S-1")
+        student = self.repo.create_student("S-1", "Pat Test")
         self.assertEqual(self.revision(), 2)
         self.assertFalse(self.repo.get_state().is_schedule_stale)
         self.repo.set_placement(student.id, LessonPlacementType.AUTOMATIC, instructor.id, 540)
@@ -228,7 +241,7 @@ class LessonPersistenceTests(LessonTestCase):
         self.repo.update_instructor(instructor.id, "T2"); seen.append(self.revision())
         self.repo.set_instructor_tags(instructor.id, [tag.id]); seen.append(self.revision())
         self.repo.set_instructor_availability(instructor.id, [window()]); seen.append(self.revision())
-        student = self.repo.create_student("S-1"); seen.append(self.revision())
+        student = self.repo.create_student("S-1", "Pat"); seen.append(self.revision())
         self.repo.update_student(student.id, "S-1", "Pat"); seen.append(self.revision())
         self.repo.set_student_availability(student.id, [window()]); seen.append(self.revision())
         self.repo.set_tag_state(student.id, tag.id, LessonTagState.PREFERRED); seen.append(self.revision())
@@ -240,7 +253,7 @@ class LessonPersistenceTests(LessonTestCase):
 
 class LessonMigrationTests(LessonTestCase):
     def test_migration_creates_lesson_tables_and_module_state_for_existing_session(self):
-        self.assertGreaterEqual(LATEST_SCHEMA_VERSION, 12)
+        self.assertGreaterEqual(LATEST_SCHEMA_VERSION, 14)
         self.assertTrue(LESSON_TABLES <= set(inspect(self.engine).get_table_names()))
         session_uuid = self.db.query(models.SchedulingSession.session_uuid).scalar()
         self.assertEqual(self.db.query(LessonModuleState).one().session_uuid, session_uuid)
@@ -259,11 +272,43 @@ class LessonMigrationTests(LessonTestCase):
 
         self.assertEqual(report.initial_version, 11)
         self.assertEqual(report.current_version, LATEST_SCHEMA_VERSION)
-        self.assertEqual(report.applied_migrations, ("add_lesson_scheduling_module_tables",))
+        self.assertEqual(report.applied_migrations, (
+            "add_lesson_scheduling_module_tables",
+            "add_lesson_automatic_schedule_results",
+            "align_lesson_schedule_lifecycle",
+        ))
         with Session(self.engine) as db:
             self.assertEqual(db.get(models.Pianist, 7).name, "Synthetic Pianist")
             self.assertEqual(db.query(LessonModuleState).count(), 1)
             self.assertEqual(LessonRepository(db).list_instructors(), [])
+
+    def test_v12_database_upgrade_preserves_placement_decisions(self):
+        instructor = self.repo.create_instructor("Synthetic Instructor")
+        student = self.repo.create_student("S-12", "Synthetic Student")
+        placement = self.repo.set_placement(
+            student.id, LessonPlacementType.MANUAL, instructor.id, 540
+        )
+        self.db.commit()
+        with self.engine.begin() as connection:
+            for table in (
+                "lesson_unplaced_students",
+                "lesson_schedule_placements",
+                "lesson_schedule_results",
+            ):
+                connection.exec_driver_sql(f"DROP TABLE {table}")
+            connection.exec_driver_sql("PRAGMA user_version = 12")
+
+        report = migrate_database(self.engine)
+
+        self.assertEqual(report.applied_migrations, (
+            "add_lesson_automatic_schedule_results",
+            "align_lesson_schedule_lifecycle",
+        ))
+        with Session(self.engine) as db:
+            self.assertEqual(db.get(lesson_models.LessonPlacement, placement.id).placement_type, "manual")
+            self.assertEqual(db.query(lesson_models.LessonSchedulePlacement).count(), 0)
+            self.assertEqual(db.query(lesson_models.LessonScheduleResult).count(), 0)
+            self.assertEqual(db.query(lesson_models.LessonUnplacedStudent).count(), 0)
 
     def test_current_database_is_not_migrated_again(self):
         self.db.close()
@@ -311,7 +356,7 @@ class LessonBoundaryTests(LessonTestCase):
         clinical_state = ClinicalRepository(self.db).get_state()
         before = clinical_state.source_data_revision
         self.repo.create_instructor("T")
-        self.repo.create_student("S-1")
+        self.repo.create_student("S-1", "Pat Test")
         self.assertEqual(clinical_state.source_data_revision, before)
         self.assertEqual(self.db.query(LessonInstructor).count(), 1)
 

@@ -315,7 +315,7 @@ export function LessonInstructorRosterPage() {
       {deleting && (
         <ConfirmDialog
           title={`Delete ${deleting.name}?`}
-          message="This instructor, their availability, and any lesson placements assigned to them will be removed."
+          message="This instructor and their availability will be removed. Existing lesson placements will be retained in the stale schedule with verification warnings."
           confirmLabel="Delete Instructor"
           onConfirm={() => void confirmDelete()}
           onCancel={() => setDeleting(null)}

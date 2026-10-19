@@ -22,6 +22,9 @@ from app.database import (
 from app.services.accompanist_results import get_result_by_uuid
 
 LESSON_TABLES_DROP_ORDER = (
+    "lesson_unplaced_students",
+    "lesson_schedule_placements",
+    "lesson_schedule_results",
     "lesson_placements",
     "lesson_student_tag_states",
     "lesson_student_availability_windows",
@@ -124,6 +127,67 @@ class DatabaseMigrationTests(unittest.TestCase):
         self.assertEqual(report.current_version, LATEST_SCHEMA_VERSION)
         self.assertEqual(report.applied_migrations, ())
         self.assertEqual(after, before)
+
+    def test_v13_lesson_decisions_migrate_without_roster_foreign_keys(self):
+        migrate_database(self.engine, MIGRATIONS[:13])
+        timestamp = datetime.utcnow().isoformat(sep=" ")
+        student_id = str(uuid4())
+        instructor_id = str(uuid4())
+        with self.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "INSERT INTO lesson_instructors "
+                "(id, name, email, room, lesson_length_minutes, capacity, created_at, updated_at) "
+                "VALUES (?, ?, '', '', 60, 2, ?, ?)",
+                (instructor_id, "Synthetic Instructor", timestamp, timestamp),
+            )
+            connection.exec_driver_sql(
+                "INSERT INTO lesson_students (id, student_id, name, email, created_at, updated_at) "
+                "VALUES (?, 'S-V13', 'Synthetic Student', '', ?, ?)",
+                (student_id, timestamp, timestamp),
+            )
+            connection.exec_driver_sql("DROP TABLE lesson_placements")
+            connection.exec_driver_sql(
+                "CREATE TABLE lesson_placements ("
+                "id VARCHAR(36) PRIMARY KEY, lesson_student_id VARCHAR(36) NOT NULL UNIQUE, "
+                "lesson_instructor_id VARCHAR(36), start_minute INTEGER, placement_type VARCHAR(20) NOT NULL, "
+                "created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL)"
+            )
+            connection.exec_driver_sql(
+                "INSERT INTO lesson_placements VALUES (?, ?, ?, 540, 'manual', ?, ?)",
+                (str(uuid4()), student_id, instructor_id, timestamp, timestamp),
+            )
+            connection.exec_driver_sql("DROP TABLE lesson_schedule_placements")
+            connection.exec_driver_sql(
+                "CREATE TABLE lesson_schedule_placements ("
+                "student_id VARCHAR(36) PRIMARY KEY, instructor_id VARCHAR(36) NOT NULL, "
+                "day VARCHAR(20) NOT NULL, start_minute INTEGER NOT NULL, end_minute INTEGER NOT NULL, "
+                "preferred_tag_match_count INTEGER NOT NULL, tentative_minutes INTEGER NOT NULL)"
+            )
+            connection.exec_driver_sql(
+                "INSERT INTO lesson_schedule_placements VALUES (?, ?, 'Monday', 540, 600, 0, 0)",
+                (student_id, instructor_id),
+            )
+            connection.exec_driver_sql("PRAGMA user_version = 13")
+
+        report = migrate_database(self.engine)
+
+        self.assertEqual(report.current_version, LATEST_SCHEMA_VERSION)
+        with self.engine.connect() as connection:
+            self.assertEqual(
+                connection.exec_driver_sql("PRAGMA foreign_key_list(lesson_placements)").all(),
+                [],
+            )
+            placement = connection.exec_driver_sql(
+                "SELECT day, start_minute, end_minute, placement_type FROM lesson_placements"
+            ).one()
+            self.assertEqual(tuple(placement), ("Monday", 540, 600, "manual"))
+            snapshot = connection.exec_driver_sql(
+                "SELECT placement_type, student_name, instructor_name FROM lesson_schedule_placements"
+            ).one()
+            self.assertEqual(
+                tuple(snapshot),
+                ("automatic", "Synthetic Student", "Synthetic Instructor"),
+            )
 
     def test_legacy_fixture_migrates_forward_without_losing_existing_records(self):
         self.engine.dispose()

@@ -572,6 +572,9 @@ export interface ClinicalStudentsImportResult {
   windows_imported: number;
 }
 
+/** Unassigned: no placement, eligible for generation. Manually Unplaced: no placement, excluded from generation. */
+export type PlacementState = "unassigned" | "assigned" | "manuallyUnplaced";
+
 export interface ClinicalUnplacedStudent {
   student_id: string;
   student_name: string;
@@ -619,6 +622,7 @@ export interface ClinicalScheduleEntry {
   student_name: string;
   student_number: string;
   kind: "automatic" | "manual" | "manuallyUnplaced" | null;
+  placement_state: PlacementState;
   opportunity_id: string | null;
   site_name: string | null;
   opportunity_label: string | null;
@@ -724,6 +728,7 @@ export interface LessonInstructorImportPreview {
 export interface LessonInstructorImportResult {
   instructors_removed: number;
   placements_removed: number;
+  placements_preserved: number;
   instructors_created: number;
   tags_created: number;
 }
@@ -786,5 +791,93 @@ export interface LessonStudentImportPreview {
 export interface LessonStudentImportResult {
   students_removed: number;
   placements_removed: number;
+  placements_preserved: number;
   students_created: number;
+}
+
+export type LessonReadinessSeverity = "error" | "warning";
+export type LessonReadinessCategory = "data" | "students" | "instructors" | "tags";
+export type LessonReadinessSubjectKind = "student" | "instructor" | "tag";
+
+export interface LessonReadinessSubject {
+  kind: LessonReadinessSubjectKind;
+  id: string;
+  label: string;
+}
+
+export interface LessonReadinessWarning {
+  code: string;
+  severity: LessonReadinessSeverity;
+  category: LessonReadinessCategory;
+  subjects: LessonReadinessSubject[];
+}
+
+export interface LessonReadiness {
+  source_data_revision: number;
+  is_ready: boolean;
+  student_count: number;
+  instructor_count: number;
+  feasible_candidate_count: number;
+  total_candidate_count: number;
+  students_with_candidates: number;
+  instructors_with_schedulable_lessons: number;
+  warnings: LessonReadinessWarning[];
+}
+
+export interface LessonSchedule {
+  schedule_revision: number;
+  source_data_revision: number;
+  is_schedule_stale: boolean;
+  has_schedule: boolean;
+  students_scheduled: number;
+  students_unscheduled: number;
+  instructor_utilization: number;
+  preferred_tag_matches: number;
+  tentative_minutes: number;
+  gap_cost_minutes: number;
+  automatic_count: number;
+  manual_count: number;
+  manually_unplaced_count: number;
+  verified_count: number;
+  unverified_count: number;
+  entries: LessonScheduleEntry[];
+  verification: LessonPlacementVerification[];
+}
+
+export interface LessonPlacementWarning {
+  code: string;
+  message: string;
+}
+
+export interface LessonScheduleEntry {
+  student_id: string;
+  student_name: string;
+  placement_type: "automatic" | "manual" | "manuallyUnplaced" | null;
+  placement_state: PlacementState;
+  instructor_id: string | null;
+  instructor_name: string | null;
+  day: string | null;
+  start_minute: number | null;
+  end_minute: number | null;
+  preferred_tag_match_count: number;
+  tentative_minutes: number;
+  verified: boolean | null;
+  warnings: LessonPlacementWarning[];
+  unplaced_reason: string | null;
+}
+
+export interface LessonPlacementVerification {
+  student_id: string;
+  student_name: string;
+  instructor_id: string | null;
+  instructor_name: string | null;
+  day: string | null;
+  start_minute: number | null;
+  warnings: LessonPlacementWarning[];
+}
+
+export interface LessonModuleState {
+  schedule_revision: number;
+  source_data_revision: number;
+  is_schedule_stale: boolean;
 }

@@ -27,6 +27,7 @@ function entry(id: string, name: string, overrides: Partial<ClinicalScheduleEntr
     student_name: name,
     student_number: "",
     kind: null,
+    placement_state: "unassigned",
     opportunity_id: null,
     site_name: null,
     opportunity_label: null,
