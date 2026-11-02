@@ -118,7 +118,11 @@ export const PianistsPage = forwardRef<PianistsPageHandle>(function PianistsPage
         <ul className="pianist-list">
           {pianists.map((p) => (
             <li key={p.id} className={p.id === selectedId ? "selected" : ""}>
-              <button className="pianist-list-item" onClick={() => selectPianist(p.id)}>
+              <button
+                className="pianist-list-item"
+                aria-current={p.id === selectedId ? "true" : undefined}
+                onClick={() => selectPianist(p.id)}
+              >
                 <strong>{p.name}</strong>
               </button>
               <button className="danger-btn small" onClick={() => removePianist(p)}>

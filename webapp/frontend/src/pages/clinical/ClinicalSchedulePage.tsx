@@ -328,7 +328,7 @@ export function ClinicalSchedulePage() {
         <div className="dialog-actions">
           <button
             type="button"
-            className="primary"
+            className="primary-btn"
             disabled={busy || !readiness?.is_ready}
             onClick={() => void run(api.generateClinicalSchedule)}
           >

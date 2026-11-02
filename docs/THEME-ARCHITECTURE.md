@@ -107,105 +107,42 @@ A module should not invent a different color for the same semantic meaning.
 
 # Theme Tokens
 
-## Application Surfaces
-
-```text
-background
-surface
-surfaceElevated
-panel
-header
-sidebar
-dialog
-tooltip
-```
-
----
-
-## Text
-
-```text
-textPrimary
-textSecondary
-textMuted
-textDisabled
-textInverse
-```
-
----
-
-## Actions
+The built-in theme has exactly ten base colors. They are the only values a future
+palette file supplies:
 
 ```text
 primary
-primaryHover
-primaryActive
-
-secondary
-secondaryHover
-secondaryActive
-
-link
-linkHover
-```
-
----
-
-## Status
-
-```text
+accent
+background
+surface
+text
+textMuted
+border
 success
 warning
 error
-info
 ```
 
----
+All other visual roles are semantic aliases or derived values. They must not
+become additional palette entries:
 
-## Scheduling States
+| Semantic role | Base color or derivation |
+|---|---|
+| Header, links, focus ring, information, jury-required-badge | `primary` |
+| Secondary actions | `accent` |
+| Elevated surface, panel, dialog, tooltip, neutral tag | `surface` |
+| Inverse text | `surface` |
+| Muted and disabled text | Readable derived mix of `textMuted` and `text` |
+| Border strong | Derived from `border` and `textMuted` |
+| Available, ready, required constraints/tags | `success` |
+| Tentative, warning, stale, preferred tag | `warning` |
+| Error, conflict, blocked, restricted tag | `error` |
+| Unavailable | Derived from `textMuted`, `border`, and `surface`; it is not an error |
+| Selection and status backgrounds | Derived tints of the relevant base color and `surface` |
+| Hover and active states, shadows, overlays | Derived color mixes or opacity |
 
-Shared scheduling concepts use dedicated tokens.
-
-```text
-available
-tentative
-unavailable
-```
-
-These are shared infrastructure concepts and may appear in multiple modules.
-
----
-
-## Tag States
-
-```text
-tagRequired
-tagPreferred
-tagRestricted
-tagNeutral
-```
-
----
-
-## Validation
-
-```text
-conflict
-stale
-ready
-blocked
-```
-
----
-
-## Borders and Focus
-
-```text
-border
-borderStrong
-focusRing
-selection
-```
+Use the same alias for the same meaning in every module. Status must not rely
+on color alone.
 
 ---
 
@@ -223,45 +160,22 @@ Conceptually:
 
 ```ts
 interface ThemePalette {
+  primary: string;
+  accent: string;
   background: string;
   surface: string;
-  panel: string;
-
-  textPrimary: string;
-  textSecondary: string;
+  text: string;
   textMuted: string;
-
-  primary: string;
-  primaryHover: string;
-  primaryActive: string;
-
+  border: string;
   success: string;
   warning: string;
   error: string;
-  info: string;
-
-  available: string;
-  tentative: string;
-  unavailable: string;
-
-  tagRequired: string;
-  tagPreferred: string;
-  tagRestricted: string;
-  tagNeutral: string;
-
-  conflict: string;
-  stale: string;
-  ready: string;
-  blocked: string;
-
-  border: string;
-  borderStrong: string;
-  focusRing: string;
-  selection: string;
 }
 ```
 
-Actual implementation may contain additional fields.
+The palette object intentionally contains only these ten base values. Runtime
+CSS variables such as hover colors, status aliases, and surface tints are
+derived from them.
 
 ---
 
@@ -281,67 +195,25 @@ The PNG is not displayed to users.
 
 Each palette entry occupies an 8x8 pixel square.
 
-A theme PNG contains a fixed grid.
+A theme PNG contains a fixed grid and must be 40x16 pixels. The parser accepts
+non-interlaced, 8-bit RGB or RGBA PNGs. RGBA palette samples must be fully
+opaque.
 
-Example:
+The palette PNG contains exactly ten cells, each an 8x8 solid-color square:
 
 ```text
-Row 1
-Primary
-Primary Hover
-Primary Active
-Secondary
-Secondary Hover
-Secondary Active
-
-Row 2
-Background
-Surface
-Elevated Surface
-Panel
-Header
-Sidebar
-
-Row 3
-Primary Text
-Secondary Text
-Muted Text
-Disabled Text
-Inverse Text
-
-Row 4
-Success
-Warning
-Error
-Info
-
-Row 5
-Available
-Tentative
-Unavailable
-
-Row 6
-Required Tag
-Preferred Tag
-Restricted Tag
-Neutral Tag
-
-Row 7
-Conflict
-Stale
-Ready
-Blocked
-
-Row 8
-Border
-Border Strong
-Focus Ring
-Selection
+Row 1: Primary | Accent | Background | Surface | Text
+Row 2: Muted Text | Border | Success | Warning | Error
 ```
 
-The exact coordinate mapping must be documented in code.
+Coordinates are zero-based; each entry is sampled from the center pixel of its
+8x8 cell. The parser verifies the PNG signature, chunk boundaries and CRCs,
+image dimensions, supported encoding, decompressed image data, and that all ten
+sampled cells contain opaque colors. Optional true-color PLTE chunks are
+accepted; transparency-key (`tRNS`) chunks are not.
 
-Changing the PNG changes the theme.
+In a future theme-loading flow, changing the PNG changes the derived base
+palette values.
 
 ---
 
@@ -357,6 +229,21 @@ No telemetry.
 
 Themes are ordinary local application assets.
 
+The theme-loading service owns the `ThemePalette` type, the built-in default
+palette, exact ten-color/hex validation, and generation/application of the ten
+base CSS variables. Derived and semantic variables remain CSS definitions and
+update automatically when base variables change.
+
+The PNG parser only decodes and validates a palette image; it does not select a
+theme, expose file selection, or change the active application theme. Loading
+without a candidate uses the existing built-in palette. A candidate load or
+validation failure returns that same palette with a structured fallback warning
+so the caller can log the failure without blocking startup.
+
+PNG decoding currently supports non-interlaced 8-bit RGB and RGBA data. Other
+valid PNG encodings are rejected with a clear validation error rather than
+being sampled incorrectly.
+
 ---
 
 ## Startup
@@ -366,8 +253,8 @@ The default theme loads automatically at startup.
 If loading fails:
 
 - fall back to the built-in default theme
+- return a structured warning for the caller to log
 - continue application startup
-- log a structured warning
 
 Theme failure must never block startup.
 
@@ -380,9 +267,9 @@ All visual styling should ultimately flow through theme variables.
 Preferred:
 
 ```css
---color-primary
---color-background
---color-success
+--theme-primary
+--theme-background
+--theme-success
 ```
 
 Components should consume variables.

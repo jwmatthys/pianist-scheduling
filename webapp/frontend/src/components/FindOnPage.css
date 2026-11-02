@@ -7,16 +7,17 @@
   align-items: center;
   gap: 0.35rem;
   padding: 0.4rem 0.5rem;
-  background: #fff;
-  color: #1f2937;
-  border: 1px solid #9ca3af;
+  background: var(--theme-surface);
+  color: var(--theme-text);
+  border: 1px solid var(--theme-border);
   border-radius: 6px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 4px 14px var(--theme-shadow);
 }
 
 .find-on-page input {
   width: 14rem;
   padding: 0.3rem 0.45rem;
+  border: 1px solid var(--theme-border-strong);
   font: inherit;
 }
 
@@ -28,13 +29,12 @@
 }
 
 .find-on-page button:disabled {
-  cursor: default;
-  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .find-on-page input:focus-visible,
 .find-on-page button:focus-visible {
-  outline: 3px solid #1d4ed8;
+  outline: 3px solid var(--theme-focus-ring);
   outline-offset: 1px;
 }
 
@@ -45,15 +45,14 @@
   white-space: nowrap;
 }
 
-/* The highlight pseudo-elements cannot draw outlines, so the current match is a stronger
-   orange with an underline to distinguish it from the other yellow matches. */
+/* The underline distinguishes the active match because highlight pseudo-elements cannot draw outlines. */
 ::highlight(find-match) {
-  background-color: #fde047;
-  color: #111827;
+  background-color: var(--theme-selection);
+  color: var(--theme-text);
 }
 
 ::highlight(find-current) {
-  background-color: #f97316;
-  color: #111827;
+  background-color: var(--theme-selection);
+  color: var(--theme-text);
   text-decoration: underline;
 }

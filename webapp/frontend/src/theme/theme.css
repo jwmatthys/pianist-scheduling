@@ -1,0 +1,75 @@
+:root {
+  color-scheme: light;
+
+  --theme-primary: #1f4e79;
+  --theme-accent: #2e75b6;
+  --theme-background: #f4f6f9;
+  --theme-surface: #ffffff;
+  --theme-text: #1f2933;
+  --theme-text-muted: #6b7280;
+  --theme-text-muted-readable: color-mix(in srgb, var(--theme-text-muted) 97%, var(--theme-text));
+  --theme-border: #d1d5db;
+  --theme-success: #2e7d32;
+  --theme-warning: #b7791f;
+  --theme-error: #c53030;
+
+  --theme-secondary: var(--theme-accent);
+  --theme-info: var(--theme-primary);
+  --theme-text-inverse: var(--theme-surface);
+
+  --theme-primary-hover: color-mix(in srgb, var(--theme-primary) 88%, var(--theme-text));
+  --theme-primary-active: color-mix(in srgb, var(--theme-primary) 78%, var(--theme-text));
+  --theme-accent-hover: color-mix(in srgb, var(--theme-accent) 88%, var(--theme-text));
+  --theme-accent-active: color-mix(in srgb, var(--theme-accent) 78%, var(--theme-text));
+  --theme-accent-soft: color-mix(in srgb, var(--theme-accent) 25%, var(--theme-surface));
+  --theme-secondary-hover: color-mix(in srgb, var(--theme-surface) 92%, var(--theme-text));
+  --theme-secondary-active: color-mix(in srgb, var(--theme-surface) 84%, var(--theme-text));
+  --theme-surface-translucent: color-mix(in srgb, var(--theme-surface) 12%, transparent);
+
+  --theme-surface-muted: color-mix(in srgb, var(--theme-background) 55%, var(--theme-surface));
+  --theme-border-strong: color-mix(in srgb, var(--theme-border) 30%, var(--theme-text-muted));
+  --theme-selection: color-mix(in srgb, var(--theme-primary) 16%, var(--theme-surface));
+  --theme-primary-soft: color-mix(in srgb, var(--theme-primary) 20%, transparent);
+  --theme-focus-ring: var(--theme-primary);
+
+  --theme-success-soft: color-mix(in srgb, var(--theme-success) 8%, var(--theme-surface));
+  --theme-warning-soft: color-mix(in srgb, var(--theme-warning) 12%, var(--theme-surface));
+  --theme-error-soft: color-mix(in srgb, var(--theme-error) 12%, var(--theme-surface));
+  --theme-warning-foreground: color-mix(in srgb, var(--theme-warning) 70%, var(--theme-text));
+  --theme-unavailable-soft: color-mix(in srgb, var(--theme-text-muted) 5%, var(--theme-surface));
+
+  --theme-shadow: color-mix(in srgb, var(--theme-text) 24%, transparent);
+  --theme-overlay: color-mix(in srgb, var(--theme-text) 58%, transparent);
+
+  --status-available: var(--theme-success);
+  --status-tentative: var(--theme-warning);
+  --status-unavailable: var(--theme-text-muted-readable);
+  --status-ready: var(--theme-success);
+  --status-warning: var(--theme-warning);
+  --status-stale: var(--theme-warning);
+  --status-error: var(--theme-error);
+  --status-conflict: var(--theme-error);
+  --status-blocked: var(--theme-error);
+  --validation-conflict: var(--theme-error);
+  --validation-stale: var(--theme-warning);
+  --validation-ready: var(--theme-success);
+  --validation-blocked: var(--theme-error);
+  --status-available-soft: var(--theme-success-soft);
+  --status-tentative-soft: var(--theme-warning-soft);
+  --status-unavailable-soft: var(--theme-unavailable-soft);
+  --status-ready-soft: var(--theme-success-soft);
+  --status-warning-soft: var(--theme-warning-soft);
+  --status-stale-soft: var(--theme-warning-soft);
+  --status-error-soft: var(--theme-error-soft);
+  --status-conflict-soft: var(--theme-error-soft);
+  --status-blocked-soft: var(--theme-error-soft);
+
+  --tag-required: var(--theme-success);
+  --tag-preferred: var(--theme-warning);
+  --tag-restricted: var(--theme-error);
+  --tag-neutral: var(--theme-surface);
+  --tag-required-soft: var(--theme-success-soft);
+  --tag-preferred-soft: var(--theme-warning-soft);
+  --tag-restricted-soft: var(--theme-error-soft);
+  --tag-neutral-soft: var(--theme-surface-muted);
+}

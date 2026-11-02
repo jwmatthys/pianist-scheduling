@@ -308,7 +308,7 @@ export function TutorSchedulePage() {
         <div className="dialog-actions">
           <button
             type="button"
-            className="primary"
+            className="primary-btn"
             disabled={loading || actionLoading || !readiness?.is_ready}
             onClick={() => void runScheduleAction("generate")}
           >

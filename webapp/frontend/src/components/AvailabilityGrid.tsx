@@ -186,6 +186,7 @@ export const AvailabilityGrid = forwardRef<AvailabilityGridHandle, { pianist: Pi
                   key={day + slot}
                   type="button"
                   className={`avail-cell ${status ? STATUS_CLASS[status] : "slot-unset"}`}
+                  aria-label={`${day} ${formatMinutes(slot)}: ${status ?? "Not supplied"}`}
                   onPointerDown={(event) => {
                     if (event.button === 0) beginDrag(day, slot);
                   }}

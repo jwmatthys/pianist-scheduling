@@ -468,8 +468,8 @@ export function JurySetupPage() {
                   <p>Each finalized Accompanist lesson has independent Jury participation and Panel selection.</p>
                 </div>
                 <div className="jury-filter" role="group" aria-label="Filter lesson entries">
-                  <button type="button" className={entryFilter === "all" ? "is-active" : ""} onClick={() => setEntryFilter("all")}>All</button>
-                  <button type="button" className={entryFilter === "required" ? "is-active" : ""} onClick={() => setEntryFilter("required")}>Jury required</button>
+                  <button type="button" aria-pressed={entryFilter === "all"} className={entryFilter === "all" ? "is-active" : ""} onClick={() => setEntryFilter("all")}>All</button>
+                  <button type="button" aria-pressed={entryFilter === "required"} className={entryFilter === "required" ? "is-active" : ""} onClick={() => setEntryFilter("required")}>Jury required</button>
                 </div>
               </div>
               {entries.length === 0 ? (
@@ -617,10 +617,11 @@ export function JurySetupPage() {
                           <button
                             type="button"
                             className={selectedPianistUuid === pianist.person_uuid ? "is-selected" : ""}
+                            aria-current={selectedPianistUuid === pianist.person_uuid ? "true" : undefined}
                             onClick={() => setSelectedPianistUuid(pianist.person_uuid)}
                           >
                             <strong>{pianist.display_name}</strong>
-                            <span className={draft?.dirty ? "is-unsaved" : ""}>
+                            <span className={draft?.dirty ? busy ? "is-saving" : "is-unsaved" : ""}>
                               {draft?.dirty ? busy ? "Saving…" : "Unsaved changes" : !needed ? "Not required" : complete ? "Complete" : "Declaration needed"}
                             </span>
                           </button>
@@ -656,7 +657,7 @@ export function JurySetupPage() {
                         ))}
                       </select>
                     </label>
-                    <p className={`jury-availability-status ${selectedAvailability.dirty ? "is-unsaved" : !selectedPianistRequiredOnDate ? "is-not-required" : selectedAvailability.windows.length ? "is-complete" : "is-incomplete"}`}>
+                    <p className={`jury-availability-status ${selectedAvailability.dirty ? busy ? "is-saving" : "is-unsaved" : !selectedPianistRequiredOnDate ? "is-not-required" : selectedAvailability.windows.length ? "is-complete" : "is-incomplete"}`}>
                       {selectedAvailability.dirty
                         ? busy ? "Saving Availability Windows…" : "Changes not saved · check the error and retry"
                         : !selectedPianistRequiredOnDate

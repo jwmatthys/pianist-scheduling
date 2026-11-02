@@ -2,11 +2,16 @@
   box-sizing: border-box;
 }
 
+:focus-visible {
+  outline: 3px solid var(--theme-focus-ring);
+  outline-offset: 2px;
+}
+
 body {
   margin: 0;
   font-family: "Segoe UI", system-ui, sans-serif;
-  background: #f4f6f9;
-  color: #1f2933;
+  background: var(--theme-background);
+  color: var(--theme-text);
 }
 
 .app-shell {
@@ -21,9 +26,9 @@ body {
 }
 
 .tab-button {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--theme-surface-translucent);
   border: none;
-  color: white;
+  color: var(--theme-surface);
   padding: 0.5rem 1rem;
   border-radius: 6px 6px 0 0;
   cursor: pointer;
@@ -31,9 +36,10 @@ body {
 }
 
 .tab-button.active {
-  background: #f4f6f9;
-  color: #1f4e79;
+  background: var(--theme-selection);
+  color: var(--theme-primary);
   font-weight: 600;
+  box-shadow: inset 0 -2px var(--theme-primary);
 }
 
 .app-main {
@@ -46,7 +52,7 @@ body {
 }
 
 .muted {
-  color: #7b8794;
+  color: var(--theme-text-muted-readable);
   font-size: 0.9rem;
 }
 
@@ -54,32 +60,41 @@ button {
   font: inherit;
 }
 
+button:disabled {
+  color: var(--theme-text-muted-readable);
+  cursor: not-allowed;
+  opacity: 1;
+}
+
 .primary-btn {
-  background: #2e75b6;
-  color: white;
+  background: var(--theme-accent);
+  color: var(--theme-surface);
   border: none;
   padding: 0.5rem 1rem;
   border-radius: 6px;
   cursor: pointer;
 }
 
-.primary-btn:disabled {
-  background: #9fb8cc;
+.primary-btn:disabled,
+.danger-btn:disabled {
+  background: var(--theme-surface-muted);
+  border: 1px solid var(--theme-border);
+  color: var(--theme-text-muted-readable);
   cursor: not-allowed;
 }
 
 .secondary-btn {
-  background: white;
-  border: 1px solid #c6cdd5;
+  background: var(--theme-surface);
+  border: 1px solid var(--theme-border-strong);
   padding: 0.5rem 1rem;
   border-radius: 6px;
   cursor: pointer;
 }
 
 .danger-btn {
-  background: #fce4d6;
-  border: 1px solid #e2b8a1;
-  color: #8a3a1c;
+  background: var(--theme-error-soft);
+  border: 1px solid var(--theme-error);
+  color: var(--theme-error);
   border-radius: 6px;
   cursor: pointer;
 }
@@ -90,11 +105,11 @@ button {
 }
 
 .error-banner {
-  background: #fce4d6;
-  border: 1px solid #e2b8a1;
+  background: var(--theme-error-soft);
+  border: 1px solid var(--theme-error);
   padding: 0.5rem 0.75rem;
   border-radius: 6px;
-  color: #8a3a1c;
+  color: var(--theme-error);
 }
 
 .mapping-table td {
@@ -102,7 +117,7 @@ button {
 }
 
 .required-star {
-  color: #c0392b;
+  color: var(--theme-primary);
   margin-left: 0.15rem;
 }
 
@@ -110,7 +125,7 @@ button {
   overflow-x: auto;
   max-height: 260px;
   overflow-y: auto;
-  border: 1px solid #dfe4ea;
+  border: 1px solid var(--theme-border-strong);
   border-radius: 6px;
   margin-bottom: 1rem;
 }
@@ -126,7 +141,7 @@ button {
 .preview-table td,
 .schedule-table th,
 .schedule-table td {
-  border: 1px solid #e3e7eb;
+  border: 1px solid var(--theme-border);
   padding: 0.35rem 0.5rem;
   text-align: left;
   white-space: nowrap;
@@ -134,7 +149,7 @@ button {
 
 .preview-table th,
 .schedule-table th {
-  background: #eef2f6;
+  background: var(--theme-surface-muted);
   position: sticky;
   top: 0;
 }
@@ -144,7 +159,7 @@ button {
 }
 
 .warnings-list {
-  color: #8a3a1c;
+  color: var(--theme-warning-foreground);
 }
 
 .pianists-page {
@@ -166,7 +181,7 @@ button {
 
 .add-pianist-form input {
   padding: 0.4rem;
-  border: 1px solid #c6cdd5;
+  border: 1px solid var(--theme-border-strong);
   border-radius: 4px;
 }
 
@@ -185,7 +200,8 @@ button {
 }
 
 .pianist-list li.selected {
-  background: #dae8fc;
+  background: var(--theme-selection);
+  box-shadow: inset 3px 0 var(--theme-primary);
 }
 
 .pianist-list-item {
@@ -211,14 +227,14 @@ button {
   gap: 0.65rem;
   margin: 0 0 1rem;
   padding: 0.8rem;
-  border: 1px solid #d5dfe2;
-  background: #f7faf9;
+  border: 1px solid var(--theme-border);
+  background: var(--theme-surface);
 }
 
 .pianist-profile-form label {
   display: grid;
   gap: 0.25rem;
-  color: #334e55;
+  color: var(--theme-text);
   font-size: 0.85rem;
   font-weight: 600;
 }
@@ -226,10 +242,10 @@ button {
 .pianist-profile-form input {
   min-width: 0;
   padding: 0.45rem;
-  border: 1px solid #b8c7c9;
+  border: 1px solid var(--theme-border-strong);
   border-radius: 3px;
-  color: #20373c;
-  background: white;
+  color: var(--theme-text);
+  background: var(--theme-surface);
 }
 
 .pianist-profile-form button {
@@ -251,7 +267,7 @@ button {
 }
 
 .legend-hint {
-  color: #7b8794;
+  color: var(--theme-text-muted-readable);
   font-size: 0.8rem;
 }
 
@@ -274,7 +290,7 @@ button {
 
 .avail-time-label {
   font-size: 0.75rem;
-  color: #52606d;
+  color: var(--theme-text-muted-readable);
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -282,26 +298,26 @@ button {
 }
 
 .avail-cell {
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--theme-border-strong);
   height: 22px;
   cursor: pointer;
   padding: 0;
 }
 
 .slot-unset {
-  background: #ffffff;
+  background: var(--theme-surface);
 }
 
 .slot-available {
-  background: #c6efce;
+  background: var(--status-available-soft);
 }
 
 .slot-tentative {
-  background: #ffeb9c;
+  background: var(--status-tentative-soft);
 }
 
 .slot-unavailable {
-  background: #ffc7ce;
+  background: var(--status-unavailable-soft);
 }
 
 .availability-actions {
@@ -322,17 +338,17 @@ button {
 }
 
 .toolbar-message {
-  color: #1f4e79;
+  color: var(--theme-primary);
   font-size: 0.9rem;
 }
 
 .conflicts-banner {
-  background: #fce4d6;
-  border: 1px solid #e2b8a1;
+  background: var(--theme-error-soft);
+  border: 1px solid var(--theme-error);
   border-radius: 6px;
   padding: 0.5rem 0.75rem;
   margin-bottom: 0.75rem;
-  color: #8a3a1c;
+  color: var(--theme-error);
   font-size: 0.85rem;
 }
 
@@ -348,7 +364,7 @@ button {
 }
 
 .workload-chip {
-  background: #eef2f6;
+  background: var(--theme-surface-muted);
   border-radius: 6px;
   padding: 0.3rem 0.6rem;
   display: flex;
@@ -358,21 +374,21 @@ button {
 }
 
 .workload-chip.over-cap {
-  background: #fce4d6;
-  color: #8a3a1c;
+  background: var(--theme-error-soft);
+  color: var(--theme-text);
 }
 
 .schedule-table-wrap {
   max-height: calc(100vh - 280px);
   overflow: auto;
   scrollbar-gutter: stable;
-  border: 1px solid #dfe4ea;
+  border: 1px solid var(--theme-border);
   border-radius: 6px;
 }
 
 .schedule-table input,
 .schedule-table select {
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--theme-border-strong);
   border-radius: 4px;
   padding: 0.15rem 0.3rem;
   font-size: 0.85rem;
@@ -392,19 +408,19 @@ button {
 }
 
 .row-unassigned {
-  background: #fce4d6;
+  background: var(--theme-error-soft);
 }
 
 .row-conflict {
-  background: #ffc7ce;
+  background: var(--theme-error-soft);
 }
 
 .row-overcap {
-  background: #fce4d6;
+  background: var(--theme-error-soft);
 }
 
 .row-warn {
-  background: #fff2cc;
+  background: var(--theme-warning-soft);
 }
 
 .fit-badge {
@@ -414,23 +430,23 @@ button {
 }
 
 .fit-full {
-  background: #c6efce;
+  background: var(--status-available-soft);
 }
 
 .fit-partial {
-  background: #ffeb9c;
+  background: var(--theme-warning-soft);
 }
 
 .fit-near {
-  background: #ffcc99;
+  background: var(--theme-warning-soft);
 }
 
 .fit-overlap {
-  background: #dae8fc;
+  background: var(--theme-warning-soft);
 }
 
 .fit-none {
-  background: #ffc7ce;
+  background: var(--theme-error-soft);
 }
 
 .reports-actions {
@@ -440,10 +456,10 @@ button {
 }
 
 .markdown-preview {
-  background: white;
-  border: 1px solid #dfe4ea;
+  background: var(--theme-surface);
+  border: 1px solid var(--theme-border);
   border-radius: 6px;
-  color: #1f2933;
+  color: var(--theme-text);
   line-height: 1.45;
   max-height: 60vh;
   overflow-y: auto;
@@ -453,18 +469,18 @@ button {
 .markdown-preview h1,
 .markdown-preview h2,
 .markdown-preview h3 {
-  color: #1f4e79;
+  color: var(--theme-primary);
   line-height: 1.2;
 }
 
 .markdown-preview h1 {
-  border-bottom: 2px solid #dfe4ea;
+  border-bottom: 2px solid var(--theme-border);
   font-size: 1.7rem;
   padding-bottom: 0.5rem;
 }
 
 .markdown-preview h2 {
-  border-bottom: 1px solid #dfe4ea;
+  border-bottom: 1px solid var(--theme-border);
   font-size: 1.25rem;
   margin-top: 1.75rem;
   padding-bottom: 0.3rem;
@@ -489,7 +505,7 @@ button {
 }
 
 .markdown-preview code {
-  background: #eef2f6;
+  background: var(--theme-surface-muted);
   border-radius: 3px;
   padding: 0.1rem 0.25rem;
 }
@@ -502,15 +518,15 @@ button {
   width: min(540px, calc(100vw - 32px));
   max-height: min(90vh, 760px);
   padding: 1.4rem;
-  border: 1px solid #b9c4ce;
+  border: 1px solid var(--theme-border);
   border-radius: 6px;
-  color: #1f2933;
-  background: #fff;
-  box-shadow: 0 18px 60px rgba(13, 35, 52, 0.28);
+  color: var(--theme-text);
+  background: var(--theme-surface);
+  box-shadow: 0 18px 60px var(--theme-shadow);
 }
 
 .session-dialog::backdrop {
-  background: rgba(15, 29, 39, 0.56);
+  background: var(--theme-overlay);
 }
 
 .session-dialog form {
@@ -539,7 +555,7 @@ button {
 }
 
 .session-dialog label span {
-  color: #667582;
+  color: var(--theme-text-muted-readable);
   font-weight: 400;
 }
 
@@ -547,16 +563,16 @@ button {
   width: 100%;
   min-height: 40px;
   padding: 0.45rem 0.55rem;
-  border: 1px solid #aeb9c3;
+  border: 1px solid var(--theme-border-strong);
   border-radius: 4px;
-  background: white;
-  color: #1f2933;
+  background: var(--theme-surface);
+  color: var(--theme-text);
   font: inherit;
 }
 
 .dialog-note {
   margin: 0;
-  color: #536471;
+  color: var(--theme-text-muted-readable);
   font-size: 0.88rem;
   line-height: 1.45;
 }
@@ -566,17 +582,17 @@ button {
   width: 36px;
   height: 36px;
   padding: 0;
-  border: 1px solid #b9c4ce;
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
-  color: #455e63;
-  background: white;
+  color: var(--theme-text);
+  background: var(--theme-surface);
   font-size: 1.25rem;
   line-height: 1;
   cursor: pointer;
 }
 
 .dialog-close:hover {
-  background: #eef2f5;
+  background: var(--theme-surface-muted);
 }
 
 .dialog-actions {
@@ -602,7 +618,7 @@ button {
 .dashboard-header h1 {
   margin: 0;
   font-size: 1.9rem;
-  color: #1f4e79;
+  color: var(--theme-primary);
 }
 
 .dashboard-session {
@@ -611,10 +627,10 @@ button {
   justify-content: space-between;
   gap: 1.5rem;
   padding: 1.25rem 1.4rem;
-  border: 1px solid #cbd5dc;
-  border-left: 4px solid #2e75b6;
+  border: 1px solid var(--theme-border);
+  border-left: 4px solid var(--theme-accent);
   border-radius: 5px;
-  background: #fff;
+  background: var(--theme-surface);
 }
 
 .dashboard-session-identity {
@@ -623,7 +639,7 @@ button {
 
 .dashboard-eyebrow {
   margin: 0 0 0.35rem;
-  color: #52606d;
+  color: var(--theme-text-muted-readable);
   font-size: 0.8rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -631,14 +647,14 @@ button {
 
 .dashboard-session-identity h2 {
   margin: 0;
-  color: #1f2933;
+  color: var(--theme-text);
   font-size: 1.35rem;
   overflow-wrap: anywhere;
 }
 
 .dashboard-session-context {
   margin: 0.35rem 0 0;
-  color: #536471;
+  color: var(--theme-text-muted-readable);
 }
 
 .dashboard-session-actions {
@@ -663,7 +679,7 @@ button {
 
 .dashboard-section-heading h2 {
   margin: 0;
-  color: #334e5c;
+  color: var(--theme-text);
   font-size: 1.2rem;
 }
 
@@ -680,19 +696,22 @@ button {
   gap: 0.65rem;
   min-height: 150px;
   padding: 1rem;
-  border: 1px solid #cbd5dc;
+  border: 1px solid var(--theme-border);
   border-radius: 5px;
-  background: #fff;
-  color: #1f2933;
+  background: var(--theme-surface);
+  color: var(--theme-text);
   text-align: left;
   cursor: pointer;
 }
 
-.module-card:hover,
+.module-card:hover {
+  border-color: var(--theme-accent);
+}
+
 .module-card:focus-visible {
-  border-color: #2e75b6;
-  outline: 2px solid rgba(46, 117, 182, 0.2);
-  outline-offset: 1px;
+  border-color: var(--theme-accent);
+  outline: 3px solid var(--theme-focus-ring);
+  outline-offset: 2px;
 }
 
 .module-card-title {
@@ -702,19 +721,19 @@ button {
 
 .module-card-description {
   flex: 1;
-  color: #536471;
+  color: var(--theme-text-muted-readable);
   font-size: 0.9rem;
   line-height: 1.45;
 }
 
 .module-card-action {
-  color: #1f4e79;
+  color: var(--theme-primary);
   font-size: 0.88rem;
   font-weight: 600;
 }
 
 .module-card-shell {
-  background: #f9fbfc;
+  background: var(--theme-surface);
 }
 
 .module-header {
@@ -723,8 +742,8 @@ button {
   align-items: center;
   gap: 1rem;
   padding: 0.85rem 1.5rem 1rem;
-  background: #1f4e79;
-  color: white;
+  background: var(--theme-primary);
+  color: var(--theme-surface);
 }
 
 .module-back-button {
@@ -735,7 +754,7 @@ button {
   padding: 0.4rem 0;
   border: 0;
   background: transparent;
-  color: white;
+  color: var(--theme-surface);
   font: inherit;
   cursor: pointer;
 }
@@ -760,14 +779,14 @@ button {
 
 .module-heading-block p {
   margin: 0.25rem 0 0;
-  color: rgba(255, 255, 255, 0.86);
+  color: var(--theme-surface);
   font-size: 0.9rem;
   overflow-wrap: anywhere;
 }
 
 .module-shell-label {
   justify-self: end;
-  color: rgba(255, 255, 255, 0.82);
+  color: var(--theme-surface);
   font-size: 0.82rem;
 }
 
@@ -775,7 +794,7 @@ button {
   min-height: 44px;
   align-items: flex-end;
   padding: 0 1.5rem;
-  background: #1f4e79;
+  background: var(--theme-primary);
 }
 
 .lesson-import-dialog {
@@ -787,15 +806,15 @@ button {
   padding: 0;
   overflow: auto;
   transform: translate(-50%, -50%);
-  border: 1px solid #b8c7d1;
+  border: 1px solid var(--theme-border);
   border-radius: 6px;
-  color: #1f2933;
-  background: #f4f6f9;
-  box-shadow: 0 22px 60px rgba(12, 34, 52, 0.3);
+  color: var(--theme-text);
+  background: var(--theme-background);
+  box-shadow: 0 22px 60px var(--theme-shadow);
 }
 
 .lesson-import-dialog::backdrop {
-  background: rgba(11, 30, 47, 0.58);
+  background: var(--theme-overlay);
 }
 
 .lesson-import-dialog-content {
@@ -897,15 +916,15 @@ button {
   max-height: 90vh;
   padding: 1.25rem;
   overflow-y: auto;
-  border: 1px solid #b9c4ce;
+  border: 1px solid var(--theme-border);
   border-radius: 6px;
-  color: #1f2933;
-  background: #fff;
-  box-shadow: 0 18px 60px rgba(13, 35, 52, 0.28);
+  color: var(--theme-text);
+  background: var(--theme-surface);
+  box-shadow: 0 18px 60px var(--theme-shadow);
 }
 
 .availability-import-dialog::backdrop {
-  background: rgba(15, 29, 39, 0.56);
+  background: var(--theme-overlay);
 }
 
 .availability-import-content {
@@ -934,14 +953,14 @@ button {
 }
 
 .availability-import-file-row a {
-  color: #1f4e79;
+  color: var(--theme-primary);
   font-size: 0.9rem;
 }
 
 .template-download-button {
   padding: 0;
   border: 0;
-  color: #1f4e79;
+  color: var(--theme-primary);
   background: transparent;
   font-size: 0.9rem;
   text-decoration: underline;
@@ -950,7 +969,7 @@ button {
 }
 
 .template-download-button:disabled {
-  color: #7b8794;
+  color: var(--theme-text-muted-readable);
   cursor: not-allowed;
 }
 
@@ -969,13 +988,13 @@ button {
 }
 
 .lesson-pianist-required-control input {
-  accent-color: #315f4d;
+  accent-color: var(--theme-primary);
 }
 
 .lesson-jury-required-control input {
   width: 16px;
   height: 16px;
-  accent-color: #276c57;
+  accent-color: var(--theme-primary);
 }
 
 .availability-map-field {
@@ -990,10 +1009,10 @@ button {
   min-width: 0;
   min-height: 38px;
   padding: 0.35rem 0.5rem;
-  border: 1px solid #aeb9c3;
+  border: 1px solid var(--theme-border-strong);
   border-radius: 4px;
-  background: #fff;
-  color: #1f2933;
+  background: var(--theme-surface);
+  color: var(--theme-text);
   font: inherit;
 }
 
@@ -1006,7 +1025,7 @@ button {
   display: grid;
   gap: 0.7rem;
   padding-top: 0.75rem;
-  border-top: 1px solid #d7dee4;
+  border-top: 1px solid var(--theme-border);
 }
 
 .availability-mapping-section h3 {
@@ -1021,7 +1040,7 @@ button {
 
 .wide-day-mappings details {
   padding: 0.45rem 0;
-  border-bottom: 1px solid #e0e5e9;
+  border-bottom: 1px solid var(--theme-border);
 }
 
 .wide-day-mappings summary {
@@ -1052,7 +1071,7 @@ button {
   display: grid;
   gap: 0.55rem;
   padding: 0.75rem;
-  border: 1px solid #c6cdd5;
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
 }
 
@@ -1079,7 +1098,7 @@ button {
   display: grid;
   gap: 0.7rem;
   padding-top: 0.8rem;
-  border-top: 1px solid #d7dee4;
+  border-top: 1px solid var(--theme-border);
 }
 
 .availability-import-summary {
@@ -1100,15 +1119,15 @@ button {
   display: grid;
   gap: 0.2rem;
   padding: 0.55rem 0.7rem;
-  border: 1px solid #d5dfe2;
-  border-left: 3px solid #39745d;
-  background: #f7faf9;
+  border: 1px solid var(--theme-border);
+  border-left: 3px solid var(--theme-border-strong);
+  background: var(--theme-surface);
 }
 
 .availability-import-plan li.is-ambiguous,
 .availability-import-plan li.is-invalid {
-  border-left-color: #9c4b36;
-  background: #fff8f5;
+  border-left-color: var(--theme-error);
+  background: var(--theme-surface);
 }
 
 .availability-import-plan li div {
@@ -1120,7 +1139,7 @@ button {
 
 .availability-import-plan li span,
 .availability-import-plan li small {
-  color: #43585f;
+  color: var(--theme-text);
 }
 
 .availability-issue-list {
@@ -1139,15 +1158,15 @@ button {
 }
 
 .availability-errors {
-  color: #842f1c;
-  background: #fce4d6;
-  border: 1px solid #e2b8a1;
+  color: var(--theme-error);
+  background: var(--theme-error-soft);
+  border: 1px solid var(--theme-error);
 }
 
 .availability-warnings {
-  color: #65520b;
-  background: #fff2cc;
-  border: 1px solid #dfce86;
+  color: var(--theme-warning-foreground);
+  background: var(--theme-warning-soft);
+  border: 1px solid var(--theme-warning);
 }
 
 .availability-windows-table-wrap {
@@ -1156,9 +1175,9 @@ button {
 
 .availability-success {
   padding: 0.55rem 0.75rem;
-  color: #1f5b38;
-  background: #e2f1e6;
-  border: 1px solid #a9ceb4;
+  color: var(--theme-success);
+  background: var(--theme-success-soft);
+  border: 1px solid var(--theme-success);
   border-radius: 4px;
 }
 
@@ -1184,7 +1203,7 @@ button {
 .clinical-table th,
 .clinical-table td {
   padding: 0.45rem 0.6rem;
-  border-bottom: 1px solid #d5dde4;
+  border-bottom: 1px solid var(--theme-border);
   text-align: left;
   vertical-align: top;
 }
@@ -1194,22 +1213,22 @@ button {
   margin: 0 0.25rem 0.25rem 0;
   padding: 0.1rem 0.5rem;
   border-radius: 999px;
-  background: #dbe9f5;
-  color: #1f2933;
+  background: var(--theme-surface-muted);
+  color: var(--theme-text);
   font-size: 0.8rem;
   font-weight: 600;
 }
 
 .clinical-tag-unused {
-  background: #eceff1;
-  color: #8a96a0;
+  background: var(--theme-surface-muted);
+  color: var(--theme-text-muted-readable);
 }
 
 .clinical-tag-picker {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  border: 1px solid #d5dde4;
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
 }
 
@@ -1288,7 +1307,6 @@ button {
 }
 
 .danger-btn.small:disabled {
-  opacity: 0.5;
   cursor: not-allowed;
 }
 
@@ -1315,7 +1333,7 @@ button {
 }
 
 .clinical-import-row-error {
-  background: #fce4d6;
+  background: var(--theme-error-soft);
 }
 
 .clinical-import-dialog {
@@ -1342,7 +1360,7 @@ button {
   display: inline-block;
   width: 0.9rem;
   height: 0.9rem;
-  border: 1px solid #8a96a0;
+  border: 1px solid var(--theme-border-strong);
   border-radius: 3px;
 }
 
@@ -1358,7 +1376,7 @@ button {
   align-items: center;
   gap: 0.4rem;
   min-height: 36px;
-  border: 1px solid #8a96a0;
+  border: 1px solid var(--theme-border-strong);
 }
 
 .clinical-state-name {
@@ -1367,26 +1385,26 @@ button {
 }
 
 .clinical-state-neutral {
-  background: #eef2f5;
-  color: #1f2933;
+  background: var(--theme-surface-muted);
+  color: var(--theme-text);
 }
 
 .clinical-state-required {
-  background: #c8e6c9;
-  color: #14532d;
-  border-color: #2e7d32;
+  background: var(--status-available-soft);
+  color: var(--theme-success);
+  border-color: var(--theme-success);
 }
 
 .clinical-state-preferred {
-  background: #fff3b0;
-  color: #664d03;
-  border-color: #c9a100;
+  background: var(--theme-warning-soft);
+  color: var(--theme-warning-foreground);
+  border-color: var(--theme-warning);
 }
 
 .clinical-state-restricted {
-  background: #f8c9c9;
-  color: #7f1d1d;
-  border-color: #c62828;
+  background: var(--theme-error-soft);
+  color: var(--theme-error);
+  border-color: var(--theme-error);
 }
 
 .clinical-availability-dialog {
@@ -1414,7 +1432,7 @@ button {
 }
 
 .clinical-table td.clinical-availability-missing {
-  background: #ffeb9c;
+  background: var(--theme-warning-soft);
 }
 
 .clinical-readiness-list {
@@ -1442,13 +1460,13 @@ button {
 .clinical-placement-table th,
 .clinical-placement-table td {
   padding: 0.5rem 0.6rem;
-  border-bottom: 1px solid #d5dde4;
+  border-bottom: 1px solid var(--theme-border);
   text-align: left;
   vertical-align: top;
 }
 
 .clinical-placement-table th {
-  background: #eef2f6;
+  background: var(--theme-surface-muted);
 }
 
 .clinical-placement-actions {
@@ -1461,12 +1479,12 @@ button {
 .clinical-placement-warnings {
   margin: 0.25rem 0;
   padding-left: 1.2rem;
-  color: #795900;
+  color: var(--theme-warning-foreground);
 }
 
 .clinical-placement-row-warning,
 .clinical-placement-row-warning td {
-  background: #fff3c4;
+  background: var(--theme-warning-soft);
 }
 
 .clinical-inline-time {
@@ -1474,7 +1492,7 @@ button {
 }
 
 .clinical-unplaced-row {
-  background: #fff3c4;
+  background: var(--theme-warning-soft);
 }
 
 .clinical-manual-placement-form {
@@ -1502,24 +1520,24 @@ button {
   margin: 0.25rem 0 0.5rem;
   padding-left: 1.5rem;
   list-style: disc;
-  color: #52606d;
+  color: var(--theme-text-muted-readable);
 }
 
 .clinical-readiness-error {
-  color: #a4262c;
+  color: var(--theme-error);
 }
 
 .clinical-readiness-warning {
-  color: #8a5a00;
+  color: var(--theme-warning-foreground);
 }
 
 .clinical-readiness-info {
-  color: #52606d;
+  color: var(--theme-text-muted-readable);
 }
 
 .warning-banner {
-  background: #fff3b0;
-  border: 1px solid #d9b100;
+  background: var(--theme-warning-soft);
+  border: 1px solid var(--theme-warning);
   border-radius: 4px;
   padding: 0.5rem 0.75rem;
   margin: 0.5rem 0;
@@ -1527,25 +1545,18 @@ button {
 
 /* Clinical Schedule: visual language shared with Jury Scheduling */
 .clinical-schedule {
-  --jury-ink: #17333b;
-  --jury-muted: #63767c;
-  --jury-line: #d5dfe0;
-  --jury-paper: #ffffff;
-  --jury-green: #1c6957;
-  --jury-green-wash: #e3f2ec;
-  --jury-red: #9d3c32;
-  --jury-red-wash: #f9e8e5;
+
   display: grid;
   gap: 1rem;
   max-width: 1440px;
-  color: var(--jury-ink);
+  color: var(--theme-text);
 }
 
 .clinical-schedule .clinical-section {
   min-width: 0;
   padding: 0.9rem 1rem;
-  border: 1px solid var(--jury-line);
-  background: var(--jury-paper);
+  border: 1px solid var(--theme-border);
+  background: var(--theme-surface);
 }
 
 .clinical-schedule .clinical-section-heading {
@@ -1568,7 +1579,7 @@ button {
 
 .clinical-schedule .clinical-section-heading p {
   margin: 0.25rem 0 0;
-  color: var(--jury-muted);
+  color: var(--theme-text-muted-readable);
   font-size: 0.83rem;
   line-height: 1.4;
 }
@@ -1586,31 +1597,31 @@ button {
 .clinical-schedule .availability-success {
   margin-bottom: 0.75rem;
   padding: 0.7rem;
-  color: var(--jury-green);
-  background: var(--jury-green-wash);
+  color: var(--theme-success);
+  background: var(--theme-success-soft);
   font-size: 0.88rem;
 }
 
 .clinical-schedule .error-banner {
   padding: 0.65rem 0.85rem;
-  color: var(--jury-red);
-  background: var(--jury-red-wash);
-  border: 1px solid #e6b9b4;
+  color: var(--theme-error);
+  background: var(--theme-error-soft);
+  border: 1px solid var(--theme-error);
   border-radius: 5px;
 }
 
 .clinical-schedule .warning-banner {
   padding: 0.65rem 0.8rem;
-  color: #765716;
-  border: 1px solid #e5d29d;
-  background: #fff7df;
+  color: var(--theme-warning-foreground);
+  border: 1px solid var(--theme-warning);
+  background: var(--theme-warning-soft);
   font-size: 0.84rem;
   margin-bottom: 0.75rem;
 }
 
 .clinical-schedule .clinical-table-scroll {
   margin: 0;
-  border: 1px solid #e1e8e7;
+  border: 1px solid var(--theme-border);
 }
 
 .clinical-schedule .clinical-placement-table {
@@ -1621,13 +1632,13 @@ button {
 .clinical-schedule .clinical-placement-table th,
 .clinical-schedule .clinical-placement-table td {
   padding: 0.65rem 0.7rem;
-  border-bottom: 1px solid #e4eae9;
+  border-bottom: 1px solid var(--theme-border);
   vertical-align: middle;
 }
 
 .clinical-schedule .clinical-placement-table th {
-  color: #52666b;
-  background: #f1f5f4;
+  color: var(--theme-text-muted-readable);
+  background: var(--theme-surface-muted);
   font-size: 0.74rem;
   font-weight: 750;
   text-transform: uppercase;
@@ -1643,10 +1654,10 @@ button {
   min-width: 140px;
   min-height: 35px;
   padding: 0.4rem 0.55rem;
-  border: 1px solid #b9c8c9;
+  border: 1px solid var(--theme-border-strong);
   border-radius: 4px;
-  color: var(--jury-ink);
-  background: #fff;
+  color: var(--theme-text);
+  background: var(--theme-surface);
   font: inherit;
   font-size: 0.82rem;
 }
@@ -1660,7 +1671,7 @@ button {
 .clinical-schedule .muted {
   display: block;
   margin-top: 0.15rem;
-  color: var(--jury-muted);
+  color: var(--theme-text-muted-readable);
   font-size: 0.78rem;
 }
 
@@ -1668,18 +1679,18 @@ button {
 .clinical-schedule .clinical-placement-table tbody tr.clinical-placement-row-warning td,
 .clinical-schedule .clinical-placement-table tbody tr.clinical-unplaced-row,
 .clinical-schedule .clinical-placement-table tbody tr.clinical-unplaced-row td {
-  background: #fff6e3;
+  background: var(--theme-warning-soft);
 }
 
 .clinical-schedule .clinical-placement-table tbody tr.clinical-placement-row-warning td:first-child,
 .clinical-schedule .clinical-placement-table tbody tr.clinical-unplaced-row td:first-child {
-  box-shadow: inset 3px 0 #c58419;
+  box-shadow: inset 3px 0 var(--theme-warning);
 }
 
 .clinical-schedule .clinical-placement-table tbody tr.clinical-placement-row-warning select,
 .clinical-schedule .clinical-placement-table tbody tr.clinical-placement-row-warning input {
-  border-color: #c58419;
-  background: #fffdf8;
+  border-color: var(--theme-warning);
+  background: var(--theme-surface);
 }
 
 .clinical-schedule .clinical-placement-actions {
@@ -1697,7 +1708,7 @@ button {
   z-index: 1000;
   display: grid;
   place-items: center;
-  background: rgba(15, 29, 39, 0.56);
+  background: var(--theme-overlay);
 }
 
 .export-dialog {
@@ -1705,11 +1716,11 @@ button {
   gap: 0.9rem;
   width: min(360px, calc(100vw - 32px));
   padding: 1.4rem;
-  border: 1px solid #b9c4ce;
+  border: 1px solid var(--theme-border);
   border-radius: 6px;
-  color: #1f2933;
-  background: #fff;
-  box-shadow: 0 18px 60px rgba(13, 35, 52, 0.28);
+  color: var(--theme-text);
+  background: var(--theme-surface);
+  box-shadow: 0 18px 60px var(--theme-shadow);
 }
 
 .export-dialog h2 {
@@ -1724,10 +1735,10 @@ button {
 }
 
 .stale-report-banner {
-  background: #ffe8a3;
-  border: 1px solid #e0a100;
-  border-left: 6px solid #e0a100;
-  color: #5c4000;
+  background: var(--theme-warning-soft);
+  border: 1px solid var(--theme-warning);
+  border-left: 6px solid var(--theme-warning);
+  color: var(--theme-warning-foreground);
   border-radius: 4px;
   padding: 0.6rem 0.85rem;
   margin: 0.5rem 0;

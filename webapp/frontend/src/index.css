@@ -1,6 +1,4 @@
-:root {
-  color-scheme: light;
-}
+@import "./theme/theme.css";
 
 body {
   margin: 0;
