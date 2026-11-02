@@ -440,6 +440,15 @@ button:disabled {
   min-width: 130px;
 }
 
+/* Column widths are set through the inputs' minimum widths. */
+.schedule-table td.schedule-col-wide input {
+  min-width: 150px;
+}
+
+.schedule-table td.schedule-col-narrow input {
+  min-width: 60px;
+}
+
 .notes-cell {
   max-width: 260px;
   overflow: hidden;
@@ -1148,10 +1157,11 @@ button:disabled {
   white-space: normal;
 }
 
-.lesson-pianist-required-control input,
-.lesson-jury-required-control input {
+.schedule-table .lesson-pianist-required-control input,
+.schedule-table .lesson-jury-required-control input {
   margin: 0;
   width: 16px;
+  min-width: 0;
   height: 16px;
   accent-color: var(--theme-primary);
 }

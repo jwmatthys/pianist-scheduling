@@ -232,19 +232,19 @@ export function SchedulePage({ onImportLessons }: Props) {
                     }
                   />
                 </td>
-                <td>
+                <td className="schedule-col-wide">
                   <input
                     defaultValue={lesson.teacher}
                     onBlur={(e) => e.target.value !== lesson.teacher && patchLesson(lesson.id, { teacher: e.target.value })}
                   />
                 </td>
-                <td>
+                <td className="schedule-col-wide">
                   <input
                     defaultValue={lesson.student}
                     onBlur={(e) => e.target.value !== lesson.student && patchLesson(lesson.id, { student: e.target.value })}
                   />
                 </td>
-                <td>
+                <td className="schedule-col-narrow">
                   <input
                     defaultValue={lesson.room}
                     onBlur={(e) => e.target.value !== lesson.room && patchLesson(lesson.id, { room: e.target.value })}
