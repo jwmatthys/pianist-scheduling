@@ -7,7 +7,7 @@ import { ReportsPage } from "./ReportsPage";
 type Tab = "pianists" | "schedule" | "reports";
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: "pianists", label: "Pianists & Availability" },
+  { id: "pianists", label: "Pianist Availability" },
   { id: "schedule", label: "Lesson Roster" },
   { id: "reports", label: "Reports" },
 ];

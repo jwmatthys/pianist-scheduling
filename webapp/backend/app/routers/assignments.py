@@ -35,6 +35,7 @@ def _build_engine_state(db: Session):
             notes=l.notes,
             hours=l.hours,
             student_name=l.student,
+            manual=l.manually_edited,
         )
         for l in lessons
     ]
@@ -111,6 +112,7 @@ def validate(db: Session = Depends(get_db)):
         el = by_id[lesson.id]
         lesson.hours = el.hours
         lesson.notes = el.notes
+        lesson.fit_quality = el.fit_quality
     db.commit()
     for lesson in lessons:
         db.refresh(lesson)

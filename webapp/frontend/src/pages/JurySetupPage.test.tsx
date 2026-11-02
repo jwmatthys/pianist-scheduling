@@ -76,7 +76,7 @@ describe("Jury Setup workflow", () => {
 
     const tabs = screen.getByRole("navigation", { name: "Jury Scheduling views" });
     expect(Array.from(tabs.querySelectorAll("button")).map((button) => button.textContent)).toEqual([
-      "Jury Panels", "Lesson Roster", "Pianist Availability", "Schedule", "Reports",
+      "Jury Panels", "Pianist Availability", "Lesson Roster", "Schedule", "Reports",
     ]);
     expect(screen.getByRole("button", { name: "Jury Panels" }).getAttribute("aria-current")).toBe("page");
     expect(screen.queryByRole("button", { name: "Overview" })).toBeNull();

@@ -48,6 +48,13 @@ class EngineLesson:
     notes: str = ""
     hours: float = 0.0
     student_name: str = ""
+    manual: bool = False
+
+
+def overlap_fit_label(overlap: int, duration: int) -> str:
+    """'Overlap (<N min)' while the overlap is at most half the lesson, else 'Overlap (>N min)'."""
+    half = f"{duration / 2:g}"
+    return f"Overlap (>{half} min)" if overlap * 2 > duration else f"Overlap (<{half} min)"
 
 
 def _clock(minutes: int) -> str:
@@ -403,6 +410,7 @@ def recompute_hours_and_conflicts(lessons: list["EngineLesson"], pianists: list[
     # Conflict detection across ALL lessons currently assigned (covers manual edits too).
     conflicts: list[str] = []
     conflict_notes: dict[int, list[str]] = {}
+    overlaps: dict[int, int] = {}
     for pid, plessons in by_pianist_lessons.items():
         plessons_sorted = sorted(plessons, key=lambda l: (day_index(l.day), l.start_min))
         for i in range(len(plessons_sorted)):
@@ -411,14 +419,18 @@ def recompute_hours_and_conflicts(lessons: list["EngineLesson"], pianists: list[
                 if a.day != b.day:
                     continue
                 overlap = overlap_minutes(a.start_min, a.end_min, b.start_min, b.end_min)
+                if overlap <= 0:
+                    continue
+                for item in (a, b):
+                    overlaps[item.id] = max(overlaps.get(item.id, 0), overlap)
+                # The solver marks the small shared-pianist overlaps it chose with an OVERLAP FIT note.
                 allowed_overlap = (
                     overlap <= OVERLAP_MAX_MINUTES
-                    and a.fit_quality == FIT_LABELS[FIT_OVERLAP]
-                    and b.fit_quality == FIT_LABELS[FIT_OVERLAP]
+                    and all("OVERLAP FIT" in item.notes and not item.manual for item in (a, b))
                     and not a.required_pianist_name.strip()
                     and not b.required_pianist_name.strip()
                 )
-                if overlap > 0 and not allowed_overlap:
+                if not allowed_overlap:
                     conflicts.append(
                         f"\u26a0 {name_by_id.get(pid, pid)} is double-booked on {a.day}: "
                         f"{describe_lesson(a)} and {describe_lesson(b)}"
@@ -429,6 +441,17 @@ def recompute_hours_and_conflicts(lessons: list["EngineLesson"], pianists: list[
                     conflict_notes.setdefault(b.id, []).append(
                         f"\u26a0 CONFLICT: overlaps {describe_lesson(a)} on {b.day}"
                     )
+
+    # Every double-booking is labelled Overlap with its size; the label reverts once it is resolved.
+    avail_by_id = {p.id: p.avail for p in pianists}
+    for pid, plessons in by_pianist_lessons.items():
+        for lesson in plessons:
+            if lesson.id in overlaps:
+                lesson.fit_quality = overlap_fit_label(overlaps[lesson.id], lesson.end_min - lesson.start_min)
+            elif lesson.fit_quality.startswith(FIT_LABELS[FIT_OVERLAP]):
+                lesson.fit_quality = "Manual" if lesson.manual else FIT_LABELS[
+                    get_fit(lesson.day, lesson.start_min, lesson.end_min, avail_by_id.get(pid, {}))[0]
+                ]
 
     for lesson in lessons:
         base_notes = [

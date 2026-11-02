@@ -161,11 +161,11 @@ export const AvailabilityGrid = forwardRef<AvailabilityGridHandle, { pianist: Pi
         <span className="legend-chip slot-available">Available</span>
         <span className="legend-chip slot-tentative">Tentative</span>
         <span className="legend-chip slot-unavailable">Unavailable</span>
-        <span className="legend-hint">
-          {availabilityComplete
-            ? "Complete week: times without an Available or Tentative window are Unavailable."
-            : "Unavailable includes times not yet supplied. Click or drag to cycle; right-click to set Unavailable."}
-        </span>
+        {!availabilityComplete && (
+          <span className="legend-hint">
+            Unavailable includes times not yet supplied. Click or drag to cycle; right-click to set Unavailable.
+          </span>
+        )}
       </div>
       <div className="availability-grid" style={{ gridTemplateColumns: `90px repeat(${DAYS.length}, 1fr)` }}>
         <div className="avail-header avail-corner" />

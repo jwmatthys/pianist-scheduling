@@ -23,7 +23,8 @@ Tests call solver functions and synchronous route handlers directly. They do not
 
 ## Baseline Coverage Retained
 
-- Full, Partial, Near, and None availability fit scoring in both accompanist engines.
+- Full, Partial, Near, and None availability fit scoring in both accompanist engines. Partial means every slot is Available or Tentative with at least one Tentative.
+- Every double-booking is labelled `Overlap (<N min)` or `Overlap (>N min)`, where N is half the lesson's length and the lesson's largest overlap with the same pianist is compared with it. At most half is a warning and more than half is an error; the whole Schedule row (not just the badge) uses the warning or error theme color, taking precedence over other row states except unassigned. Solver-chosen overlaps of up to 30 minutes (flagged `OVERLAP FIT`) are labelled but not listed as conflicts; every other double-booking, including manual edits, also gets a CONFLICT note. When an overlap is resolved the label reverts to Manual or to the availability fit (Full, Partial, Near, None).
 - Required-pianist substring matching and required assignments when the requested pianist is unavailable or over cap.
 - Fit ranking: Full beats Partial when both candidates are under cap. The current ordinary-assignment policy prefers an under-cap Partial candidate over an over-cap Full candidate.
 - CLI overlap-fit assignment, merged hours, desktop merged hours after manual overlap, and double-booking detection.
@@ -85,3 +86,5 @@ Actual room/site travel distance and transition-time scoring remain explicitly o
 - Cross-platform installer builds and real desktop startup were not run.
 
 **Phase 2.5 exit:** adopted policies are implemented in the existing Python engines, corrected behavior is covered by 24 deterministic tests, and the remaining overlap configurability question is documented. No Tauri scaffolding or architecture migration has begun.
+- A lesson whose Fit is `None` (including a required pianist who is unavailable) colors the whole Schedule row with the error theme color, matching its badge.
+- Over-cap lessons (and the matching pianist workload chip) use the warning theme color, not the error color. An overlap or `None` fit on the same lesson takes color precedence.

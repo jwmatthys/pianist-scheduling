@@ -9,13 +9,21 @@ type Props = {
   onImportLessons: () => void;
 };
 
+// "Overlap (<N min)" is a warning; "Overlap (>N min)" (more than half the lesson) is an error.
+function fitBadgeClass(fit: string): string {
+  if (fit.startsWith("Overlap")) return fit.includes("(>") ? "fit-overlap-error" : "fit-overlap";
+  return `fit-${fit.toLowerCase()}`;
+}
+
 function fitClass(lesson: Lesson): string {
   if (lesson.assigned_pianist_id === null) return "row-unassigned";
+  // The overlap label decides the row color so it always matches the badge.
+  if (lesson.fit_quality.startsWith("Overlap")) return lesson.fit_quality.includes("(>") ? "row-conflict" : "row-warn";
+  if (lesson.fit_quality === "None") return "row-conflict";
   if (lesson.notes.includes("CONFLICT") || lesson.notes.includes("double-booked")) return "row-conflict";
   if (lesson.notes.includes("OVER CAP")) return "row-overcap";
-  if (lesson.fit_quality === "Near" || lesson.fit_quality === "Overlap" || lesson.notes.includes("TENTATIVE"))
+  if (lesson.fit_quality === "Near" || lesson.fit_quality.startsWith("Overlap") || lesson.notes.includes("TENTATIVE"))
     return "row-warn";
-  if (lesson.fit_quality === "None") return "row-warn";
   return "";
 }
 
@@ -302,7 +310,7 @@ export function SchedulePage({ onImportLessons }: Props) {
                 </td>
                 <td>{lesson.hours.toFixed(2)}</td>
                 <td>
-                  <span className={`fit-badge fit-${lesson.fit_quality.toLowerCase()}`}>
+                  <span className={`fit-badge ${fitBadgeClass(lesson.fit_quality)}`}>
                     {lesson.fit_quality || "\u2014"}
                   </span>
                 </td>

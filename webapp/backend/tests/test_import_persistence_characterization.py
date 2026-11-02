@@ -423,7 +423,7 @@ class PersistenceCharacterizationTests(unittest.TestCase):
         )
         validated = assignments.validate(self.db)
 
-        self.assertEqual(first.fit_quality, "Manual")
+        self.assertEqual(first.fit_quality, "Overlap (<30 min)")
         self.assertTrue(first.manually_edited)
         self.assertEqual(len(validated.conflicts), 1)
         self.assertIn("CONFLICT", first.notes)

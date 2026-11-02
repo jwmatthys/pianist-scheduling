@@ -36,8 +36,8 @@ type PanelDraft = {
 
 const VIEWS: { id: SetupView; label: string }[] = [
   { id: "panels", label: "Jury Panels" },
-  { id: "lessons", label: "Lesson Roster" },
   { id: "availability", label: "Pianist Availability" },
+  { id: "lessons", label: "Lesson Roster" },
   { id: "schedule", label: "Schedule" },
   { id: "reports", label: "Reports" },
 ];
