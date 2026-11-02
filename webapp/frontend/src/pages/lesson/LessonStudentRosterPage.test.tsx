@@ -50,9 +50,17 @@ const student = (overrides: Partial<LessonStudent> = {}): LessonStudent => ({
 const inspection: LessonStudentImportInspection = {
   sheets: [],
   selected_sheet: null,
-  columns: ["ID", "Name", "Mon"],
+  columns: ["ID", "Name", "Mon", "Required Tags"],
   sample_rows: [],
-  suggested_mapping: { student_id: "ID", name: "Name", email: null, days: { Monday: "Mon" } },
+  suggested_mapping: {
+    student_id: "ID",
+    name: "Name",
+    email: null,
+    required_tags: "Required Tags",
+    preferred_tags: null,
+    restricted_tags: null,
+    days: { Monday: "Mon" },
+  },
 };
 
 const preview: LessonStudentImportPreview = {
@@ -61,12 +69,18 @@ const preview: LessonStudentImportPreview = {
   valid_rows: 1,
   invalid_rows: 0,
   availability_mapped: true,
+  tag_columns: ["Required Tags"],
+  new_tags: ["HARP"],
+  reused_tags: ["VIOLIN"],
   rows: [
     {
       row_number: 2,
       student_id: "S-100",
       name: "Imported Student",
       email: "",
+      required_tags: ["HARP", "VIOLIN"],
+      preferred_tags: [],
+      restricted_tags: [],
       availability_window_count: 1,
       availability: ["Mon 9:00 AM-12:00 PM"],
       warnings: [],
@@ -202,6 +216,7 @@ describe("Lesson Student Roster", () => {
       placements_removed: 0,
       placements_preserved: 3,
       students_created: 1,
+      tags_created: 1,
     });
     const user = userEvent.setup();
     render(<LessonStudentRosterPage />);
@@ -212,6 +227,9 @@ describe("Lesson Student Roster", () => {
     await user.click(within(dialog).getByRole("button", { name: "Preview Import" }));
     expect(await within(dialog).findByText("Imported Student")).toBeTruthy();
     expect(within(dialog).getByText("Mon 9:00 AM-12:00 PM")).toBeTruthy();
+    expect(within(dialog).getByText("HARP, VIOLIN")).toBeTruthy();
+    expect(within(dialog).getByText(/New tags: HARP\. Existing tags reused: VIOLIN\./)).toBeTruthy();
+    expect(within(dialog).getByLabelText("Preferred Tags")).toBeTruthy();
     expect(api.applyLessonStudentImport).not.toHaveBeenCalled();
 
     await user.click(within(dialog).getByRole("button", { name: "Import Students" }));
@@ -219,7 +237,7 @@ describe("Lesson Student Roster", () => {
     expect(within(confirm).getByText(/Delete all current students \(5 currently\)/)).toBeTruthy();
     expect(within(confirm).getByText(/Preserve existing placement decisions \(3\); the schedule will be marked stale/)).toBeTruthy();
     expect(within(confirm).getByText("Preserve Instructor records and Instructor availability")).toBeTruthy();
-    expect(within(confirm).getByText("Preserve the Lesson Tag registry")).toBeTruthy();
+    expect(within(confirm).getByText("Preserve the Lesson Tag registry and add any new imported tags to it")).toBeTruthy();
     expect(api.applyLessonStudentImport).not.toHaveBeenCalled();
 
     await user.click(within(confirm).getByRole("button", { name: "Replace Students" }));

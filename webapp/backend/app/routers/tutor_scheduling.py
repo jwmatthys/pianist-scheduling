@@ -718,6 +718,7 @@ class TutorStudentImportResult(BaseModel):
     placements_removed: int
     placements_preserved: int
     students_created: int
+    tags_created: int
 
 
 async def _read_student_upload(file: UploadFile) -> bytes:
@@ -760,8 +761,12 @@ async def preview_student_import(
         )
     except student_importer.TutorStudentImportError as error:
         raise _import_http_error(error) from error
+    repo = TutorRepository(db)
     return student_importer.build_preview(
-        parsed, db.query(TutorStudent).count(), db.query(TutorPlacement).count()
+        parsed,
+        {tag.normalized_name for tag in repo.list_tags()},
+        db.query(TutorStudent).count(),
+        db.query(TutorPlacement).count(),
     )
 
 
@@ -790,7 +795,7 @@ async def apply_student_import(
                 [f"Row {row.row_number}: {message}" for row in invalid[:25] for message in row.errors],
             )
         result = TutorRepository(db).replace_students(
-            (StudentInput(row.student_id, row.name, row.email), row.windows) for row in parsed.rows
+            (StudentInput(row.student_id, row.name, row.email), row.windows, row.tags) for row in parsed.rows
         )
         db.commit()
         return TutorStudentImportResult(**result.__dict__)

@@ -44,6 +44,27 @@ describe("import templates", () => {
     },
   );
 
+  it.each(["clinicalStudents", "lessonStudents", "tutorStudents"] as ImportTemplateKey[])(
+    "%s includes Required, Preferred and Restricted Tags columns",
+    (key) => {
+      const { columns, rows } = getImportTemplateTable(key);
+      for (const column of ["Required Tags", "Preferred Tags", "Restricted Tags"]) {
+        expect(columns).toContain(column);
+        expect(String(rows[0][columns.indexOf(column)])).not.toBe("");
+      }
+    },
+  );
+
+  it("gives the Clinical, Lesson and Tutor student roster templates identical columns and sample rows", () => {
+    const clinical = getImportTemplateTable("clinicalStudents");
+    for (const key of ["lessonStudents", "tutorStudents"] as ImportTemplateKey[]) {
+      const other = getImportTemplateTable(key);
+      expect(other.columns).toEqual(clinical.columns);
+      expect(other.rows).toEqual(clinical.rows);
+    }
+    expect(clinical.columns).toContain("Monday");
+  });
+
   it("uses synthetic example data only", () => {
     for (const key of KEYS) expect(generateImportTemplateCsv(key)).not.toMatch(/@(?!example\.)/);
   });

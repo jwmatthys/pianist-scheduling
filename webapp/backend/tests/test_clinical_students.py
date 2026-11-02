@@ -225,7 +225,10 @@ class StudentImportParsingTests(unittest.TestCase):
         inspection = importer.inspect_file("r.csv", csv_bytes(GOOD, ["Student ID", "Name", "Email", "x"]), None)
         self.assertEqual(
             inspection.suggested_mapping.model_dump(exclude={"days"}),
-            {"student_id": "Student ID", "name": "Name", "email": "Email"},
+            {
+                "student_id": "Student ID", "name": "Name", "email": "Email",
+                "required_tags": None, "preferred_tags": None, "restricted_tags": None,
+            },
         )
 
     def test_preview(self):
@@ -256,27 +259,28 @@ class StudentRosterUpsertTests(ClinicalTestCase):
             )
         )
 
-    def test_import_adds_students_and_preserves_existing_data(self):
+    def test_import_replaces_roster_and_removes_absent_students(self):
         self.seed()
         before = self.repo.get_state().source_data_revision
         result = self.apply()
         self.assertEqual((result.students_created, result.students_updated), (2, 0))
-        self.assertEqual({s.student_id for s in self.repo.list_students()}, {"OLD1", "OLD2", "S100", "S200"})
-        self.assertEqual(len(self.repo.student_tag_states()), 1)
-        self.assertEqual(sum(self.repo.student_availability_counts().values()), 1)
-        self.assertEqual(self.db.query(clinical.ClinicalPlacement).count(), 2)
+        self.assertEqual((result.students_removed, result.placements_removed), (2, 2))
+        self.assertEqual({s.student_id for s in self.repo.list_students()}, {"S100", "S200"})
+        self.assertEqual(self.db.query(clinical.ClinicalPlacement).count(), 0)
         self.assertEqual([o.site_name for o in self.repo.list_opportunities()], ["Keep Site"])
+        self.assertEqual([t.name for t in self.repo.list_tags()], ["KIDS"])
         state = self.repo.get_state()
         self.assertEqual(state.source_data_revision, before + 1)
         self.assertTrue(state.is_schedule_stale)
 
-    def test_import_updates_matching_student_case_insensitively(self):
+    def test_import_updates_matching_student_and_keeps_its_placement(self):
         self.seed()
         result = self.apply([["old1", "Renamed", "o@example.test", ""]])
-        self.assertEqual((result.students_created, result.students_updated), (0, 1))
+        self.assertEqual((result.students_created, result.students_updated, result.students_removed), (0, 1, 1))
         student = next(s for s in self.repo.list_students() if s.student_id == "OLD1")
         self.assertEqual((student.name, student.email), ("Renamed", "o@example.test"))
-        self.assertEqual(self.db.query(clinical.ClinicalPlacement).count(), 2)
+        self.assertEqual(self.db.query(clinical.ClinicalPlacement).count(), 1)
+        self.assertEqual(self.repo.student_availability(student.id), [])
 
     def test_requires_confirmation(self):
         self.seed()

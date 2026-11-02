@@ -804,6 +804,9 @@ Supported fields:
 - Student ID
 - Name
 - Email
+- Required Tags (optional)
+- Preferred Tags (optional)
+- Restricted Tags (optional)
 - Availability
 
 Availability weekday cells accept semicolon-separated time ranges, with
@@ -828,9 +831,17 @@ Preview
 Apply
 ```
 
-Student import does not currently include tag assignments. Any future tag
-fields must be explicitly mapped to Lesson-owned state fields; unmapped
-columns must not be interpreted as tags.
+Student tag columns are optional and must be explicitly mapped: Required Tags,
+Preferred Tags and Restricted Tags. Each cell holds semicolon-separated tag
+names; every tag named in a column gets that Required/Preferred/Restricted
+state for the student, and unlisted tags are Neutral. A tag listed in more
+than one state column for the same student is a row error. Tags are matched to
+the Lesson tag registry by normalized name; tags not yet in the registry are
+created (and appear in the Tag Manager) on apply, and the preview lists new and
+reused tags. Student import already replaces every student's tag states, so
+imported states replace the previous ones. Unmapped columns must not be
+interpreted as tags. The Tutor Student import behaves the same way with Tutor
+tags.
 
 ---
 

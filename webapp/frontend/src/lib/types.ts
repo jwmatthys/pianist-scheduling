@@ -533,12 +533,21 @@ export interface ClinicalReadiness {
   warnings: ClinicalReadinessWarning[];
 }
 
-export type ClinicalStudentsImportField = "student_id" | "name" | "email";
+export type ClinicalStudentsImportField =
+  | "student_id"
+  | "name"
+  | "email"
+  | "required_tags"
+  | "preferred_tags"
+  | "restricted_tags";
 
 export interface ClinicalStudentsImportMapping {
   student_id: string | null;
   name: string | null;
   email: string | null;
+  required_tags: string | null;
+  preferred_tags: string | null;
+  restricted_tags: string | null;
   days: Record<string, string | null>;
 }
 
@@ -558,6 +567,9 @@ export interface ClinicalStudentsImportPreviewRow {
   action: "create" | "update" | null;
   student_change: string;
   availability_change: string;
+  required_tags: string[];
+  preferred_tags: string[];
+  restricted_tags: string[];
   warnings: string[];
   errors: string[];
 }
@@ -569,7 +581,12 @@ export interface ClinicalStudentsImportPreview {
   invalid_rows: number;
   students_to_create: number;
   students_to_update: number;
+  students_to_remove: number;
+  placements_to_remove: number;
   availability_mapped: boolean;
+  tag_columns: string[];
+  new_tags: string[];
+  reused_tags: string[];
   rows: ClinicalStudentsImportPreviewRow[];
   can_apply: boolean;
 }
@@ -579,6 +596,10 @@ export interface ClinicalStudentsImportResult {
   students_updated: number;
   availability_updated: number;
   windows_imported: number;
+  tags_created: number;
+  tag_states_updated: number;
+  students_removed: number;
+  placements_removed: number;
 }
 
 /** Unassigned: no placement, eligible for generation. Manually Unplaced: no placement, excluded from generation. */
@@ -767,6 +788,9 @@ export interface LessonStudentImportMapping {
   student_id: string | null;
   name: string | null;
   email: string | null;
+  required_tags: string | null;
+  preferred_tags: string | null;
+  restricted_tags: string | null;
   days: Record<string, string | null>;
 }
 
@@ -783,6 +807,9 @@ export interface LessonStudentImportPreviewRow {
   student_id: string;
   name: string;
   email: string;
+  required_tags: string[];
+  preferred_tags: string[];
+  restricted_tags: string[];
   availability_window_count: number;
   availability: string[];
   warnings: string[];
@@ -795,7 +822,10 @@ export interface LessonStudentImportPreview {
   valid_rows: number;
   invalid_rows: number;
   availability_mapped: boolean;
+  tag_columns: string[];
   rows: LessonStudentImportPreviewRow[];
+  new_tags: string[];
+  reused_tags: string[];
   existing_student_count: number;
   existing_placement_count: number;
   can_apply: boolean;
@@ -806,6 +836,7 @@ export interface LessonStudentImportResult {
   placements_removed: number;
   placements_preserved: number;
   students_created: number;
+  tags_created: number;
 }
 
 export type LessonReadinessSeverity = "error" | "warning";
@@ -1006,6 +1037,9 @@ export interface TutorStudentImportMapping {
   student_id: string | null;
   name: string | null;
   email: string | null;
+  required_tags: string | null;
+  preferred_tags: string | null;
+  restricted_tags: string | null;
   days: Record<string, string | null>;
 }
 
@@ -1022,6 +1056,9 @@ export interface TutorStudentImportPreviewRow {
   student_id: string;
   name: string;
   email: string;
+  required_tags: string[];
+  preferred_tags: string[];
+  restricted_tags: string[];
   availability_window_count: number;
   availability: string[];
   warnings: string[];
@@ -1034,7 +1071,10 @@ export interface TutorStudentImportPreview {
   valid_rows: number;
   invalid_rows: number;
   availability_mapped: boolean;
+  tag_columns: string[];
   rows: TutorStudentImportPreviewRow[];
+  new_tags: string[];
+  reused_tags: string[];
   existing_student_count: number;
   existing_placement_count: number;
   can_apply: boolean;
@@ -1045,6 +1085,7 @@ export interface TutorStudentImportResult {
   placements_removed: number;
   placements_preserved: number;
   students_created: number;
+  tags_created: number;
 }
 
 export type TutorReadinessSeverity = "error" | "warning";

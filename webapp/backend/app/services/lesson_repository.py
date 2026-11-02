@@ -105,6 +105,7 @@ class LessonStudentReplaceResult:
     placements_removed: int
     placements_preserved: int
     students_created: int
+    tags_created: int = 0
 
 
 @dataclass(frozen=True)
@@ -1199,16 +1200,17 @@ class LessonRepository:
         )
 
     def replace_students(
-        self, students: Iterable[tuple[StudentInput, Sequence[AvailabilityWindow]]]
+        self,
+        students: Iterable[tuple[StudentInput, Sequence[AvailabilityWindow], Sequence[tuple[str, LessonTagState | str]]]],
     ) -> LessonStudentReplaceResult:
         """Full replacement of students as one source-data change (caller owns the transaction).
 
         Existing placement decisions are retained and the resulting schedule becomes stale.
-        Student availability and tag state are replaced; instructors and the tag registry remain.
+        Student availability and tag state are replaced and imported tags missing from the registry are created.
         """
-        prepared: list[tuple[tuple[str, str, str], list[AvailabilityWindow]]] = []
+        prepared: list[tuple[tuple[str, str, str], list[AvailabilityWindow], list[tuple[str, LessonTagState]]]] = []
         seen: set[str] = set()
-        for values, windows in students:
+        for values, windows, tag_pairs in students:
             # Existing students are about to be replaced, so only uniqueness within the batch matters.
             cleaned = self._clean_student_values(
                 values.student_id, values.name, values.email, check_unique=False
@@ -1216,7 +1218,8 @@ class LessonRepository:
             if cleaned[0].casefold() in seen:
                 raise LessonValidationError("DUPLICATE_STUDENT_ID", "A student with that Student ID already exists.")
             seen.add(cleaned[0].casefold())
-            prepared.append((cleaned, self._validated_windows(windows)))
+            states = [(name, LessonTagState(state)) for name, state in tag_pairs]
+            prepared.append((cleaned, self._validated_windows(windows), states))
         students_removed = self.db.query(func.count(LessonStudent.id)).scalar() or 0
         placements_removed = 0
         placements_preserved = self.db.query(func.count(LessonPlacement.id)).scalar() or 0
@@ -1224,17 +1227,32 @@ class LessonRepository:
         self.db.query(LessonStudentAvailabilityWindow).delete()
         self.db.query(LessonStudent).delete()
         self.db.flush()
-        for (student_id, name, email), windows in prepared:
+        tags: dict[str, LessonTag] = {}
+        tags_created = 0
+        for (student_id, name, email), windows, states in prepared:
             student = LessonStudent(student_id=student_id, name=name, email=email)
             self.db.add(student)
             self.db.flush()
             self._replace_student_availability(student.id, windows)
+            resolved: dict[str, LessonTagState] = {}
+            for tag_name, state in states:
+                key = lesson_tag_identity_key(tag_name)
+                if not key:
+                    continue
+                tag = tags.get(key) or self.find_tag(tag_name)
+                if tag is None:
+                    tag = self._insert_tag(normalize_lesson_tag_name(tag_name))
+                    tags_created += 1
+                tags[key] = tag
+                resolved[tag.id] = state
+            self._replace_student_tag_states(student.id, resolved)
         self.record_source_change()
         return LessonStudentReplaceResult(
             students_removed=students_removed,
             placements_removed=placements_removed,
             placements_preserved=placements_preserved,
             students_created=len(prepared),
+            tags_created=tags_created,
         )
 
     def get_tag_state(self, lesson_student_id: str, tag_id: str) -> LessonTagState:

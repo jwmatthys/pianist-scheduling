@@ -455,6 +455,90 @@ class ImportFlowTests(TutorTestCase):
         self.assertEqual(self.repo.student_availability(student.id), [])
 
 
+TAG_HEADERS = [*HEADERS, "Required Tags", "Preferred Tags", "Restricted Tags"]
+TAG_MAPPING = {**MAPPING, "required_tags": "Required Tags", "preferred_tags": "Preferred Tags",
+               "restricted_tags": "Restricted Tags"}
+
+
+def tag_row(required="", preferred="", restricted="", student_id="S200", name="Tag Student"):
+    return [*row_with(student_id, name), required, preferred, restricted]
+
+
+class ImportTagTests(TutorTestCase):
+    def call(self, endpoint, rows, mapping_value=TAG_MAPPING, **kwargs):
+        return asyncio.run(endpoint(
+            file=upload(csv_bytes(list(rows), TAG_HEADERS)), mapping=json.dumps(mapping_value),
+            sheet_name=None, db=self.db, **kwargs
+        ))
+
+    def test_tag_columns_parse_into_states_with_semicolons_and_dedup(self):
+        parsed = importer.parse_students(
+            "s.csv", csv_bytes([tag_row("Violin; violin ; Piano", "Jazz", "Choir")], TAG_HEADERS), None,
+            importer.TutorStudentImportMapping(**TAG_MAPPING),
+        )
+        row = parsed.rows[0]
+        self.assertEqual(row.errors, [])
+        self.assertEqual(sorted(row.tags), [("CHOIR", "restricted"), ("JAZZ", "preferred"), ("PIANO", "required"), ("VIOLIN", "required")])
+        self.assertEqual(parsed.tag_columns, ["Required Tags", "Preferred Tags", "Restricted Tags"])
+
+    def test_same_tag_in_two_state_columns_is_a_row_error(self):
+        parsed = importer.parse_students(
+            "s.csv", csv_bytes([tag_row("Violin", "violin")], TAG_HEADERS), None,
+            importer.TutorStudentImportMapping(**TAG_MAPPING),
+        )
+        self.assertTrue(any("more than one" in message for message in parsed.rows[0].errors))
+
+    def test_tag_columns_are_optional_and_unmapped_columns_are_not_tags(self):
+        parsed = importer.parse_students(
+            "s.csv", csv_bytes([tag_row("Violin")], TAG_HEADERS), None, importer.TutorStudentImportMapping(**MAPPING)
+        )
+        self.assertEqual((parsed.rows[0].tags, parsed.tag_columns), ([], []))
+
+    def test_tag_column_cannot_reuse_another_mapped_column(self):
+        with self.assertRaises(importer.TutorStudentImportError):
+            importer.parse_students(
+                "s.csv", csv_bytes([tag_row("Violin")], TAG_HEADERS), None,
+                importer.TutorStudentImportMapping(**{**TAG_MAPPING, "preferred_tags": "Required Tags"}),
+            )
+
+    def test_inspect_suggests_tag_columns(self):
+        inspection = importer.inspect_file("s.csv", csv_bytes([tag_row()], TAG_HEADERS), None)
+        suggested = inspection.suggested_mapping
+        self.assertEqual((suggested.required_tags, suggested.preferred_tags, suggested.restricted_tags),
+                         ("Required Tags", "Preferred Tags", "Restricted Tags"))
+
+    def test_preview_reports_new_and_reused_tags_and_writes_nothing(self):
+        self.repo.create_tag("violin")
+        self.db.commit()
+        preview = self.call(tutor_api.preview_student_import, [tag_row("Violin", "Jazz")])
+        self.assertEqual((preview.new_tags, preview.reused_tags), (["JAZZ"], ["VIOLIN"]))
+        self.assertEqual(preview.rows[0].required_tags, ["VIOLIN"])
+        self.assertEqual(preview.rows[0].preferred_tags, ["JAZZ"])
+        self.assertEqual(sorted(t.name for t in self.repo.list_tags()), ["VIOLIN"])
+
+    def test_apply_creates_new_tags_and_assigns_states(self):
+        existing = self.repo.create_tag("violin")
+        self.db.commit()
+        result = self.call(tutor_api.apply_student_import, [tag_row("Violin", "Jazz", "Choir")], confirmed=True)
+        self.assertEqual(result.tags_created, 2)
+        names = {t.name: t.id for t in self.repo.list_tags()}
+        self.assertEqual(sorted(names), ["CHOIR", "JAZZ", "VIOLIN"])
+        self.assertEqual(names["VIOLIN"], existing.id)
+        student = self.repo.list_students()[0]
+        self.assertEqual(
+            self.repo.student_tag_states()[student.id],
+            {names["VIOLIN"]: TutorTagState.REQUIRED, names["JAZZ"]: TutorTagState.PREFERRED,
+             names["CHOIR"]: TutorTagState.RESTRICTED},
+        )
+
+    def test_apply_with_conflicting_tag_states_changes_nothing(self):
+        before = self.revision()
+        with self.assertRaises(HTTPException):
+            self.call(tutor_api.apply_student_import, [tag_row("Violin", "Violin")], confirmed=True)
+        self.assertEqual(self.repo.list_tags(), [])
+        self.assertEqual(self.revision(), before)
+
+
 class ClinicalIsolationTests(TutorTestCase):
     def test_student_workflows_never_touch_clinical(self):
         clinical = ClinicalRepository(self.db)

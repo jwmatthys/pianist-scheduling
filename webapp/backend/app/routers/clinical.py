@@ -495,6 +495,10 @@ class ClinicalStudentsImportResult(BaseModel):
     students_updated: int
     availability_updated: int
     windows_imported: int
+    tags_created: int = 0
+    tag_states_updated: int = 0
+    students_removed: int = 0
+    placements_removed: int = 0
 
 
 def _parse_students_mapping(raw: str) -> students_importer.ClinicalStudentsImportMapping:
@@ -506,8 +510,8 @@ def _parse_students_mapping(raw: str) -> students_importer.ClinicalStudentsImpor
 
 def _roster_snapshot(repo: ClinicalRepository) -> dict[str, students_importer.ExistingStudent]:
     return {
-        key: students_importer.ExistingStudent(pk, name, email, count)
-        for key, (pk, name, email, count) in repo.roster_import_snapshot().items()
+        key: students_importer.ExistingStudent(pk, name, email, count, placements)
+        for key, (pk, name, email, count, placements) in repo.roster_import_snapshot().items()
     }
 
 
@@ -527,17 +531,19 @@ async def preview_students_import(
     db: Session = Depends(get_db),
 ):
     """Phase A: parse and validate only. Nothing is written."""
+    repo = ClinicalRepository(db)
     try:
         parsed = students_importer.parse_students(
             file.filename or "",
             await _read_upload(file),
             sheet_name or None,
             _parse_students_mapping(mapping),
-            _roster_snapshot(ClinicalRepository(db)),
+            _roster_snapshot(repo),
         )
     except ClinicalImportError as error:
         raise _import_http_error(error) from error
-    return students_importer.build_preview(parsed)
+    existing_keys = {tag.normalized_name for tag in repo.list_tags()}
+    return students_importer.build_preview(parsed, existing_keys, _roster_snapshot(repo))
 
 
 @router.post("/students/import/apply", response_model=ClinicalStudentsImportResult)
@@ -572,7 +578,14 @@ async def apply_students_import(
         if not parsed.rows:
             raise ClinicalImportError("EMPTY_IMPORT", "The selected file contains no students.")
         result = repo.apply_roster_import([
-            RosterImportRow(row.student_id, row.name, row.email, row.clinical_student_id, row.windows)
+            RosterImportRow(
+                row.student_id,
+                row.name,
+                row.email,
+                row.clinical_student_id,
+                row.windows,
+                row.tags,
+            )
             for row in parsed.rows
         ])
         db.commit()

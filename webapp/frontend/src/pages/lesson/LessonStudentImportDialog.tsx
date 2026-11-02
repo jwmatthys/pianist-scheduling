@@ -14,10 +14,16 @@ import { ColumnSelect } from "../../components/imports/ColumnSelect";
 import { DAYS_ORDER } from "../../lib/types";
 
 type FieldKey = "student_id" | "name" | "email";
+type TagFieldKey = "required_tags" | "preferred_tags" | "restricted_tags";
 const FIELDS: { key: FieldKey; label: string; required: boolean }[] = [
   { key: "student_id", label: "Student ID", required: true },
   { key: "name", label: "Name", required: true },
   { key: "email", label: "Email", required: false },
+];
+const TAG_FIELDS: { key: TagFieldKey; label: string }[] = [
+  { key: "required_tags", label: "Required Tags" },
+  { key: "preferred_tags", label: "Preferred Tags" },
+  { key: "restricted_tags", label: "Restricted Tags" },
 ];
 
 function errorText(error: unknown): string {
@@ -74,7 +80,7 @@ export function LessonStudentImportDialog({
     }
   }
 
-  function updateField(key: FieldKey, value: string) {
+  function updateField(key: FieldKey | TagFieldKey, value: string) {
     if (!mapping) return;
     setMapping({ ...mapping, [key]: value || null });
     setPreview(null);
@@ -112,7 +118,7 @@ export function LessonStudentImportDialog({
       await onImported(
         `Imported ${result.students_created} ${
           result.students_created === 1 ? "student" : "students"
-        }; replaced ${result.students_removed} and preserved ${result.placements_preserved} placement decision(s) in the stale schedule.`,
+        }; replaced ${result.students_removed} and preserved ${result.placements_preserved} placement decision(s) in the stale schedule and created ${result.tags_created} new tag(s).`,
       );
       onClose();
     } catch (cause) {
@@ -164,6 +170,19 @@ export function LessonStudentImportDialog({
                   />
                 ))}
               </div>
+              <h4>Tags (optional)</h4>
+              <div className="clinical-import-mapping">
+                {TAG_FIELDS.map((field) => (
+                  <ColumnSelect
+                    key={field.key}
+                    label={field.label}
+                    value={mapping[field.key]}
+                    columns={inspection.columns}
+                    emptyLabel="Not in file"
+                    onChange={(value) => updateField(field.key, value)}
+                  />
+                ))}
+              </div>
               <h4>Weekly availability (optional)</h4>
               <div className="clinical-import-mapping">
                 {DAYS_ORDER.map((day) => (
@@ -179,8 +198,9 @@ export function LessonStudentImportDialog({
               </div>
               <p className="dialog-note">
                 Weekday cells list Availability Windows such as 8:00 AM-12:00 PM; prefix an entry with T for
-                Tentative and separate entries with semicolons. Blank cells mean no availability. Tag selections are
-                not imported; set them on each student after importing.
+                Tentative and separate entries with semicolons. Blank cells mean no availability. Separate multiple
+                tags in a cell with semicolons. Tags named in the Required, Preferred or Restricted column get that state
+                for the student; tags not yet in the registry are added to the Tag Manager.
               </p>
             </section>
 
@@ -201,6 +221,12 @@ export function LessonStudentImportDialog({
                   {preview.total_rows} {preview.total_rows === 1 ? "row" : "rows"}: {preview.valid_rows} valid,{" "}
                   {preview.invalid_rows} with errors.
                 </p>
+                <p className="muted">
+                  Tag columns:{" "}
+                  {preview.tag_columns.length ? preview.tag_columns.join(", ") : "none"}. New tags:{" "}
+                  {preview.new_tags.length ? preview.new_tags.join(", ") : "none"}. Existing tags reused:{" "}
+                  {preview.reused_tags.length ? preview.reused_tags.join(", ") : "none"}.
+                </p>
                 {!preview.can_apply && (
                   <div className="error-banner" role="alert">
                     Fix the rows marked below in the source file, then choose the file again. Nothing has been changed.
@@ -214,6 +240,9 @@ export function LessonStudentImportDialog({
                         <th>Student ID</th>
                         <th>Name</th>
                         <th>Email</th>
+                        <th>Required Tags</th>
+                        <th>Preferred Tags</th>
+                        <th>Restricted Tags</th>
                         <th>Availability</th>
                         <th>Issues</th>
                       </tr>
@@ -225,6 +254,9 @@ export function LessonStudentImportDialog({
                           <td>{row.student_id}</td>
                           <td>{row.name}</td>
                           <td>{row.email}</td>
+                          <td>{row.required_tags.join(", ")}</td>
+                          <td>{row.preferred_tags.join(", ")}</td>
+                          <td>{row.restricted_tags.join(", ")}</td>
                           <td>
                             {row.availability.length === 0
                               ? "None"
@@ -274,7 +306,7 @@ export function LessonStudentImportDialog({
             <li>Preserve existing placement decisions ({preview?.existing_placement_count ?? 0}); the schedule will be marked stale</li>
             <li>Clear lesson schedules</li>
             <li>Preserve Instructor records and Instructor availability</li>
-            <li>Preserve the Lesson Tag registry</li>
+            <li>Preserve the Lesson Tag registry and add any new imported tags to it</li>
           </ul>
         </ConfirmDialog>
       )}

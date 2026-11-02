@@ -104,6 +104,8 @@ class RosterImportRow:
     email: str
     clinical_student_id: str | None
     windows: Sequence[AvailabilityWindow] | None
+    # (tag name, state) pairs replacing the student's tag states; None leaves tag states untouched.
+    tags: Sequence[tuple[str, str]] | None = None
 
 
 @dataclass(frozen=True)
@@ -112,6 +114,10 @@ class ClinicalRosterImportResult:
     students_updated: int
     availability_updated: int
     windows_imported: int
+    tags_created: int = 0
+    tag_states_updated: int = 0
+    students_removed: int = 0
+    placements_removed: int = 0
 
 
 class ClinicalRepository:
@@ -564,30 +570,43 @@ class ClinicalRepository:
                 raise ClinicalValidationError("INVALID_TAG_STATE", "Choose a valid tag state.") from error
             if state is not TagState.NEUTRAL:
                 wanted[tag_id] = state
+        self._replace_student_tag_states(clinical_student_id, wanted)
+        self.record_source_change()
+
+    def _replace_student_tag_states(self, clinical_student_id: str, wanted: dict[str, TagState]) -> None:
         self.db.query(ClinicalStudentTagState).filter(
             ClinicalStudentTagState.student_id == clinical_student_id
         ).delete()
         for tag_id, state in wanted.items():
-            self.db.add(ClinicalStudentTagState(student_id=clinical_student_id, tag_id=tag_id, state=state.value))
+            if state is not TagState.NEUTRAL:
+                self.db.add(ClinicalStudentTagState(student_id=clinical_student_id, tag_id=tag_id, state=state.value))
         self.db.flush()
-        self.record_source_change()
 
-    def roster_import_snapshot(self) -> dict[str, tuple[str, str, str, int]]:
-        """Case-folded Student ID -> (internal id, name, email, stored window count) for import matching."""
+    def roster_import_snapshot(self) -> dict[str, tuple[str, str, str, int, int]]:
+        """Case-folded Student ID -> (internal id, name, email, window count, placement count) for import matching."""
         counts = self.student_availability_counts()
+        placed = {
+            student_id
+            for (student_id,) in self.db.query(ClinicalPlacement.clinical_student_id).all()
+        }
         return {
-            student.student_id.casefold(): (student.id, student.name, student.email, counts.get(student.id, 0))
+            student.student_id.casefold(): (
+                student.id, student.name, student.email, counts.get(student.id, 0), int(student.id in placed)
+            )
             for student in self.list_students()
         }
 
     def apply_roster_import(self, rows: Sequence[RosterImportRow]) -> ClinicalRosterImportResult:
-        """Create/update students and optionally replace their availability as one source-data change.
+        """Make the roster match ``rows`` as one source-data change.
 
-        All-or-nothing within the caller's transaction. Students absent from ``rows``, sites,
-        tags, tag states, and placements are untouched; the revision is bumped exactly once.
+        Matched students keep their identity and placement; students absent from ``rows`` are
+        removed with their placements. All-or-nothing within the caller's transaction; sites
+        and existing tags are untouched; the revision is bumped exactly once.
         """
         seen: set[str] = set()
+        kept_ids: list[str] = []
         created = updated = availability_updated = windows_imported = 0
+        tags_created = tag_states_updated = 0
         for row in rows:
             key = (row.student_id or "").strip().casefold()
             if key in seen:
@@ -609,6 +628,7 @@ class ClinicalRepository:
                 self.db.add(student)
                 self.db.flush()
                 created += 1
+                kept_ids.append(student.id)
             else:
                 student = self._require(
                     ClinicalStudent, row.clinical_student_id, "STUDENT_NOT_FOUND", "The student no longer exists."
@@ -620,15 +640,42 @@ class ClinicalRepository:
                 student.updated_at = _now()
                 self.db.flush()
                 updated += 1
+                kept_ids.append(student.id)
             if windows is not None:
                 self.replace_student_availability(student.id, windows, record_change=False)
                 availability_updated += 1
                 windows_imported += len(windows)
-        if rows:
+            if row.tags is not None:
+                states: dict[str, TagState] = {}
+                for tag_name, state in row.tags:
+                    tag = self.find_tag(self._clean_tag_name(tag_name))
+                    if tag is None:
+                        tag = self._insert_tag(tag_name)
+                        tags_created += 1
+                    states[tag.id] = TagState(state)
+                self._replace_student_tag_states(student.id, states)
+                tag_states_updated += 1
+        kept = set(kept_ids)
+        removed_ids = [s.id for s in self.list_students() if s.id not in kept]
+        placements_removed = (
+            self.db.query(ClinicalPlacement).filter(ClinicalPlacement.clinical_student_id.in_(removed_ids)).count()
+            if removed_ids
+            else 0
+        )
+        for student_pk in removed_ids:
+            self._delete_student_rows(student_pk)
+        if rows or removed_ids:
             self.record_source_change()
-        return ClinicalRosterImportResult(created, updated, availability_updated, windows_imported)
+        return ClinicalRosterImportResult(
+            created, updated, availability_updated, windows_imported, tags_created, tag_states_updated,
+            len(removed_ids), placements_removed,
+        )
 
     def delete_student(self, clinical_student_id: str) -> None:
+        self._delete_student_rows(clinical_student_id)
+        self.record_source_change()
+
+    def _delete_student_rows(self, clinical_student_id: str) -> None:
         student = self._require(
             ClinicalStudent, clinical_student_id, "STUDENT_NOT_FOUND", "The student no longer exists."
         )
@@ -639,7 +686,6 @@ class ClinicalRepository:
         ).delete()
         self.db.delete(student)
         self.db.flush()
-        self.record_source_change()
 
     def replace_student_availability(
         self,
