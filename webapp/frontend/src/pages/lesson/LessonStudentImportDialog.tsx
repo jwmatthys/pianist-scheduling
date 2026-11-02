@@ -7,8 +7,11 @@ import type {
   LessonStudentImportMapping,
   LessonStudentImportPreview,
 } from "../../lib/types";
-import { ConfirmDialog, Modal } from "../clinical/ClinicalDialogs";
+import { ConfirmDialog } from "../../components/dialogs/ConfirmDialog";
+import { ImportModalBody, ImportModalShell } from "../../components/imports/ImportDialogShell";
 import { ImportTemplateLinks } from "../../components/ImportTemplateLinks";
+import { ColumnSelect } from "../../components/imports/ColumnSelect";
+import { DAYS_ORDER } from "../../lib/types";
 
 type FieldKey = "student_id" | "name" | "email";
 const FIELDS: { key: FieldKey; label: string; required: boolean }[] = [
@@ -16,38 +19,9 @@ const FIELDS: { key: FieldKey; label: string; required: boolean }[] = [
   { key: "name", label: "Name", required: true },
   { key: "email", label: "Email", required: false },
 ];
-const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function ColumnSelect({
-  label,
-  value,
-  columns,
-  emptyLabel,
-  onChange,
-}: {
-  label: string;
-  value: string | null;
-  columns: string[];
-  emptyLabel: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label>
-      {label}
-      <select aria-label={label} value={value ?? ""} onChange={(event) => onChange(event.target.value)}>
-        <option value="">{emptyLabel}</option>
-        {columns.map((column) => (
-          <option key={column} value={column}>
-            {column}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
 }
 
 export function LessonStudentImportDialog({
@@ -148,14 +122,8 @@ export function LessonStudentImportDialog({
   }
 
   return (
-    <Modal title="Import Student Roster" onClose={onClose} className="clinical-wide-dialog clinical-import-dialog">
-      <div className="clinical-tag-manager">
-        <p className="muted">CSV, XLSX, or XLS</p>
-        {error && (
-          <div className="error-banner" role="alert" style={{ whiteSpace: "pre-line" }}>
-            {error}
-          </div>
-        )}
+    <ImportModalShell title="Import Student Roster" onClose={onClose}>
+      <ImportModalBody error={error}>
         <div className="availability-import-file-row">
           <button type="button" disabled={busy} onClick={() => void selectFile()}>
             {inspection ? "Choose another file" : "Choose spreadsheet"}
@@ -198,7 +166,7 @@ export function LessonStudentImportDialog({
               </div>
               <h4>Weekly availability (optional)</h4>
               <div className="clinical-import-mapping">
-                {WEEKDAYS.map((day) => (
+                {DAYS_ORDER.map((day) => (
                   <ColumnSelect
                     key={day}
                     label={day}
@@ -290,7 +258,7 @@ export function LessonStudentImportDialog({
             )}
           </>
         )}
-      </div>
+      </ImportModalBody>
       {confirming && (
         <ConfirmDialog
           title="Replace Students?"
@@ -310,6 +278,6 @@ export function LessonStudentImportDialog({
           </ul>
         </ConfirmDialog>
       )}
-    </Modal>
+    </ImportModalShell>
   );
 }

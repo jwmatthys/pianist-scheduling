@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import type { Lesson, Pianist } from "../lib/types";
 import { inputValueToMinutes, minutesToInputValue } from "../lib/time";
+import { DAYS_ORDER, dayIndex } from "../lib/types";
 
-const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 type Props = {
   onImportLessons: () => void;
@@ -121,7 +121,7 @@ export function SchedulePage({ onImportLessons }: Props) {
   const sortedLessons = useMemo(
     () =>
       [...lessons].sort(
-        (a, b) => DAYS.indexOf(a.day) - DAYS.indexOf(b.day) || a.start_minute - b.start_minute
+        (a, b) => dayIndex(a.day) - dayIndex(b.day) || a.start_minute - b.start_minute
       ),
     [lessons]
   );
@@ -207,7 +207,7 @@ export function SchedulePage({ onImportLessons }: Props) {
                     value={lesson.day}
                     onChange={(e) => patchLesson(lesson.id, { day: e.target.value })}
                   >
-                    {DAYS.map((d) => (
+                    {DAYS_ORDER.map((d) => (
                       <option key={d} value={d}>
                         {d}
                       </option>

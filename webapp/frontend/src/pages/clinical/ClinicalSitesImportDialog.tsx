@@ -9,7 +9,8 @@ import type {
   ClinicalSitesImportMapping,
   ClinicalSitesImportPreview,
 } from "../../lib/types";
-import { ConfirmDialog, Modal } from "./ClinicalDialogs";
+import { ConfirmDialog } from "../../components/dialogs/ConfirmDialog";
+import { ImportModalBody, ImportModalShell } from "../../components/imports/ImportDialogShell";
 import { ImportTemplateLinks } from "../../components/ImportTemplateLinks";
 
 const FIELDS: { key: ClinicalSitesImportField; label: string; required: boolean }[] = [
@@ -123,14 +124,8 @@ export function ClinicalSitesImportDialog({
   }
 
   return (
-    <Modal title="Import Clinical Sites" onClose={onClose} className="clinical-wide-dialog clinical-import-dialog">
-      <div className="clinical-tag-manager">
-        <p className="muted">CSV, XLSX, or XLS</p>
-        {error && (
-          <div className="error-banner" role="alert" style={{ whiteSpace: "pre-line" }}>
-            {error}
-          </div>
-        )}
+    <ImportModalShell title="Import Clinical Sites" onClose={onClose}>
+      <ImportModalBody error={error}>
         <div className="availability-import-file-row">
           <button type="button" disabled={busy} onClick={() => void selectFile()}>
             {inspection ? "Choose another file" : "Choose spreadsheet"}
@@ -262,7 +257,7 @@ export function ClinicalSitesImportDialog({
             )}
           </>
         )}
-      </div>
+      </ImportModalBody>
       {confirming && (
         <ConfirmDialog
           title="Replace Clinical Sites?"
@@ -285,6 +280,6 @@ export function ClinicalSitesImportDialog({
           </ul>
         </ConfirmDialog>
       )}
-    </Modal>
+    </ImportModalShell>
   );
 }

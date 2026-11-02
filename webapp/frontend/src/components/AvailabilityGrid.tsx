@@ -2,8 +2,8 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState }
 import { api } from "../lib/api";
 import type { AvailabilitySlot, AvailabilityStatus, Pianist } from "../lib/types";
 import { formatMinutes } from "../lib/time";
+import { DAYS_ORDER } from "../lib/types";
 
-const DAYS: string[] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const START_MIN = 6 * 60; // 6:00 AM
 const END_MIN = 22 * 60; // 10:00 PM
 const SLOT_MINUTES = 30;
@@ -167,9 +167,9 @@ export const AvailabilityGrid = forwardRef<AvailabilityGridHandle, { pianist: Pi
           </span>
         )}
       </div>
-      <div className="availability-grid" style={{ gridTemplateColumns: `90px repeat(${DAYS.length}, 1fr)` }}>
+      <div className="availability-grid" style={{ gridTemplateColumns: `90px repeat(${DAYS_ORDER.length}, 1fr)` }}>
         <div className="avail-header avail-corner" />
-        {DAYS.map((day) => (
+        {DAYS_ORDER.map((day) => (
           <div className="avail-header" key={day}>
             {day}
           </div>
@@ -177,7 +177,7 @@ export const AvailabilityGrid = forwardRef<AvailabilityGridHandle, { pianist: Pi
         {slots.map((slot) => (
           <div className="avail-row-contents" key={slot} style={{ display: "contents" }}>
             <div className="avail-time-label">{formatMinutes(slot)}</div>
-            {DAYS.map((day) => {
+            {DAYS_ORDER.map((day) => {
               const storedStatus = grid.get(slotKey(day, slot));
               const status = storedStatus ?? (availabilityComplete ? "Unavailable" : null);
               return (

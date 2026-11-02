@@ -1,6 +1,5 @@
-import type { AvailabilityStatus, RecurringAvailabilityWindow } from "./types";
+import { DAYS_ORDER, type AvailabilityStatus, type RecurringAvailabilityWindow } from "./types";
 
-export const WEEK_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 export interface WeeklyGridRange {
   startMinute: number;
@@ -43,7 +42,7 @@ export function windowsToCells(windows: RecurringAvailabilityWindow[], range: We
 /** Merge adjacent same-status cells into recurring windows; unmarked cells become Unavailable. */
 export function cellsToWindows(cells: WeeklyCells, range: WeeklyGridRange): RecurringAvailabilityWindow[] {
   const windows: RecurringAvailabilityWindow[] = [];
-  for (const day of WEEK_DAYS) {
+  for (const day of DAYS_ORDER) {
     let open: RecurringAvailabilityWindow | null = null;
     for (const slot of slotStarts(range)) {
       const status = cells.get(cellKey(day, slot)) ?? "Unavailable";

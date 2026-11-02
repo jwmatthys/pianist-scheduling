@@ -8,8 +8,11 @@ import type {
   TutorTutorImportMapping,
   TutorTutorImportPreview,
 } from "../../lib/types";
-import { ConfirmDialog, Modal } from "../clinical/ClinicalDialogs";
+import { ConfirmDialog } from "../../components/dialogs/ConfirmDialog";
+import { ImportModalBody, ImportModalShell } from "../../components/imports/ImportDialogShell";
 import { ImportTemplateLinks } from "../../components/ImportTemplateLinks";
+import { ColumnSelect } from "../../components/imports/ColumnSelect";
+import { DAYS_ORDER } from "../../lib/types";
 
 const FIELDS: { key: TutorTutorImportField; label: string; required: boolean }[] = [
   { key: "tutor_name", label: "Tutor Name", required: true },
@@ -19,38 +22,9 @@ const FIELDS: { key: TutorTutorImportField; label: string; required: boolean }[]
   { key: "capacity", label: "Capacity", required: false },
   { key: "tags", label: "Tags", required: false },
 ];
-const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function ColumnSelect({
-  label,
-  value,
-  columns,
-  emptyLabel,
-  onChange,
-}: {
-  label: string;
-  value: string | null;
-  columns: string[];
-  emptyLabel: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label>
-      {label}
-      <select aria-label={label} value={value ?? ""} onChange={(event) => onChange(event.target.value)}>
-        <option value="">{emptyLabel}</option>
-        {columns.map((column) => (
-          <option key={column} value={column}>
-            {column}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
 }
 
 export function TutorTutorImportDialog({
@@ -151,14 +125,8 @@ export function TutorTutorImportDialog({
   }
 
   return (
-    <Modal title="Import Tutor Roster" onClose={onClose} className="clinical-wide-dialog clinical-import-dialog">
-      <div className="clinical-tag-manager">
-        <p className="muted">CSV, XLSX, or XLS</p>
-        {error && (
-          <div className="error-banner" role="alert" style={{ whiteSpace: "pre-line" }}>
-            {error}
-          </div>
-        )}
+    <ImportModalShell title="Import Tutor Roster" onClose={onClose}>
+      <ImportModalBody error={error}>
         <div className="availability-import-file-row">
           <button type="button" disabled={busy} onClick={() => void selectFile()}>
             {inspection ? "Choose another file" : "Choose spreadsheet"}
@@ -201,7 +169,7 @@ export function TutorTutorImportDialog({
               </div>
               <h4>Weekly availability (optional)</h4>
               <div className="clinical-import-mapping">
-                {WEEKDAYS.map((day) => (
+                {DAYS_ORDER.map((day) => (
                   <ColumnSelect
                     key={day}
                     label={day}
@@ -304,7 +272,7 @@ export function TutorTutorImportDialog({
             )}
           </>
         )}
-      </div>
+      </ImportModalBody>
       {confirming && (
         <ConfirmDialog
           title="Replace Tutors?"
@@ -324,6 +292,6 @@ export function TutorTutorImportDialog({
           </ul>
         </ConfirmDialog>
       )}
-    </Modal>
+    </ImportModalShell>
   );
 }

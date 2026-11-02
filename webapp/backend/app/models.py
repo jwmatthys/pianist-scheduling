@@ -17,8 +17,10 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
+from .services.availability import WEEKDAYS
 
-DAYS_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+# Derived from the shared pure definition so there is one source of truth for weekday order.
+DAYS_ORDER = list(WEEKDAYS)
 
 
 class Organization(Base):

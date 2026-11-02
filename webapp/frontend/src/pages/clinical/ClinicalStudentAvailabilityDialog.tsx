@@ -9,7 +9,7 @@ import {
   type WeeklyCells,
   type WeeklyGridRange,
 } from "../../lib/weeklyAvailability";
-import { Modal } from "./ClinicalDialogs";
+import { Modal } from "../../components/dialogs/Modal";
 
 // 7:00 AM through 9:00 PM in 30-minute cells.
 const CLINICAL_RANGE: WeeklyGridRange = { startMinute: 7 * 60, endMinute: 21 * 60, slotMinutes: 30 };

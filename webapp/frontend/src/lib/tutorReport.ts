@@ -2,8 +2,8 @@ import { formatMinutes } from "./time";
 import { isTutorEntryPlaced, tutorPlacementState } from "./tutorPlacement";
 import type { ReportTable } from "./reportTable";
 import type { TutorTutor, TutorSchedule, TutorScheduleEntry } from "./types";
+import { DAYS_ORDER, dayIndex } from "./types";
 
-const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 export const UNPLACED_REASONS: Record<string, string> = {
   NO_FEASIBLE_CANDIDATE: "No feasible tutor",
@@ -38,8 +38,8 @@ export interface TutorReportOptions {
 }
 
 function weekdayIndex(day: string | null): number {
-  const index = WEEKDAYS.indexOf(day ?? "");
-  return index === -1 ? WEEKDAYS.length : index;
+  const index = dayIndex(day ?? "");
+  return index === -1 ? DAYS_ORDER.length : index;
 }
 
 function compareText(left: string, right: string) {

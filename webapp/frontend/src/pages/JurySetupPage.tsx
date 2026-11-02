@@ -1,3 +1,4 @@
+import { formatMinutes } from "../lib/time";
 import { useEffect, useState } from "react";
 import { JuryPanelImportDialog } from "../components/JuryPanelImportDialog";
 import { api } from "../lib/api";
@@ -77,19 +78,11 @@ function fromMinutes(value: number): string {
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
-function formatTime(value: number): string {
-  const hours = Math.floor(value / 60);
-  const minutes = value % 60;
-  const suffix = hours < 12 ? "AM" : "PM";
-  const displayHours = hours % 12 || 12;
-  return `${displayHours}:${String(minutes).padStart(2, "0")} ${suffix}`;
-}
-
 function formatPanelTime(panel: JuryPanel) {
   const dateLabel = panel.jury_date
     ? new Date(`${panel.jury_date}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
     : "Scheduling Date needed";
-  return `${dateLabel} · ${formatTime(panel.earliest_start_minute)} earliest · ${formatTime(panel.preferred_start_minute)} preferred`;
+  return `${dateLabel} · ${formatMinutes(panel.earliest_start_minute)} earliest · ${formatMinutes(panel.preferred_start_minute)} preferred`;
 }
 
 function panelDraft(panel?: JuryPanel): PanelDraft {
@@ -577,7 +570,7 @@ export function JurySetupPage() {
                           <span>{panel.jury_length_minutes} min Jury</span>
                           {panel.break_needed && <span>Break every {panel.break_every_x_juries} · {panel.break_length_minutes} min</span>}
                           {panel.meal_break && panel.meal_start_minute !== null && panel.meal_end_minute !== null && (
-                            <span>Meal {formatTime(panel.meal_start_minute)}–{formatTime(panel.meal_end_minute)}</span>
+                            <span>Meal {formatMinutes(panel.meal_start_minute)}–{formatMinutes(panel.meal_end_minute)}</span>
                           )}
                         </div>
                       </div>

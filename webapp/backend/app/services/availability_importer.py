@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -11,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, module_models, schemas
 from . import tabular
+from .import_common import MAX_UPLOAD_BYTES, header_key, is_blank
 from .accompanist_availability import AccompanistAvailabilitySlot, windows_to_accompanist_slots
 from .availability import (
     AvailabilityIssue,
@@ -31,7 +31,6 @@ from .jury_sync import sync_jury_with_accompanist
 if TYPE_CHECKING:
     import pandas as pd
 
-MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_STAGED_UPLOADS = 20
 MAX_PREVIEW_WINDOWS = 300
 _STAGED_UPLOADS: dict[str, StagedUpload] = {}
@@ -77,17 +76,6 @@ class PreparedImport:
     existing_slots_in_scope: int = 0
 
 
-def _is_blank(value: object) -> bool:
-    if value is None or isinstance(value, str) and not value.strip():
-        return True
-    import pandas as pd
-
-    try:
-        return bool(pd.isna(value))
-    except (TypeError, ValueError):
-        return False
-
-
 def _frame_for(upload: StagedUpload, sheet_name: str | None) -> pd.DataFrame:
     if upload.sheets:
         sheet_name = sheet_name or upload.sheets[0]
@@ -106,7 +94,7 @@ def _sample_rows(frame: pd.DataFrame) -> list[dict[str, str]]:
 
 
 def _suggest_column(columns: list[str], aliases: tuple[str, ...]) -> str | None:
-    normalized = {column: re.sub(r"[^a-z0-9]+", " ", column.casefold()).strip() for column in columns}
+    normalized = {column: header_key(column) for column in columns}
     for alias in aliases:
         for column, header in normalized.items():
             if header == alias:
@@ -218,7 +206,7 @@ def _person_for_row(
     prepared: PreparedImport,
 ) -> PianistImportPlan | None:
     name_value = row.get(mapping.person_name_column) if mapping.person_name_column else None
-    if _is_blank(name_value):
+    if is_blank(name_value):
         prepared.errors.append(_issue("error", "MISSING_PERSON", "Pianist name is missing.", row_number))
         prepared.review_pianists.append(schemas.AvailabilityImportPianistOut(
             action="invalid", pianist_name="", days=[], row_numbers=[row_number],
@@ -233,7 +221,7 @@ def _person_for_row(
         return None
 
     email_value = row.get(mapping.email_column) if mapping.email_column else None
-    imported_email = "" if _is_blank(email_value) else str(email_value).strip()
+    imported_email = "" if is_blank(email_value) else str(email_value).strip()
     if len(imported_email) > 200:
         prepared.errors.append(_issue("error", "INVALID_EMAIL", "Email must be 200 characters or fewer.", row_number))
         prepared.review_pianists.append(schemas.AvailabilityImportPianistOut(
@@ -243,7 +231,7 @@ def _person_for_row(
 
     hours_value = row.get(mapping.max_hours_column) if mapping.max_hours_column else None
     imported_hours: float | None = None
-    if not _is_blank(hours_value):
+    if not is_blank(hours_value):
         try:
             imported_hours = float(str(hours_value).strip())
             if not 0 <= imported_hours <= 168 or imported_hours != imported_hours:
@@ -301,7 +289,7 @@ def preview_import(
     if not prepared.errors:
         for index, row in frame.iterrows():
             row_number = int(index) + 2 if isinstance(index, (int, float)) else 0
-            if all(_is_blank(value) for value in row.values):
+            if all(is_blank(value) for value in row.values):
                 continue
             pianist = _person_for_row(
                 row,

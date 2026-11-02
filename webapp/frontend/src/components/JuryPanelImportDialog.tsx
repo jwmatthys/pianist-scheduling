@@ -4,6 +4,7 @@ import { chooseLocalFile } from "../lib/platform";
 import { formatMinutes } from "../lib/time";
 import { useScrollToPreview } from "../lib/useScrollToPreview";
 import type { JuryPanelImportInspection, JuryPanelImportMapping, JuryPanelImportPreview } from "../lib/types";
+import { ImportDialogShell } from "./imports/ImportDialogShell";
 import { ImportTemplateLinks } from "./ImportTemplateLinks";
 
 type Props = {
@@ -119,124 +120,111 @@ export function JuryPanelImportDialog({ onApplied }: Props) {
   return (
     <>
       <button type="button" className="secondary-btn" onClick={openDialog}>Import jury panels</button>
-      <dialog className="availability-import-dialog" ref={dialogRef}>
-        <div className="availability-import-content">
-          <header className="availability-import-heading">
-            <div>
-              <h2>Import Jury Panels</h2>
-              <p className="muted">CSV, XLSX, or XLS</p>
+      <ImportDialogShell title="Import Jury Panels" dialogRef={dialogRef} error={error} success={success} preserveErrorLineBreaks>
+        <div className="availability-import-file-row">
+          <button type="button" disabled={busy} onClick={() => void selectFile()}>
+            {inspection ? "Choose another file" : "Choose spreadsheet"}
+          </button>
+          <ImportTemplateLinks template="juryPanels" disabled={busy} />
+        </div>
+
+        {inspection && mapping && (
+          <>
+            {inspection.sheets.length > 1 && (
+              <label className="availability-map-field availability-sheet-select">
+                <span>Worksheet</span>
+                <select
+                  value={inspection.selected_sheet ?? inspection.sheets[0]}
+                  disabled={busy}
+                  onChange={(event) => void chooseSheet(event.target.value)}
+                >
+                  {inspection.sheets.map((sheet) => <option key={sheet} value={sheet}>{sheet}</option>)}
+                </select>
+              </label>
+            )}
+
+            <section className="availability-mapping-section">
+              <h3>Column mapping</h3>
+              <div className="availability-normalized-mapping">
+                {FIELDS.map((field) => (
+                  <label className="availability-map-field" key={field.key}>
+                    <span>{field.label}{field.required ? "" : " (optional)"}</span>
+                    <select
+                      aria-label={field.label}
+                      value={mapping[field.key] ?? ""}
+                      onChange={(event) => {
+                        setMapping({ ...mapping, [field.key]: event.target.value || null });
+                        setPreview(null);
+                      }}
+                    >
+                      <option value="">{field.required ? "Choose column" : "Not in file"}</option>
+                      {inspection.columns.map((column) => <option key={column} value={column}>{column}</option>)}
+                    </select>
+                  </label>
+                ))}
+              </div>
+            </section>
+
+            <details className="availability-source-preview">
+              <summary>Source preview ({inspection.sample_rows.length} rows)</summary>
+              <div className="preview-table-wrap">
+                <table className="preview-table">
+                  <thead><tr>{inspection.columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
+                  <tbody>
+                    {inspection.sample_rows.map((row, index) => (
+                      <tr key={index}>{inspection.columns.map((column) => <td key={column}>{row[column]}</td>)}</tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+
+            <p className="muted availability-completeness-note">
+              Importing deletes all current Jury Panels and clears every Panel assignment in the Lesson Roster. Break and meal values are used only when the matching "needed" column is Yes.
+            </p>
+
+            <div className="availability-import-actions">
+              <button type="button" disabled={busy || missingRequired} onClick={() => void runPreview()}>
+                Preview Import
+              </button>
             </div>
-            <button type="button" className="dialog-close" aria-label="Close" onClick={() => dialogRef.current?.close()}>×</button>
-          </header>
 
-          {error && <div className="error-banner" role="alert" style={{ whiteSpace: "pre-line" }}>{error}</div>}
-          {success && <div className="availability-success" role="status">{success}</div>}
-
-          <div className="availability-import-file-row">
-            <button type="button" disabled={busy} onClick={() => void selectFile()}>
-              {inspection ? "Choose another file" : "Choose spreadsheet"}
-            </button>
-            <ImportTemplateLinks template="juryPanels" disabled={busy} />
-          </div>
-
-          {inspection && mapping && (
-            <>
-              {inspection.sheets.length > 1 && (
-                <label className="availability-map-field availability-sheet-select">
-                  <span>Worksheet</span>
-                  <select
-                    value={inspection.selected_sheet ?? inspection.sheets[0]}
-                    disabled={busy}
-                    onChange={(event) => void chooseSheet(event.target.value)}
-                  >
-                    {inspection.sheets.map((sheet) => <option key={sheet} value={sheet}>{sheet}</option>)}
-                  </select>
-                </label>
-              )}
-
-              <section className="availability-mapping-section">
-                <h3>Column mapping</h3>
-                <div className="availability-normalized-mapping">
-                  {FIELDS.map((field) => (
-                    <label className="availability-map-field" key={field.key}>
-                      <span>{field.label}{field.required ? "" : " (optional)"}</span>
-                      <select
-                        aria-label={field.label}
-                        value={mapping[field.key] ?? ""}
-                        onChange={(event) => {
-                          setMapping({ ...mapping, [field.key]: event.target.value || null });
-                          setPreview(null);
-                        }}
-                      >
-                        <option value="">{field.required ? "Choose column" : "Not in file"}</option>
-                        {inspection.columns.map((column) => <option key={column} value={column}>{column}</option>)}
-                      </select>
-                    </label>
-                  ))}
-                </div>
-              </section>
-
-              <details className="availability-source-preview">
-                <summary>Source preview ({inspection.sample_rows.length} rows)</summary>
+            {preview && (
+              <section aria-label="Import preview" ref={previewRef}>
+                <h3>Preview</h3>
+                <p role="status">
+                  {preview.panels.length} {preview.panels.length === 1 ? "Panel" : "Panels"} will be imported;{" "}
+                  {preview.panels_to_remove} existing {preview.panels_to_remove === 1 ? "Panel" : "Panels"} and{" "}
+                  {preview.assignments_to_clear} Lesson Panel {preview.assignments_to_clear === 1 ? "assignment" : "assignments"} will be removed.
+                </p>
                 <div className="preview-table-wrap">
                   <table className="preview-table">
-                    <thead><tr>{inspection.columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
+                    <thead>
+                      <tr><th>Panel</th><th>Date</th><th>Room</th><th>Earliest start</th><th>Jury length</th></tr>
+                    </thead>
                     <tbody>
-                      {inspection.sample_rows.map((row, index) => (
-                        <tr key={index}>{inspection.columns.map((column) => <td key={column}>{row[column]}</td>)}</tr>
+                      {preview.panels.map((panel) => (
+                        <tr key={panel.panel_name}>
+                          <td>{panel.panel_name}</td>
+                          <td>{panel.jury_date}</td>
+                          <td>{panel.room || "—"}</td>
+                          <td>{formatMinutes(panel.earliest_start_minute)}</td>
+                          <td>{panel.jury_length_minutes} min</td>
+                        </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-              </details>
-
-              <p className="muted availability-completeness-note">
-                Importing deletes all current Jury Panels and clears every Panel assignment in the Lesson Roster. Break and meal values are used only when the matching "needed" column is Yes.
-              </p>
-
-              <div className="availability-import-actions">
-                <button type="button" disabled={busy || missingRequired} onClick={() => void runPreview()}>
-                  Preview Import
-                </button>
-              </div>
-
-              {preview && (
-                <section aria-label="Import preview" ref={previewRef}>
-                  <h3>Preview</h3>
-                  <p role="status">
-                    {preview.panels.length} {preview.panels.length === 1 ? "Panel" : "Panels"} will be imported;{" "}
-                    {preview.panels_to_remove} existing {preview.panels_to_remove === 1 ? "Panel" : "Panels"} and{" "}
-                    {preview.assignments_to_clear} Lesson Panel {preview.assignments_to_clear === 1 ? "assignment" : "assignments"} will be removed.
-                  </p>
-                  <div className="preview-table-wrap">
-                    <table className="preview-table">
-                      <thead>
-                        <tr><th>Panel</th><th>Date</th><th>Room</th><th>Earliest start</th><th>Jury length</th></tr>
-                      </thead>
-                      <tbody>
-                        {preview.panels.map((panel) => (
-                          <tr key={panel.panel_name}>
-                            <td>{panel.panel_name}</td>
-                            <td>{panel.jury_date}</td>
-                            <td>{panel.room || "—"}</td>
-                            <td>{formatMinutes(panel.earliest_start_minute)}</td>
-                            <td>{panel.jury_length_minutes} min</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="availability-import-actions">
-                    <button type="button" className="danger-btn" disabled={busy} onClick={() => void applyImport()}>
-                      {busy ? "Importing…" : "Import jury panels"}
-                    </button>
-                  </div>
-                </section>
-              )}
-            </>
-          )}
-        </div>
-      </dialog>
+                <div className="availability-import-actions">
+                  <button type="button" className="danger-btn" disabled={busy} onClick={() => void applyImport()}>
+                    {busy ? "Importing…" : "Import jury panels"}
+                  </button>
+                </div>
+              </section>
+            )}
+          </>
+        )}
+      </ImportDialogShell>
     </>
   );
 }

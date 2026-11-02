@@ -8,8 +8,10 @@ import type {
   ClinicalStudentsImportMapping,
   ClinicalStudentsImportPreview,
 } from "../../lib/types";
-import { ConfirmDialog, Modal } from "./ClinicalDialogs";
+import { ConfirmDialog } from "../../components/dialogs/ConfirmDialog";
+import { ImportModalBody, ImportModalShell } from "../../components/imports/ImportDialogShell";
 import { ImportTemplateLinks } from "../../components/ImportTemplateLinks";
+import { DAYS_ORDER } from "../../lib/types";
 
 const FIELDS: { key: ClinicalStudentsImportField; label: string; required: boolean }[] = [
   { key: "student_id", label: "Student ID", required: true },
@@ -17,7 +19,6 @@ const FIELDS: { key: ClinicalStudentsImportField; label: string; required: boole
   { key: "email", label: "Email", required: false },
 ];
 
-const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -85,7 +86,7 @@ export function ClinicalStudentRosterImportDialog({
     setPreview(null);
   }
 
-  const mappedDays = mapping ? WEEKDAYS.filter((day) => mapping.days[day]) : [];
+  const mappedDays = mapping ? DAYS_ORDER.filter((day) => mapping.days[day]) : [];
   const missingRequired = !mapping || FIELDS.some((field) => field.required && !mapping[field.key]);
 
   async function runPreview() {
@@ -125,14 +126,8 @@ export function ClinicalStudentRosterImportDialog({
   }
 
   return (
-    <Modal title="Import Student Roster" onClose={onClose} className="clinical-wide-dialog clinical-import-dialog">
-      <div className="clinical-tag-manager">
-        <p className="muted">CSV, XLSX, or XLS</p>
-        {error && (
-          <div className="error-banner" role="alert" style={{ whiteSpace: "pre-line" }}>
-            {error}
-          </div>
-        )}
+    <ImportModalShell title="Import Student Roster" onClose={onClose}>
+      <ImportModalBody error={error}>
         <div className="availability-import-file-row">
           <button type="button" disabled={busy} onClick={() => void selectFile()}>
             {inspection ? "Choose another file" : "Choose spreadsheet"}
@@ -183,7 +178,7 @@ export function ClinicalStudentRosterImportDialog({
               </div>
               <h4>Weekly availability (optional)</h4>
               <div className="clinical-import-mapping">
-                {WEEKDAYS.map((day) => (
+                {DAYS_ORDER.map((day) => (
                   <label key={day}>
                     {day}
                     <select
@@ -281,7 +276,7 @@ export function ClinicalStudentRosterImportDialog({
             )}
           </>
         )}
-      </div>
+      </ImportModalBody>
       {confirming && (
         <ConfirmDialog
           title="Import Student Roster?"
@@ -306,6 +301,6 @@ export function ClinicalStudentRosterImportDialog({
           </ul>
         </ConfirmDialog>
       )}
-    </Modal>
+    </ImportModalShell>
   );
 }

@@ -13,13 +13,13 @@ from sqlalchemy.orm import Session
 from .. import module_models
 from ..jury_schemas import JuryPanelFields
 from . import tabular
+from .import_common import MAX_UPLOAD_BYTES, is_blank
 from .availability import parse_time_minutes
 from .module_lifecycle import active_session_uuid, bump_jury_revision
 
 if TYPE_CHECKING:
     import pandas as pd
 
-MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_ERRORS_REPORTED = 25
 
 FIELD_ALIASES: dict[str, tuple[str, ...]] = {
@@ -85,17 +85,6 @@ class JuryPanelImportPreview(BaseModel):
     panels: list[JuryPanelFields]
     panels_to_remove: int
     assignments_to_clear: int
-
-
-def _is_blank(value: object) -> bool:
-    if value is None or (isinstance(value, str) and not value.strip()):
-        return True
-    import pandas as pd
-
-    try:
-        return bool(pd.isna(value))
-    except (TypeError, ValueError):
-        return False
 
 
 def _frame(filename: str, content: bytes, sheet_name: str | None) -> tuple[pd.DataFrame, list[str], str | None]:
@@ -178,7 +167,7 @@ _FALSE = {"false", "no", "n", "0"}
 
 
 def _parse_bool(value: object) -> bool:
-    if _is_blank(value):
+    if is_blank(value):
         return False
     if isinstance(value, bool):
         return value
@@ -219,12 +208,12 @@ def _parse_rows(frame: pd.DataFrame, mapping: JuryPanelImportMapping) -> list[Ju
     for index, (_, row) in enumerate(frame.iterrows()):
         row_number = index + 2
         cells = {field: row.get(column) for field, column in mapped.items()}
-        if all(_is_blank(value) for value in cells.values()):
+        if all(is_blank(value) for value in cells.values()):
             continue
 
         def cell(field: str):
             value = cells.get(field)
-            return None if _is_blank(value) else value
+            return None if is_blank(value) else value
 
         try:
             for field in REQUIRED_FIELDS:

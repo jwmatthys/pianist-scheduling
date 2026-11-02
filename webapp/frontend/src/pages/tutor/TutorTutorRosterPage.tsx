@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api } from "../../lib/api";
 import type { TutorTutor, TutorTutorFields, TutorTag } from "../../lib/types";
-import { ConfirmDialog, Modal } from "../clinical/ClinicalDialogs";
+import { ConfirmDialog } from "../../components/dialogs/ConfirmDialog";
+import { Modal } from "../../components/dialogs/Modal";
 import { TutorTutorAvailabilityDialog } from "./TutorTutorAvailabilityDialog";
 import { TutorTutorImportDialog } from "./TutorTutorImportDialog";
 import { TutorTagChip, TutorTagManagerDialog } from "./TutorTagManagerDialog";

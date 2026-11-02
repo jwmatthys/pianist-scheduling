@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { api } from "../../lib/api";
 import type { LessonTag } from "../../lib/types";
-import { ConfirmDialog, Modal } from "../clinical/ClinicalDialogs";
+import { ConfirmDialog } from "../../components/dialogs/ConfirmDialog";
+import { Modal } from "../../components/dialogs/Modal";
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);

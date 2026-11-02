@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api } from "../../lib/api";
-import { ConfirmDialog, Modal } from "./ClinicalDialogs";
+import { ConfirmDialog } from "../../components/dialogs/ConfirmDialog";
+import { Modal } from "../../components/dialogs/Modal";
 import { ClinicalSitesImportDialog } from "./ClinicalSitesImportDialog";
 import { formatMinutes, parseTwelveHourTime } from "../../lib/time";
 import type { ClinicalTag, PlacementOpportunity, PlacementOpportunityFields } from "../../lib/types";
+import { DAYS_ORDER } from "../../lib/types";
 
-const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -169,7 +170,7 @@ function OpportunityDialog({
           Day of Week
           <select value={form.day_of_week} onChange={set("day_of_week")}>
             <option value="">Select a day</option>
-            {DAYS.map((day) => (
+            {DAYS_ORDER.map((day) => (
               <option key={day} value={day}>
                 {day}
               </option>

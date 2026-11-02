@@ -9,7 +9,7 @@ import type {
   ClinicalScheduleEntry,
   PlacementOpportunity,
 } from "../../lib/types";
-import { ConfirmDialog } from "./ClinicalDialogs";
+import { ConfirmDialog } from "../../components/dialogs/ConfirmDialog";
 
 const UNPLACED_REASONS: Record<string, string> = {
   NO_FEASIBLE_CANDIDATE: "No feasible opportunity",

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../../lib/api";
 import { formatMinutes, parseTwelveHourTime } from "../../lib/time";
 import { isLessonEntryPlaced, lessonPlacementState } from "../../lib/lessonPlacement";
-import { ConfirmDialog } from "../clinical/ClinicalDialogs";
+import { ConfirmDialog } from "../../components/dialogs/ConfirmDialog";
 import type {
   LessonInstructor,
   LessonReadiness,
@@ -12,9 +12,9 @@ import type {
   LessonSchedule,
   LessonScheduleEntry,
 } from "../../lib/types";
+import { DAYS_ORDER } from "../../lib/types";
 
 const CATEGORY_ORDER: LessonReadinessCategory[] = ["data", "students", "instructors", "tags"];
-const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const CATEGORY_TITLES: Record<LessonReadinessCategory, string> = {
   data: "Overall",
   students: "Students",
@@ -185,7 +185,7 @@ function LessonPlacementRow({
             void commit(instructorId, event.target.value, startTime);
           }}
         >
-          {WEEKDAYS.map((weekday) => <option key={weekday} value={weekday}>{weekday}</option>)}
+          {DAYS_ORDER.map((weekday) => <option key={weekday} value={weekday}>{weekday}</option>)}
         </select>
       </td>
       <td>

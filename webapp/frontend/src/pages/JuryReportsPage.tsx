@@ -5,15 +5,8 @@ import ReactMarkdown from "react-markdown";
 import { api } from "../lib/api";
 import { buildJuryReportTable } from "../lib/juryReportTable";
 import { ReportExportButton, type ExportStatus } from "../components/ReportExport";
-import { formatUtcTimestampLocally } from "../lib/time";
+import { formatMinutesEndOfDayAsMidnight, formatUtcTimestampLocally } from "../lib/time";
 import type { JuryScheduleEvent, JuryScheduleResult } from "../lib/types";
-
-function formatTime(value: number) {
-  if (value === 0 || value === 1440) return "12:00 AM";
-  const hour = Math.floor(value / 60);
-  const minute = value % 60;
-  return `${hour % 12 || 12}:${String(minute).padStart(2, "0")} ${hour < 12 ? "AM" : "PM"}`;
-}
 
 function formatDate(value: string) {
   return new Date(`${value}T12:00:00`).toLocaleDateString(undefined, {
@@ -24,7 +17,7 @@ function formatDate(value: string) {
 }
 
 function eventMarkdown(event: JuryScheduleEvent, entriesByLesson: Map<string, { teacher: string }>) {
-  const time = `${formatTime(event.start_minute)}-${formatTime(event.end_minute)}`;
+  const time = `${formatMinutesEndOfDayAsMidnight(event.start_minute)}-${formatMinutesEndOfDayAsMidnight(event.end_minute)}`;
   if (event.kind === "meal_break") return `- **${time}** - MEAL BREAK`;
   if (event.kind === "periodic_break") return `- **${time}** - BREAK`;
 
@@ -74,7 +67,7 @@ function reportMarkdown(
     for (const event of panel.events) {
       if (event.kind !== "jury" || !event.pianist_display_name) continue;
       const pianistName = event.pianist_display_name;
-      const eventLine = `- **${formatTime(event.start_minute)}-${formatTime(event.end_minute)}** - ${event.student_display_name || "Unnamed student"} - ${event.instrument || "Instrument not supplied"}${room ? ` - ${room}` : ""}`;
+      const eventLine = `- **${formatMinutesEndOfDayAsMidnight(event.start_minute)}-${formatMinutesEndOfDayAsMidnight(event.end_minute)}** - ${event.student_display_name || "Unnamed student"} - ${event.instrument || "Instrument not supplied"}${room ? ` - ${room}` : ""}`;
       const events = pianistSchedules.get(pianistName) ?? [];
       events.push({ date: panel.jury_date, start: event.start_minute, line: eventLine });
       pianistSchedules.set(pianistName, events);

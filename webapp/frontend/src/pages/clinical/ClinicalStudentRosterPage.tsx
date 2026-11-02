@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api } from "../../lib/api";
 import type { ClinicalStudent, ClinicalTag, ClinicalTagState } from "../../lib/types";
-import { ConfirmDialog, Modal } from "./ClinicalDialogs";
+import { ConfirmDialog } from "../../components/dialogs/ConfirmDialog";
+import { Modal } from "../../components/dialogs/Modal";
 import { ClinicalStudentAvailabilityDialog } from "./ClinicalStudentAvailabilityDialog";
 import { ClinicalStudentRosterImportDialog } from "./ClinicalStudentRosterImportDialog";
 

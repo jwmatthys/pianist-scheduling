@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
-import { formatUtcTimestampLocally } from "../lib/time";
+import { formatMinutesEndOfDayAsMidnight, formatUtcTimestampLocally } from "../lib/time";
 import type {
   JuryReadiness,
   JuryScheduleEvent,
@@ -14,13 +14,6 @@ type Props = {
 
 function errorText(error: unknown) {
   return error instanceof Error ? error.message : "The request could not be completed.";
-}
-
-function formatTime(value: number) {
-  if (value === 0 || value === 1440) return "12:00 AM";
-  const hour = Math.floor(value / 60);
-  const minute = value % 60;
-  return `${hour % 12 || 12}:${String(minute).padStart(2, "0")} ${hour < 12 ? "AM" : "PM"}`;
 }
 
 function formatDate(value: string) {
@@ -220,8 +213,8 @@ function ScheduleDetails({
                 <tbody>
                   {panel.events.map((event, index) => (
                     <tr key={event.kind === "jury" ? event.source_lesson_uuid : `${event.kind}-${event.start_minute}-${index}`}>
-                      <td>{formatTime(event.start_minute)}</td>
-                      <td>{formatTime(event.end_minute)}</td>
+                      <td>{formatMinutesEndOfDayAsMidnight(event.start_minute)}</td>
+                      <td>{formatMinutesEndOfDayAsMidnight(event.end_minute)}</td>
                       <td className="jury-schedule-student-cell">
                         <strong>{eventTitle(event)}</strong>
                         {event.kind === "jury" && <small className="jury-schedule-instrument">{event.instrument || "Instrument not supplied"}</small>}

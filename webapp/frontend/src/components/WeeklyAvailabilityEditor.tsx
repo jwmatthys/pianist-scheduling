@@ -1,11 +1,10 @@
 import { useEffect, useRef } from "react";
 import { formatMinutes } from "../lib/time";
-import type { AvailabilityStatus } from "../lib/types";
+import { DAYS_ORDER, type AvailabilityStatus } from "../lib/types";
 import {
   cellKey,
   nextStatus,
   slotStarts,
-  WEEK_DAYS,
   type WeeklyCells,
   type WeeklyGridRange,
 } from "../lib/weeklyAvailability";
@@ -66,9 +65,9 @@ export function WeeklyAvailabilityEditor({
           cells look the same as Unavailable and are saved as Unavailable.
         </span>
       </div>
-      <div className="availability-grid" style={{ gridTemplateColumns: `90px repeat(${WEEK_DAYS.length}, 1fr)` }}>
+      <div className="availability-grid" style={{ gridTemplateColumns: `90px repeat(${DAYS_ORDER.length}, 1fr)` }}>
         <div className="avail-header avail-corner" />
-        {WEEK_DAYS.map((day) => (
+        {DAYS_ORDER.map((day) => (
           <div className="avail-header" key={day}>
             {day}
           </div>
@@ -76,7 +75,7 @@ export function WeeklyAvailabilityEditor({
         {slotStarts(range).map((slot) => (
           <div key={slot} style={{ display: "contents" }}>
             <div className="avail-time-label">{formatMinutes(slot)}</div>
-            {WEEK_DAYS.map((day) => {
+            {DAYS_ORDER.map((day) => {
               const status = cells.get(cellKey(day, slot));
               return (
                 <button

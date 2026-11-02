@@ -1,14 +1,14 @@
 import { formatMinutes } from "./time";
 import type { ReportTable } from "./reportTable";
 import type { Lesson, Pianist } from "./types";
+import { dayIndex } from "./types";
 
-const DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 /** Accompanist-owned: the Lesson Roster (Schedule tab), one row per Lesson with every roster column. */
 export function buildAccompanistReportTable(lessons: Lesson[], pianists: Pianist[]): ReportTable {
   const pianistsById = new Map(pianists.map((pianist) => [pianist.id, pianist]));
   const ordered = [...lessons].sort(
-    (a, b) => DAY_ORDER.indexOf(a.day) - DAY_ORDER.indexOf(b.day) || a.start_minute - b.start_minute,
+    (a, b) => dayIndex(a.day) - dayIndex(b.day) || a.start_minute - b.start_minute,
   );
   return {
     name: "Accompanist Schedule",

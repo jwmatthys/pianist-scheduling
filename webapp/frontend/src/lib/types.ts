@@ -10,6 +10,11 @@ export const DAYS_ORDER = [
 
 export type Day = (typeof DAYS_ORDER)[number];
 
+/** Position of a weekday name in DAYS_ORDER, or -1 when the name is not a weekday. */
+export function dayIndex(day: string): number {
+  return (DAYS_ORDER as readonly string[]).indexOf(day);
+}
+
 export type AvailabilityStatus = "Available" | "Tentative" | "Unavailable";
 
 export interface Pianist {

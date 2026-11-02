@@ -1,4 +1,5 @@
 import type { ReportCell } from "./reportTable";
+import { DAYS_ORDER } from "./types";
 
 export type ImportTemplateKey =
   | "accompanistLessons"
@@ -20,7 +21,6 @@ export interface ImportTemplate {
   rows: ReportCell[][];
 }
 
-const WEEKDAY_COLUMNS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const WEEKDAY_SAMPLE = ["8:00 AM-12:00 PM", "T 1:00 PM-4:00 PM", "", "9:00 AM-11:00 AM; T 2:00 PM-3:00 PM", "", "", ""];
 
 // Headers use the product's field labels, which the importers recognize when suggesting a column mapping.
@@ -42,7 +42,7 @@ export const IMPORT_TEMPLATES: Record<ImportTemplateKey, ImportTemplate> = {
     fileName: "pianist-availability-template",
     description: "Pianist availability",
     sheetName: "Availability",
-    columns: ["Pianist Name", "Pianist Email", "Max Hours Per Week", ...WEEKDAY_COLUMNS],
+    columns: ["Pianist Name", "Pianist Email", "Max Hours Per Week", ...DAYS_ORDER],
     rows: [["Avery Example", "avery.example@example.edu", 20, ...WEEKDAY_SAMPLE]],
   },
   juryPanels: {
@@ -79,28 +79,28 @@ export const IMPORT_TEMPLATES: Record<ImportTemplateKey, ImportTemplate> = {
     fileName: "lesson-student-roster-template",
     description: "Lesson student roster",
     sheetName: "Student Roster",
-    columns: ["Student ID", "Name", "Email", ...WEEKDAY_COLUMNS],
+    columns: ["Student ID", "Name", "Email", ...DAYS_ORDER],
     rows: [["S0001", "Sam Sample", "sam.sample@example.edu", ...WEEKDAY_SAMPLE]],
   },
   lessonInstructors: {
     fileName: "lesson-instructor-roster-template",
     description: "Lesson instructor roster",
     sheetName: "Instructor Roster",
-    columns: ["Instructor Name", "Instructor Email", "Room", "Lesson Length", "Capacity", ...WEEKDAY_COLUMNS, "Tags"],
+    columns: ["Instructor Name", "Instructor Email", "Room", "Lesson Length", "Capacity", ...DAYS_ORDER, "Tags"],
     rows: [["Taylor Example", "taylor.example@example.edu", "Room 101", 30, 6, ...WEEKDAY_SAMPLE, "Strings; Violin"]],
   },
   tutorStudents: {
     fileName: "tutor-student-roster-template",
     description: "Tutor student roster",
     sheetName: "Student Roster",
-    columns: ["Student ID", "Name", "Email", ...WEEKDAY_COLUMNS],
+    columns: ["Student ID", "Name", "Email", ...DAYS_ORDER],
     rows: [["S0001", "Sam Sample", "sam.sample@example.edu", ...WEEKDAY_SAMPLE]],
   },
   tutorTutors: {
     fileName: "tutor-roster-template",
     description: "Tutor roster",
     sheetName: "Tutor Roster",
-    columns: ["Tutor Name", "Tutor Email", "Room", "Lesson Length", "Capacity", ...WEEKDAY_COLUMNS, "Tags"],
+    columns: ["Tutor Name", "Tutor Email", "Room", "Lesson Length", "Capacity", ...DAYS_ORDER, "Tags"],
     rows: [["Riley Example", "riley.example@example.edu", "Room 202", 30, 6, ...WEEKDAY_SAMPLE, "Theory; Piano"]],
   },
 };

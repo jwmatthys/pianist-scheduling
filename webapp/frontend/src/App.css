@@ -1425,6 +1425,8 @@ button:disabled {
   margin: 0;
   padding: 0;
   list-style: none;
+  max-height: 40vh;
+  overflow: auto;
 }
 
 .clinical-tag-list li,
@@ -1454,11 +1456,6 @@ button:disabled {
 
 .clinical-wide-dialog {
   width: min(760px, calc(100vw - 32px));
-  overflow: auto;
-}
-
-.clinical-tag-list {
-  max-height: 40vh;
   overflow: auto;
 }
 

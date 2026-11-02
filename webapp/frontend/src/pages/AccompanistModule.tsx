@@ -1,4 +1,5 @@
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
+import { ImportDialogShell } from "../components/imports/ImportDialogShell";
 import { ImportPage } from "./ImportPage";
 import { PianistsPage, type PianistsPageHandle } from "./PianistsPage";
 import { SchedulePage } from "./SchedulePage";
@@ -60,23 +61,12 @@ export const AccompanistModule = forwardRef<AccompanistModuleHandle>(function Ac
         )}
         {tab === "reports" && <ReportsPage />}
       </div>
-      <dialog className="availability-import-dialog" ref={lessonImportDialogRef}>
-        <div className="availability-import-content">
-          <header className="availability-import-heading">
-            <div>
-              <h2>Import Lessons</h2>
-              <p className="muted">CSV, XLSX, or XLS</p>
-            </div>
-            <button type="button" className="dialog-close" aria-label="Close" onClick={() => lessonImportDialogRef.current?.close()}>
-              ×
-            </button>
-          </header>
-          <ImportPage onImported={() => {
-            setRosterRevision((revision) => revision + 1);
-            lessonImportDialogRef.current?.close();
-          }} />
-        </div>
-      </dialog>
+      <ImportDialogShell title="Import Lessons" dialogRef={lessonImportDialogRef}>
+        <ImportPage onImported={() => {
+          setRosterRevision((revision) => revision + 1);
+          lessonImportDialogRef.current?.close();
+        }} />
+      </ImportDialogShell>
     </>
   );
 });
