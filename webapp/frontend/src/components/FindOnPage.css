@@ -1,0 +1,59 @@
+.find-on-page {
+  position: fixed;
+  top: 0.75rem;
+  right: 1rem;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.5rem;
+  background: #fff;
+  color: #1f2937;
+  border: 1px solid #9ca3af;
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+.find-on-page input {
+  width: 14rem;
+  padding: 0.3rem 0.45rem;
+  font: inherit;
+}
+
+.find-on-page button {
+  min-width: 2rem;
+  padding: 0.25rem 0.45rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.find-on-page button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.find-on-page input:focus-visible,
+.find-on-page button:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 1px;
+}
+
+.find-on-page-status {
+  min-width: 5rem;
+  font-size: 0.85rem;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* The highlight pseudo-elements cannot draw outlines, so the current match is a stronger
+   orange with an underline to distinguish it from the other yellow matches. */
+::highlight(find-match) {
+  background-color: #fde047;
+  color: #111827;
+}
+
+::highlight(find-current) {
+  background-color: #f97316;
+  color: #111827;
+  text-decoration: underline;
+}

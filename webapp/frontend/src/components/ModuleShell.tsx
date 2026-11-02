@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { formatSessionIdentity, type SchedulingModule } from "../moduleRegistry";
 import type { SchedulingSession } from "../lib/types";
+import { FindOnPage } from "./FindOnPage";
 
 type Props = {
   module: SchedulingModule;
@@ -11,6 +12,7 @@ type Props = {
 
 export function ModuleShell({ module, session, onBack, children }: Props) {
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     headingRef.current?.focus();
@@ -34,7 +36,8 @@ export function ModuleShell({ module, session, onBack, children }: Props) {
         </div>
         {module.availability === "shell" && <span className="module-shell-label">Module shell</span>}
       </header>
-      <main className="app-main module-main">{children}</main>
+      <main ref={mainRef} className="app-main module-main">{children}</main>
+      <FindOnPage scopeRef={mainRef} resetKey={module.key} />
     </div>
   );
 }

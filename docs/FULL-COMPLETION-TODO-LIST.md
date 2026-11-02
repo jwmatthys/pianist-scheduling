@@ -4,10 +4,8 @@ Duplicate lesson scheduling module and rename tutor scheduling module
 Commission artwork - icon and splash screen
 Create startup logging to profile startup process
 Optimize startup
-Implement new name in all places
 Implement splash screen with startup messages
 Visually connect accompanist scheduling module to jury module
-CTRL-F searching
 Implement versioning
 Clarify color palette and unify across all modules
 Ensure visual consistency

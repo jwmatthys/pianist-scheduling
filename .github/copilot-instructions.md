@@ -15,7 +15,7 @@ Other music-program scheduling modules may be added later.
 
 Do not treat this application internally as only an "Accompanist Scheduler."
 
-The accompanist scheduler is a module within the larger Music Program Scheduler product.
+The accompanist scheduler is a module within the larger Scheduling Maestro product.
 
 One Scheduling Session represents exactly one institution/program and one academic term. “Project” is a user-facing synonym, not a separate persisted entity. Initially, only one session/database is active at a time; do not build an in-app session history library.
 
@@ -68,7 +68,7 @@ tags. See [the canonical Shared Tag Architecture](../docs/SHARED-TAG-ARCHITECTUR
 
 Prefer conceptually:
 
-Music Program Scheduler
+Scheduling Maestro
     |
     +-- Shared Domain
     |

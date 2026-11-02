@@ -60,7 +60,7 @@ export async function chooseSessionArchive(): Promise<Uint8Array | null> {
     const selected = await open({
       multiple: false,
       defaultPath: await dialogStart(),
-      filters: [{ name: "Music Program Scheduler Session", extensions: ["mpsession"] }],
+      filters: [{ name: "Scheduling Maestro Session", extensions: ["mpsession"] }],
     });
     if (!selected || Array.isArray(selected)) return null;
     return readFile(selected);
@@ -84,7 +84,7 @@ export async function saveSessionArchive(contents: Uint8Array): Promise<void> {
   if (isTauri()) {
     const destination = await save({
       defaultPath: await dialogStart("music-program-session.mpsession"),
-      filters: [{ name: "Music Program Scheduler Session", extensions: ["mpsession"] }],
+      filters: [{ name: "Scheduling Maestro Session", extensions: ["mpsession"] }],
     });
     if (destination) await writeFile(destination, contents);
     return;

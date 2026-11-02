@@ -1,8 +1,8 @@
 [package]
 name = "music-program-scheduler"
 version = "0.0.0"
-description = "Music Program Scheduler desktop shell"
-authors = ["Music Program Scheduler"]
+description = "Scheduling Maestro desktop shell"
+authors = ["Scheduling Maestro"]
 edition = "2021"
 
 [lib]

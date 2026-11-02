@@ -77,6 +77,10 @@ Archive format version 1 is a ZIP-compatible `.mpsession` containing only `manif
 Restore rejects malformed, oversized, duplicate, unexpected, encrypted, path-traversing, checksum-mismatched, incompatible, or corrupt input. It stages the fixed database payload in a private temporary directory, checks SQLite integrity and the actual schema version, migrates and validates metadata there, then creates a recovery archive and atomically replaces the active database. Any failure before replacement leaves the active session unchanged.
 
 Automatic recovery archives are valid `.mpsession` files under the active database's `recovery/` directory (Tauri: the per-user application-data directory). Retention is the latest three snapshots. They are distinct from user-exported files and are not shown in a session history UI. Archives are unencrypted and may contain student educational information; users must store and transfer them under institutional policy. The application does not upload session data.
+
+## Find on Page
+
+`ModuleShell` mounts one shared `FindOnPage` (`components/FindOnPage.tsx`, helpers in `lib/findOnPage.ts`) scoped to the module's `<main>` content. Ctrl+F (Cmd+F on macOS) opens a browser-style find bar; matching is case-insensitive substring search over the rendered text of the visible page, updated as the user types. It only highlights (CSS Custom Highlight API, so the React-managed DOM is never modified): it does not filter rows, change selection, or navigate. Arrow Down/Right or Enter go to the next match, Arrow Up/Left or Shift+Enter to the previous, and Esc closes the bar, clears highlights, and restores focus. Switching module tabs (detected by the `aria-current="page"` navigation control) or modules closes the search. It is frontend-only: no backend, storage, or cross-module search.
 
 ## Dialog Conventions
 

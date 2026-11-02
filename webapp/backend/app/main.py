@@ -16,7 +16,7 @@ from .routers import (
     session,
 )
 
-app = FastAPI(title="Music Program Scheduler API")
+app = FastAPI(title="Scheduling Maestro API")
 
 LOCAL_ORIGINS = [
     "http://127.0.0.1:5173",

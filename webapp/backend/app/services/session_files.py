@@ -252,7 +252,7 @@ def _validate_archive(archive_bytes: bytes) -> tuple[schemas.SessionArchiveManif
             manifest_raw = _read_zip_entry(archive, "manifest.json", MAX_MANIFEST_BYTES)
             manifest_json = json.loads(manifest_raw)
             if manifest_json.get("format") != ARCHIVE_FORMAT:
-                raise SessionFileError("UNSUPPORTED_ARCHIVE_FORMAT", "This file is not a supported Music Program Scheduler session archive.")
+                raise SessionFileError("UNSUPPORTED_ARCHIVE_FORMAT", "This file is not a supported Scheduling Maestro session archive.")
             if manifest_json.get("formatVersion") != ARCHIVE_VERSION:
                 raise SessionFileError("UNSUPPORTED_ARCHIVE_VERSION", f"Archive format version {manifest_json.get('formatVersion')} is not supported.")
             manifest = schemas.SessionArchiveManifest.model_validate(manifest_json)
