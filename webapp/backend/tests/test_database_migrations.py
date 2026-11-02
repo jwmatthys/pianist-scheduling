@@ -37,6 +37,21 @@ LESSON_TABLES_DROP_ORDER = (
     "lesson_module_states",
 )
 
+TUTOR_TABLES_DROP_ORDER = (
+    "tutor_unplaced_students",
+    "tutor_schedule_placements",
+    "tutor_schedule_results",
+    "tutor_placements",
+    "tutor_student_tag_states",
+    "tutor_student_availability_windows",
+    "tutor_tutor_availability_windows",
+    "tutor_tutor_tags",
+    "tutor_students",
+    "tutor_tutors",
+    "tutor_tags",
+    "tutor_module_states",
+)
+
 CLINICAL_TABLES_DROP_ORDER = (
     "clinical_placements",
     "clinical_student_tag_states",
@@ -51,6 +66,8 @@ CLINICAL_TABLES_DROP_ORDER = (
 
 def drop_clinical_tables(connection):
     """Simulate a pre-v10 database by removing the tables added in v10 through v12."""
+    for table_name in TUTOR_TABLES_DROP_ORDER:
+        connection.exec_driver_sql(f"DROP TABLE {table_name}")
     for table_name in LESSON_TABLES_DROP_ORDER:
         connection.exec_driver_sql(f"DROP TABLE {table_name}")
     connection.exec_driver_sql("DROP TABLE saved_reports")
@@ -130,11 +147,13 @@ class DatabaseMigrationTests(unittest.TestCase):
         self.assertEqual(after, before)
 
     def test_v13_lesson_decisions_migrate_without_roster_foreign_keys(self):
-        migrate_database(self.engine, MIGRATIONS[:13])
+        migrate_database(self.engine)
         timestamp = datetime.utcnow().isoformat(sep=" ")
         student_id = str(uuid4())
         instructor_id = str(uuid4())
         with self.engine.begin() as connection:
+            for table_name in TUTOR_TABLES_DROP_ORDER:
+                connection.exec_driver_sql(f"DROP TABLE {table_name}")
             connection.exec_driver_sql(
                 "INSERT INTO lesson_instructors "
                 "(id, name, email, room, lesson_length_minutes, capacity, created_at, updated_at) "

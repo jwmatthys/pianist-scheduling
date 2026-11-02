@@ -225,7 +225,7 @@ Scheduling Maestro (formerly Music Program Scheduler) has evolved from its origi
 - Piano accompanist scheduling module
 - Performance jury scheduling module
 - Lesson Scheduling module
+- Tutor Scheduling module (independent clone of Lesson Scheduling)
 - Clinical Placement module
 
-Tutor Scheduling is planned and not yet implemented.
 All active functionality resides within the current webapp architecture.

@@ -266,6 +266,8 @@ class LessonMigrationTests(LessonTestCase):
             for table in sorted(LESSON_TABLES - {"lesson_module_states"}, reverse=True):
                 connection.exec_driver_sql(f"DROP TABLE {table}")
             connection.exec_driver_sql("DROP TABLE lesson_module_states")
+            for table in sorted((n for n in ModuleBase.metadata.tables if n.startswith("tutor_")), reverse=True):
+                connection.exec_driver_sql(f"DROP TABLE {table}")
             connection.exec_driver_sql("PRAGMA user_version = 11")
 
         report = migrate_database(self.engine)
@@ -276,6 +278,7 @@ class LessonMigrationTests(LessonTestCase):
             "add_lesson_scheduling_module_tables",
             "add_lesson_automatic_schedule_results",
             "align_lesson_schedule_lifecycle",
+            "add_tutor_scheduling_module_tables",
         ))
         with Session(self.engine) as db:
             self.assertEqual(db.get(models.Pianist, 7).name, "Synthetic Pianist")
@@ -296,6 +299,8 @@ class LessonMigrationTests(LessonTestCase):
                 "lesson_schedule_results",
             ):
                 connection.exec_driver_sql(f"DROP TABLE {table}")
+            for table in sorted((n for n in ModuleBase.metadata.tables if n.startswith("tutor_")), reverse=True):
+                connection.exec_driver_sql(f"DROP TABLE {table}")
             connection.exec_driver_sql("PRAGMA user_version = 12")
 
         report = migrate_database(self.engine)
@@ -303,6 +308,7 @@ class LessonMigrationTests(LessonTestCase):
         self.assertEqual(report.applied_migrations, (
             "add_lesson_automatic_schedule_results",
             "align_lesson_schedule_lifecycle",
+            "add_tutor_scheduling_module_tables",
         ))
         with Session(self.engine) as db:
             self.assertEqual(db.get(lesson_models.LessonPlacement, placement.id).placement_type, "manual")

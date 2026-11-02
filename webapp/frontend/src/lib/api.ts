@@ -46,6 +46,24 @@ import type {
   LessonModuleState,
   LessonTagState,
   LessonTag,
+  TutorTutor,
+  TutorTutorFields,
+  TutorTutorImportInspection,
+  TutorTutorImportMapping,
+  TutorTutorImportPreview,
+  TutorTutorImportResult,
+  TutorStudent,
+  TutorStudentFields,
+  TutorStudentImportInspection,
+  TutorStudentImportMapping,
+  TutorStudentImportPreview,
+  TutorStudentImportResult,
+  TutorReadiness,
+  TutorSchedule,
+  TutorPlacementVerification,
+  TutorModuleState,
+  TutorTagState,
+  TutorTag,
   ClinicalSitesImportMapping,
   ClinicalSitesImportPreview,
   ClinicalSitesImportResult,
@@ -501,6 +519,160 @@ export const api = {
     form.append("mapping", JSON.stringify(mapping));
     form.append("confirmed", "true");
     return request<LessonStudentImportResult>("/api/lesson/students/import/apply", {
+      method: "POST",
+      body: form,
+    });
+  },
+  listTutorTutors: () => request<TutorTutor[]>("/api/tutor/tutors"),
+  createTutorTutor: (data: TutorTutorFields & { tag_ids: string[] }) =>
+    request<TutorTutor>("/api/tutor/tutors", { method: "POST", body: JSON.stringify(data) }),
+  // Omitting tag_ids leaves the tutor's tags unchanged.
+  updateTutorTutor: (id: string, data: TutorTutorFields & { tag_ids?: string[] }) =>
+    request<TutorTutor>(`/api/tutor/tutors/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  deleteTutorTutor: (id: string) =>
+    request<{ removed_placement_count: number; placements_preserved: number }>(
+      `/api/tutor/tutors/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      },
+    ),
+  getTutorTutorAvailability: (id: string) =>
+    request<{ windows: RecurringAvailabilityWindow[] }>(
+      `/api/tutor/tutors/${encodeURIComponent(id)}/availability`
+    ),
+  setTutorTutorAvailability: (id: string, windows: RecurringAvailabilityWindow[]) =>
+    request<{ windows: RecurringAvailabilityWindow[] }>(
+      `/api/tutor/tutors/${encodeURIComponent(id)}/availability`,
+      { method: "PUT", body: JSON.stringify({ windows }) }
+    ),
+  listTutorTags: () => request<TutorTag[]>("/api/tutor/tags"),
+  createTutorTag: (name: string) =>
+    request<TutorTag>("/api/tutor/tags", { method: "POST", body: JSON.stringify({ name }) }),
+  renameTutorTag: (id: string, name: string) =>
+    request<TutorTag>(`/api/tutor/tags/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    }),
+  deleteTutorTag: (id: string) =>
+    request<{ affected_tutor_count: number; affected_student_count: number }>(
+      `/api/tutor/tags/${encodeURIComponent(id)}`,
+      { method: "DELETE" }
+    ),
+  inspectTutorTutorFile: (file: File, sheetName?: string | null) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (sheetName) form.append("sheet_name", sheetName);
+    return request<TutorTutorImportInspection>("/api/tutor/tutors/import/inspect", {
+      method: "POST",
+      body: form,
+    });
+  },
+  previewTutorTutorImport: (file: File, sheetName: string | null, mapping: TutorTutorImportMapping) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (sheetName) form.append("sheet_name", sheetName);
+    form.append("mapping", JSON.stringify(mapping));
+    return request<TutorTutorImportPreview>("/api/tutor/tutors/import/preview", {
+      method: "POST",
+      body: form,
+    });
+  },
+  applyTutorTutorImport: (file: File, sheetName: string | null, mapping: TutorTutorImportMapping) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (sheetName) form.append("sheet_name", sheetName);
+    form.append("mapping", JSON.stringify(mapping));
+    form.append("confirmed", "true");
+    return request<TutorTutorImportResult>("/api/tutor/tutors/import/apply", {
+      method: "POST",
+      body: form,
+    });
+  },
+  getTutorReadiness: () => request<TutorReadiness>("/api/tutor/readiness"),
+  getTutorSchedule: () => request<TutorSchedule>("/api/tutor/schedule"),
+  generateTutorSchedule: () =>
+    request<TutorSchedule>("/api/tutor/schedule/generate", { method: "POST" }),
+  clearTutorSchedule: () =>
+    request<TutorSchedule>("/api/tutor/schedule/clear", { method: "POST" }),
+  getTutorScheduleVerification: () =>
+    request<TutorPlacementVerification[]>("/api/tutor/schedule/verification"),
+  createTutorManualPlacement: (data: {
+    student_id: string;
+    tutor_id: string;
+    day: string;
+    start_minute: number;
+  }) => request<TutorSchedule>("/api/tutor/schedule/placements", {
+    method: "POST",
+    body: JSON.stringify(data),
+  }),
+  moveTutorManualPlacement: (
+    studentId: string,
+    data: { student_id: string; tutor_id: string; day: string; start_minute: number },
+  ) => request<TutorSchedule>(`/api/tutor/schedule/placements/${encodeURIComponent(studentId)}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  }),
+  manuallyUnplaceTutorStudent: (studentId: string) =>
+    request<TutorSchedule>(
+      `/api/tutor/schedule/students/${encodeURIComponent(studentId)}/manually-unplace`,
+      { method: "POST" },
+    ),
+  removeTutorPlacement: (studentId: string) =>
+    request<TutorSchedule>(`/api/tutor/schedule/placements/${encodeURIComponent(studentId)}`, {
+      method: "DELETE",
+    }),
+  removeTutorPlacementOverride: (studentId: string) =>
+    request<TutorSchedule>(
+      `/api/tutor/schedule/placements/${encodeURIComponent(studentId)}/override`,
+      { method: "DELETE" },
+    ),
+  getTutorModuleState: () => request<TutorModuleState>("/api/tutor/state"),
+  listTutorStudents: () => request<TutorStudent[]>("/api/tutor/students"),
+  // Omitting tag_states leaves a student's tag states unchanged; an object replaces the whole set.
+  createTutorStudent: (data: TutorStudentFields & { tag_states?: Record<string, TutorTagState> }) =>
+    request<TutorStudent>("/api/tutor/students", { method: "POST", body: JSON.stringify(data) }),
+  updateTutorStudent: (id: string, data: TutorStudentFields & { tag_states?: Record<string, TutorTagState> }) =>
+    request<TutorStudent>(`/api/tutor/students/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  deleteTutorStudent: (id: string) =>
+    request<void>(`/api/tutor/students/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  getTutorStudentAvailability: (id: string) =>
+    request<{ windows: RecurringAvailabilityWindow[] }>(`/api/tutor/students/${encodeURIComponent(id)}/availability`),
+  setTutorStudentAvailability: (id: string, windows: RecurringAvailabilityWindow[]) =>
+    request<{ windows: RecurringAvailabilityWindow[] }>(`/api/tutor/students/${encodeURIComponent(id)}/availability`, {
+      method: "PUT",
+      body: JSON.stringify({ windows }),
+    }),
+  inspectTutorStudentFile: (file: File, sheetName?: string | null) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (sheetName) form.append("sheet_name", sheetName);
+    return request<TutorStudentImportInspection>("/api/tutor/students/import/inspect", {
+      method: "POST",
+      body: form,
+    });
+  },
+  previewTutorStudentImport: (file: File, sheetName: string | null, mapping: TutorStudentImportMapping) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (sheetName) form.append("sheet_name", sheetName);
+    form.append("mapping", JSON.stringify(mapping));
+    return request<TutorStudentImportPreview>("/api/tutor/students/import/preview", {
+      method: "POST",
+      body: form,
+    });
+  },
+  applyTutorStudentImport: (file: File, sheetName: string | null, mapping: TutorStudentImportMapping) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (sheetName) form.append("sheet_name", sheetName);
+    form.append("mapping", JSON.stringify(mapping));
+    form.append("confirmed", "true");
+    return request<TutorStudentImportResult>("/api/tutor/students/import/apply", {
       method: "POST",
       body: form,
     });

@@ -8,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import clinical_models, lesson_models, models
+from app import clinical_models, lesson_models, models, tutor_models  # noqa: F401
 from app.clinical_models import (
     ClinicalModuleState,
     ClinicalPlacement,
@@ -27,6 +27,9 @@ from app.services.clinical_repository import (
 
 LESSON_TABLES_DROP_ORDER = sorted(
     (name for name in lesson_models.LessonTag.metadata.tables if name.startswith("lesson_")), reverse=True
+)
+TUTOR_TABLES_DROP_ORDER = sorted(
+    (name for name in lesson_models.LessonTag.metadata.tables if name.startswith("tutor_")), reverse=True
 )
 
 CLINICAL_TABLES = {
@@ -382,9 +385,10 @@ class ModuleStateTests(ClinicalTestCase):
 
 class ClinicalMigrationTests(ClinicalTestCase):
     def test_fresh_database_has_clinical_tables_and_state_for_the_session(self):
-        tables = {row[0] for row in self.engine.connect().exec_driver_sql(
-            "SELECT name FROM sqlite_master WHERE type = 'table'"
-        )}
+        with self.engine.connect() as connection:
+            tables = {row[0] for row in connection.exec_driver_sql(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )}
         self.assertTrue(CLINICAL_TABLES <= tables)
         session_uuid = self.db.query(models.SchedulingSession.session_uuid).scalar()
         self.assertEqual(self.db.query(ClinicalModuleState).one().session_uuid, session_uuid)
@@ -400,6 +404,8 @@ class ClinicalMigrationTests(ClinicalTestCase):
             connection.exec_driver_sql("DROP TABLE saved_reports")
             for table in LESSON_TABLES_DROP_ORDER:
                 connection.exec_driver_sql(f"DROP TABLE {table}")
+            for table in TUTOR_TABLES_DROP_ORDER:
+                connection.exec_driver_sql(f"DROP TABLE {table}")
             connection.exec_driver_sql("PRAGMA user_version = 9")
 
         report = migrate_database(self.engine)
@@ -412,6 +418,7 @@ class ClinicalMigrationTests(ClinicalTestCase):
             "add_lesson_scheduling_module_tables",
             "add_lesson_automatic_schedule_results",
             "align_lesson_schedule_lifecycle",
+            "add_tutor_scheduling_module_tables",
         ))
         with Session(self.engine) as db:
             self.assertEqual(db.get(models.Pianist, 7).name, "Synthetic Pianist")

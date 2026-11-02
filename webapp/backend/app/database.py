@@ -108,6 +108,7 @@ def _expected_columns() -> dict[str, set[str]]:
     from . import lesson_models  # noqa: F401
     from . import models  # noqa: F401
     from . import module_models  # noqa: F401
+    from . import tutor_models  # noqa: F401
 
     expected = {
         table_name: set(table.columns.keys())
@@ -599,6 +600,37 @@ def _upgrade_to_v14(connection: Connection) -> None:
     )
 
 
+def _upgrade_to_v15(connection: Connection) -> None:
+    """Add module-owned Tutor Scheduling tables and per-session module state."""
+    from . import tutor_models
+
+    _create_module_tables(connection, {
+        "tutor_tags",
+        "tutor_tutors",
+        "tutor_tutor_tags",
+        "tutor_tutor_availability_windows",
+        "tutor_students",
+        "tutor_student_availability_windows",
+        "tutor_student_tag_states",
+        "tutor_placements",
+        "tutor_module_states",
+        "tutor_schedule_results",
+        "tutor_schedule_placements",
+        "tutor_unplaced_students",
+    })
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    for (session_uuid,) in connection.exec_driver_sql(
+        "SELECT session_uuid FROM scheduling_sessions"
+    ).all():
+        connection.execute(tutor_models.TutorModuleState.__table__.insert().values(
+            session_uuid=session_uuid,
+            schedule_revision=0,
+            source_data_revision=0,
+            is_schedule_stale=False,
+            modified_at=now,
+        ))
+
+
 MIGRATIONS = (
     SchemaMigration(
         version=1,
@@ -669,6 +701,11 @@ MIGRATIONS = (
         version=14,
         name="align_lesson_schedule_lifecycle",
         upgrade=_upgrade_to_v14,
+    ),
+    SchemaMigration(
+        version=15,
+        name="add_tutor_scheduling_module_tables",
+        upgrade=_upgrade_to_v15,
     ),
 )
 LATEST_SCHEMA_VERSION = MIGRATIONS[-1].version

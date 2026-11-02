@@ -1,0 +1,197 @@
+"""Pydantic request/response schemas for the Tutor Scheduling module."""
+
+from datetime import datetime
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class TutorModuleStateOut(BaseModel):
+    schedule_revision: int
+    source_data_revision: int
+    is_schedule_stale: bool
+
+
+class TutorReadinessSubjectOut(BaseModel):
+    kind: str
+    id: str
+    label: str
+
+
+class TutorReadinessWarningOut(BaseModel):
+    code: str
+    severity: str
+    category: str
+    subjects: list[TutorReadinessSubjectOut]
+
+
+class TutorReadinessOut(BaseModel):
+    source_data_revision: int
+    is_ready: bool
+    student_count: int
+    tutor_count: int
+    feasible_candidate_count: int
+    total_candidate_count: int
+    students_with_candidates: int
+    tutors_with_schedulable_tutors: int
+    warnings: list[TutorReadinessWarningOut]
+
+
+class TutorScheduleOut(BaseModel):
+    schedule_revision: int
+    source_data_revision: int
+    is_schedule_stale: bool
+    has_schedule: bool
+    students_scheduled: int
+    students_unscheduled: int
+    tutor_utilization: float
+    preferred_tag_matches: int
+    tentative_minutes: int
+    gap_cost_minutes: int
+    automatic_count: int
+    manual_count: int
+    manually_unplaced_count: int
+    verified_count: int
+    unverified_count: int
+    entries: list["TutorScheduleEntryOut"]
+    verification: list["TutorPlacementVerificationOut"]
+
+
+class TutorPlacementWarningOut(BaseModel):
+    code: str
+    message: str
+
+
+class TutorScheduleEntryOut(BaseModel):
+    student_id: str
+    student_name: str
+    placement_type: str | None
+    placement_state: Literal["unassigned", "assigned", "manuallyUnplaced"]
+    tutor_id: str | None
+    tutor_name: str | None
+    day: str | None
+    start_minute: int | None
+    end_minute: int | None
+    preferred_tag_match_count: int
+    tentative_minutes: int
+    verified: bool | None
+    warnings: list[TutorPlacementWarningOut]
+    unplaced_reason: str | None
+
+
+class TutorPlacementVerificationOut(BaseModel):
+    student_id: str
+    student_name: str
+    tutor_id: str | None
+    tutor_name: str | None
+    day: str | None
+    start_minute: int | None
+    warnings: list[TutorPlacementWarningOut]
+
+
+class TutorManualPlacementIn(BaseModel):
+    student_id: str
+    tutor_id: str
+    day: str
+    start_minute: int = Field(ge=0, lt=1440)
+
+
+class TutorPlacementWarningsOut(BaseModel):
+    warnings: list[TutorPlacementWarningOut]
+
+
+class TutorTagOut(BaseModel):
+    id: str
+    name: str
+    tutor_count: int
+    student_count: int
+    is_unused: bool
+
+
+class TutorTagIn(BaseModel):
+    name: str = Field(max_length=200)
+
+
+class TutorTagDeleteOut(BaseModel):
+    affected_tutor_count: int
+    affected_student_count: int
+
+
+class TutorTagRef(BaseModel):
+    id: str
+    name: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TutorTutorFields(BaseModel):
+    name: str = Field(max_length=200)
+    email: str = Field(default="", max_length=200)
+    room: str = Field(default="", max_length=200)
+    lesson_length_minutes: int = 60
+    capacity: int = 1
+
+
+class TutorTutorIn(TutorTutorFields):
+    # None leaves associations unchanged on update; empty list clears them.
+    tag_ids: list[str] | None = Field(default=None, max_length=200)
+
+
+class TutorTutorTagsIn(BaseModel):
+    tag_ids: list[str] = Field(max_length=200)
+
+
+class TutorTutorOut(TutorTutorFields):
+    id: str
+    tags: list[TutorTagRef]
+    availability_window_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class TutorTutorDeleteOut(BaseModel):
+    removed_placement_count: int
+    placements_preserved: int
+
+
+class TutorAvailabilityWindowIO(BaseModel):
+    day: str
+    start_minute: int
+    end_minute: int
+    status: str
+
+
+class TutorTutorAvailabilityIO(BaseModel):
+    windows: list[TutorAvailabilityWindowIO] = Field(max_length=500)
+
+
+class TutorStudentFields(BaseModel):
+    student_id: str = Field(max_length=100)
+    name: str = Field(max_length=200)
+    email: str = Field(default="", max_length=200)
+
+
+class TutorStudentIn(TutorStudentFields):
+    # None leaves tag states unchanged on update; an object replaces the whole set
+    # (Neutral entries are not stored).
+    tag_states: dict[str, str] | None = None
+
+
+class TutorStudentTagStatesIn(BaseModel):
+    tag_states: dict[str, str]
+
+
+class TutorStudentOut(TutorStudentFields):
+    id: str
+    availability_window_count: int
+    # Only non-neutral states are present; Neutral is the absence of an entry.
+    tag_states: dict[str, str]
+    created_at: datetime
+    updated_at: datetime
+
+
+class TutorStudentAvailabilityIO(BaseModel):
+    windows: list[TutorAvailabilityWindowIO] = Field(max_length=500)
+
+
+TutorScheduleOut.model_rebuild()

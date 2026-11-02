@@ -2,7 +2,7 @@
 
 ## Product and Module Boundaries
 
-The product is **Scheduling Maestro** (formerly Music Program Scheduler). Startup opens the product-level dashboard for the active Scheduling Session; session actions live there. A built-in module registry routes into each module's own shell and navigation. Accompanist Scheduling, Lesson Scheduling (complete, including reports/exports), and Clinical Placements (sites, roster, optimizer, manual placements, reports) are functional; their approved Clinical workflow is in [CLINICAL-PLACEMENT-MODULE-SPEC.md](CLINICAL-PLACEMENT-MODULE-SPEC.md). Jury setup/readiness, backend schedule generation, a read-only Schedule view backed by typed current/history APIs, and Reports are implemented; manual schedule editing and finalization remain out of scope. Tutor Scheduling is planned and not implemented.
+The product is **Scheduling Maestro** (formerly Music Program Scheduler). Startup opens the product-level dashboard for the active Scheduling Session; session actions live there. A built-in module registry routes into each module's own shell and navigation. Accompanist Scheduling, Lesson Scheduling (complete, including reports/exports), and Clinical Placements (sites, roster, optimizer, manual placements, reports) are functional; their approved Clinical workflow is in [CLINICAL-PLACEMENT-MODULE-SPEC.md](CLINICAL-PLACEMENT-MODULE-SPEC.md). Jury setup/readiness, backend schedule generation, a read-only Schedule view backed by typed current/history APIs, and Reports are implemented; manual schedule editing and finalization remain out of scope. Tutor Scheduling is implemented as an independent clone of Lesson Scheduling (separate `tutor_*` tables, `/api/tutor` routes, `tutor_*` services, UI, reports, and tests) with Instructor renamed to Tutor.
 
 Academic terms, small people identities, time primitives, locations, and useful file/import infrastructure may be shared when actual reuse is demonstrated. Lesson requirements, pianist availability and workload, accompanist assignment scoring, jury rules, and clinical placement constraints remain module-owned. The accompanist optimizer is not a universal scheduling engine.
 
@@ -40,14 +40,14 @@ To add a schema change, add the next consecutively numbered `SchemaMigration` to
 [SHARED-TAG-ARCHITECTURE.md](SHARED-TAG-ARCHITECTURE.md) is authoritative
 for tag identity and behavior. Shared persistence must identify tags by
 `(module_id, tag_uuid)` and keep catalog uniqueness module-scoped. Clinical
-and Lesson currently persist separate tag catalogs and module-specific tag
-associations/states in the v10 and v12 schema respectively. The architecture
+Clinical, Lesson, and Tutor currently persist separate tag catalogs and module-specific tag
+associations/states in the v10, v12, and v15 schema respectively. The architecture
 requires shared tag persistence and assignment mechanics, but does not yet
 prescribe whether entity-assignment rows are physically shared or remain in
 module-owned association tables. A future
 forward-only migration is required to bring those persisted representations
 into conformance with the shared tag infrastructure; at the current schema
-baseline it must be registered as the next migration (v15). Lesson schedule
+baseline (v15, `add_tutor_scheduling_module_tables`) it must be registered as the next migration (v16). Lesson schedule
 placement snapshots intentionally do not depend on mutable roster rows so an
 older result remains available and visibly stale after source changes. The
 tag migration must preserve
@@ -121,7 +121,7 @@ Source view per module:
 | Performance Jury Scheduling | Schedule tab | `juryReportTable.ts`: every Panel entry (juries and breaks) plus unscheduled lessons, with Panel, Jury Date, Start, End, Student / entry, Instrument, Instructor, Assigned Pianist, Pianist Required, Status, Reason, Explanation |
 | Clinical Placements | Schedule tab (Placements and Unplaced Students) | `clinicalReportTable.ts`: Student, Student ID, Student Email, Placement Site, Site Address, Contact Name/Email/Phone, Opportunity Label, Tags, Day, Start Time, End Time, Session Length, Travel, Placement Type, Preferred Tag Matches, Tentative Minutes, Status, Warnings, Unplaced Reason |
 | Lesson Scheduling | Schedule tab | `lessonReport.ts` (`buildLessonReportTable`): one row per student with Student, Instructor, Room, Lesson Length (minutes), Day, Start Time, End Time, Placement Type, Preferred Tag Matches, Tentative Minutes, Status, Warnings, Unplaced Reason, Schedule Status (Current or Stale) |
-| Tutor Scheduling (planned) | Schedule tab | Same rule: all fields of the module's Schedule tab |
+| Tutor Scheduling | Schedule tab | Same rule: all fields of the module's Schedule tab |
 
 When a module's Schedule/Roster view gains or changes a column, its table and table test must change with it.
 

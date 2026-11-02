@@ -14,6 +14,7 @@ from .routers import (
     pianists,
     reports,
     session,
+    tutor_scheduling,
 )
 
 app = FastAPI(title="Scheduling Maestro API")
@@ -50,6 +51,7 @@ app.include_router(accompanist_results.router)
 app.include_router(jury.router)
 app.include_router(clinical.router)
 app.include_router(lesson_scheduling.router)
+app.include_router(tutor_scheduling.router)
 
 
 @app.get("/api/health")

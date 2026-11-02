@@ -1,6 +1,6 @@
 import type { SchedulingSession } from "./lib/types";
 
-export type ModuleKey = "accompanist" | "clinical" | "juries" | "lesson";
+export type ModuleKey = "accompanist" | "clinical" | "juries" | "lesson" | "tutor";
 export type ModuleAvailability = "available" | "shell";
 
 export interface SchedulingModule {
@@ -33,6 +33,12 @@ export const SCHEDULING_MODULES: SchedulingModule[] = [
     key: "lesson",
     name: "Lesson Scheduling",
     description: "Assign students to instructors for recurring weekly lessons.",
+    availability: "available",
+  },
+  {
+    key: "tutor",
+    name: "Tutor Scheduling",
+    description: "Assign students to tutors for recurring weekly sessions.",
     availability: "available",
   },
 ];

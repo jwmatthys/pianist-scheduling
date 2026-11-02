@@ -88,6 +88,7 @@ def _replace_metadata(target_engine: Engine, values: schemas.SessionMetadataIn, 
     from .. import clinical_models  # noqa: F401  (registers tables for session re-keying)
     from .. import lesson_models  # noqa: F401
     from .. import module_models
+    from .. import tutor_models  # noqa: F401
 
     with Session(target_engine) as db:
         rows = db.query(models.SchedulingSession).all()

@@ -6,7 +6,7 @@
 
 This milestone establishes stable identities, an immutable finalized Accompanist result, Jury-owned configuration and availability, dependency provenance, and readiness validation. It does not schedule juries. The accepted characterization explicitly rejects unbounded search and arithmetic failure: a future optimizer must terminate with every Jury-required lesson entry either validly scheduled or explicitly unscheduled with understandable reasons. Data and validation must give a future optimizer a finite Jury date and valid positive integer durations; the optimizer must still enforce its own bounded search and total-outcome invariant.
 
-The design started from schema version 3; the current schema is version 14. Historical v1-v8 migrations remain unchanged. Accompanist retains numeric `Pianist` and `Lesson` primary keys and current availability behavior while adding editable Pianist IDs, UUID identity mappings, source revisions, finalized-result history, and an Accompanist-owned per-lesson Jury Required extension. Jury persistence is module-owned and lesson-based.
+The design started from schema version 3; the current schema is version 15. Historical v1-v8 migrations remain unchanged. Accompanist retains numeric `Pianist` and `Lesson` primary keys and current availability behavior while adding editable Pianist IDs, UUID identity mappings, source revisions, finalized-result history, and an Accompanist-owned per-lesson Jury Required extension. Jury persistence is module-owned and lesson-based.
 
 ## 2. Shared Person Identity
 

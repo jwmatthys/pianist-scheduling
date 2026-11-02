@@ -881,3 +881,238 @@ export interface LessonModuleState {
   source_data_revision: number;
   is_schedule_stale: boolean;
 }
+
+// --- Tutor Scheduling (module-owned; independent of Lesson and Clinical types) ---
+
+export interface TutorTag {
+  id: string;
+  name: string;
+  tutor_count: number;
+  student_count: number;
+  is_unused: boolean;
+}
+
+export interface TutorTutorFields {
+  name: string;
+  email: string;
+  room: string;
+  lesson_length_minutes: number;
+  capacity: number;
+}
+
+export interface TutorTutor extends TutorTutorFields {
+  id: string;
+  tags: { id: string; name: string }[];
+  availability_window_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type TutorTutorImportField =
+  | "tutor_name"
+  | "tutor_email"
+  | "room"
+  | "lesson_length"
+  | "capacity";
+
+export interface TutorTutorImportMapping {
+  tutor_name: string | null;
+  tutor_email: string | null;
+  room: string | null;
+  lesson_length: string | null;
+  capacity: string | null;
+  days: Record<string, string | null>;
+}
+
+export interface TutorTutorImportInspection {
+  sheets: string[];
+  selected_sheet: string | null;
+  columns: string[];
+  sample_rows: Record<string, string>[];
+  suggested_mapping: TutorTutorImportMapping;
+}
+
+export interface TutorTutorImportPreviewRow {
+  row_number: number;
+  tutor_name: string;
+  tutor_email: string;
+  room: string;
+  lesson_length_minutes: number | null;
+  capacity: number | null;
+  tags: string[];
+  availability_window_count: number;
+  availability: string[];
+  warnings: string[];
+  errors: string[];
+}
+
+export interface TutorTutorImportPreview {
+  selected_sheet: string | null;
+  tag_columns: string[];
+  total_rows: number;
+  valid_rows: number;
+  invalid_rows: number;
+  rows: TutorTutorImportPreviewRow[];
+  new_tags: string[];
+  reused_tags: string[];
+  existing_tutor_count: number;
+  existing_placement_count: number;
+  can_apply: boolean;
+}
+
+export interface TutorTutorImportResult {
+  tutors_removed: number;
+  placements_removed: number;
+  placements_preserved: number;
+  tutors_created: number;
+  tags_created: number;
+}
+
+export type TutorTagState = "neutral" | "required" | "preferred" | "restricted";
+
+export interface TutorStudentFields {
+  student_id: string;
+  name: string;
+  email: string;
+}
+
+export interface TutorStudent extends TutorStudentFields {
+  id: string;
+  availability_window_count: number;
+  // Neutral is the absence of an entry.
+  tag_states: Record<string, TutorTagState>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TutorStudentImportMapping {
+  student_id: string | null;
+  name: string | null;
+  email: string | null;
+  days: Record<string, string | null>;
+}
+
+export interface TutorStudentImportInspection {
+  sheets: string[];
+  selected_sheet: string | null;
+  columns: string[];
+  sample_rows: Record<string, string>[];
+  suggested_mapping: TutorStudentImportMapping;
+}
+
+export interface TutorStudentImportPreviewRow {
+  row_number: number;
+  student_id: string;
+  name: string;
+  email: string;
+  availability_window_count: number;
+  availability: string[];
+  warnings: string[];
+  errors: string[];
+}
+
+export interface TutorStudentImportPreview {
+  selected_sheet: string | null;
+  total_rows: number;
+  valid_rows: number;
+  invalid_rows: number;
+  availability_mapped: boolean;
+  rows: TutorStudentImportPreviewRow[];
+  existing_student_count: number;
+  existing_placement_count: number;
+  can_apply: boolean;
+}
+
+export interface TutorStudentImportResult {
+  students_removed: number;
+  placements_removed: number;
+  placements_preserved: number;
+  students_created: number;
+}
+
+export type TutorReadinessSeverity = "error" | "warning";
+export type TutorReadinessCategory = "data" | "students" | "tutors" | "tags";
+export type TutorReadinessSubjectKind = "student" | "tutor" | "tag";
+
+export interface TutorReadinessSubject {
+  kind: TutorReadinessSubjectKind;
+  id: string;
+  label: string;
+}
+
+export interface TutorReadinessWarning {
+  code: string;
+  severity: TutorReadinessSeverity;
+  category: TutorReadinessCategory;
+  subjects: TutorReadinessSubject[];
+}
+
+export interface TutorReadiness {
+  source_data_revision: number;
+  is_ready: boolean;
+  student_count: number;
+  tutor_count: number;
+  feasible_candidate_count: number;
+  total_candidate_count: number;
+  students_with_candidates: number;
+  tutors_with_schedulable_tutors: number;
+  warnings: TutorReadinessWarning[];
+}
+
+export interface TutorSchedule {
+  schedule_revision: number;
+  source_data_revision: number;
+  is_schedule_stale: boolean;
+  has_schedule: boolean;
+  students_scheduled: number;
+  students_unscheduled: number;
+  tutor_utilization: number;
+  preferred_tag_matches: number;
+  tentative_minutes: number;
+  gap_cost_minutes: number;
+  automatic_count: number;
+  manual_count: number;
+  manually_unplaced_count: number;
+  verified_count: number;
+  unverified_count: number;
+  entries: TutorScheduleEntry[];
+  verification: TutorPlacementVerification[];
+}
+
+export interface TutorPlacementWarning {
+  code: string;
+  message: string;
+}
+
+export interface TutorScheduleEntry {
+  student_id: string;
+  student_name: string;
+  placement_type: "automatic" | "manual" | "manuallyUnplaced" | null;
+  placement_state: PlacementState;
+  tutor_id: string | null;
+  tutor_name: string | null;
+  day: string | null;
+  start_minute: number | null;
+  end_minute: number | null;
+  preferred_tag_match_count: number;
+  tentative_minutes: number;
+  verified: boolean | null;
+  warnings: TutorPlacementWarning[];
+  unplaced_reason: string | null;
+}
+
+export interface TutorPlacementVerification {
+  student_id: string;
+  student_name: string;
+  tutor_id: string | null;
+  tutor_name: string | null;
+  day: string | null;
+  start_minute: number | null;
+  warnings: TutorPlacementWarning[];
+}
+
+export interface TutorModuleState {
+  schedule_revision: number;
+  source_data_revision: number;
+  is_schedule_stale: boolean;
+}
