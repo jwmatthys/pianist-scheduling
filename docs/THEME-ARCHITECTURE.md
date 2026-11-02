@@ -229,16 +229,42 @@ No telemetry.
 
 Themes are ordinary local application assets.
 
-The theme-loading service owns the `ThemePalette` type, the built-in default
-palette, exact ten-color/hex validation, and generation/application of the ten
-base CSS variables. Derived and semantic variables remain CSS definitions and
-update automatically when base variables change.
+The theme subsystem defines `ThemePalette` in
+`webapp/frontend/src/theme/ThemePalette.ts`. It contains exactly the ten base
+colors listed above. The default palette PNG is bundled at
+`webapp/frontend/src/theme/default-theme.png` and reproduces the built-in
+palette. The model's built-in values remain the fallback if the asset cannot be
+loaded or validated.
+
+The PNG parser in `webapp/frontend/src/theme/pngPalette.ts` checks the PNG
+signature, chunk boundaries and CRCs, image dimensions, supported encoding,
+decompressed image data, and all ten opaque center-pixel samples. It maps
+zero-based pixel coordinates to palette values as follows:
+
+| Palette value | Sample coordinate `(x, y)` |
+|---|---:|
+| `primary` | `(4, 4)` |
+| `accent` | `(12, 4)` |
+| `background` | `(20, 4)` |
+| `surface` | `(28, 4)` |
+| `text` | `(36, 4)` |
+| `textMuted` | `(4, 12)` |
+| `border` | `(12, 12)` |
+| `success` | `(20, 12)` |
+| `warning` | `(28, 12)` |
+| `error` | `(36, 12)` |
+
+`themeValidation.ts` validates the exact ten-color palette structure and
+provides contrast checks for body and muted text, success/warning/error
+messages, focus indicators, and control borders. Contrast issues are structured
+validation results; a palette that fails is not applied. The loader applies
+only the ten base CSS variables. Derived and semantic variables remain CSS
+definitions and update automatically when base variables change.
 
 The PNG parser only decodes and validates a palette image; it does not select a
-theme, expose file selection, or change the active application theme. Loading
-without a candidate uses the existing built-in palette. A candidate load or
-validation failure returns that same palette with a structured fallback warning
-so the caller can log the failure without blocking startup.
+theme, expose file selection, or change the active application theme. A load or
+validation failure returns the same built-in palette with a structured fallback
+warning containing the failure reason and, when available, its error code.
 
 PNG decoding currently supports non-interlaced 8-bit RGB and RGBA data. Other
 valid PNG encodings are rejected with a clear validation error rather than
@@ -246,17 +272,44 @@ being sampled incorrectly.
 
 ---
 
-## Startup
+## Startup and Theme Selection
 
-The default theme loads automatically at startup.
+The dashboard provides a fixed lower-right Theme button that opens a native
+modal dialog with Default Theme, Dark Theme, and Custom Theme options. Each
+choice shows a palette preview strip and indicates the active theme. The native
+dialog provides keyboard focus handling and Escape-to-close behavior.
 
-If loading fails:
+The bundled default and dark theme PNGs are loaded locally through the same
+parser and accessibility validator. The dark theme uses these ten base values:
 
-- fall back to the built-in default theme
-- return a structured warning for the caller to log
-- continue application startup
+| Palette value | Dark theme |
+|---|---|
+| `primary` | `#80BFFF` |
+| `accent` | `#62A3E8` |
+| `background` | `#111820` |
+| `surface` | `#1B2633` |
+| `text` | `#F2F4F7` |
+| `textMuted` | `#B4BFCC` |
+| `border` | `#78889B` |
+| `success` | `#67D391` |
+| `warning` | `#FFD166` |
+| `error` | `#FF7B7B` |
 
-Theme failure must never block startup.
+Custom themes are selected from local PNG files, parsed in the frontend, and
+applied immediately only after structure and accessibility checks pass.
+Invalid files display validation errors without changing the active theme.
+
+The platform abstraction persists a versioned active-theme preference in
+local application storage. Built-in themes persist their identifier; custom
+themes persist only the ten validated palette values needed to restore them.
+No theme file or palette is uploaded or synchronized. Startup restores the
+saved choice locally. Invalid preferences, failed decoding, or inaccessible
+saved palettes fall back to the built-in default with a structured warning.
+The active palette sets the native `color-scheme` attribute from its background
+luminance so built-in controls adapt to dark surfaces. Semantic roles and
+derived CSS mappings do not change.
+
+Theme initialization failure never blocks application startup.
 
 ---
 
@@ -290,26 +343,21 @@ Theme loading does not bypass accessibility requirements.
 
 A palette that produces unreadable UI is invalid.
 
-Validation may be added in the future.
+The current validator checks 4.5:1 contrast for normal-size text and 3:1 for
+focus indicators and borders. It checks warning and error foregrounds against
+their derived soft backgrounds as well as surfaces. Both built-in palettes
+must pass these checks. Custom palettes that fail are rejected before
+application; invalid saved selections produce a structured fallback warning.
 
 ---
 
-# Future Theme Switching
+# Future Theme Expansion
 
-Future versions may allow:
-
-```text
-Settings
-  Theme
-    Default
-    Dark
-    Forest
-    Custom
-```
-
-This architecture supports theme switching but does not require it.
-
-Theme switching is a separate feature.
+The dashboard selector currently supports Default, Dark, and one active Custom
+palette. Future work may add bundled themes and richer theme management while
+continuing to use the same ten-color contract, local validation, and storage
+boundary. Editing palettes in-app, sharing themes, and downloading theme
+galleries are not implemented.
 
 ---
 
@@ -321,15 +369,9 @@ Recommended location:
 frontend/src/themes/
 ```
 
-Examples:
-
-```text
-default-theme.png
-forest-theme.png
-dark-theme.png
-```
-
-The active theme may be selected from settings in a future milestone.
+Examples of future bundled assets include forest or other institution-approved
+palettes. The existing selector and parser can load bundled themes without
+changing module-owned semantics.
 
 ---
 
@@ -337,13 +379,12 @@ The active theme may be selected from settings in a future milestone.
 
 This architecture does not define:
 
-- specific color values
-- dark mode behavior
-- theme switching UI
+- in-app palette editing
 - cloud theme sharing
-- user-created theme editing tools
+- online theme galleries or external theme downloads
 
-Those are separate features.
+Those are separate features. Theme switching between the bundled themes and a
+local custom PNG is already implemented.
 
 ---
 

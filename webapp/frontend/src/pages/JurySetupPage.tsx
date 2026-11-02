@@ -667,7 +667,7 @@ export function JurySetupPage() {
                     <form className="jury-window-form" onSubmit={addAvailabilityWindow}>
                       <label>Available from<input type="time" value={availabilityStart} onChange={(event) => setAvailabilityStart(event.target.value)} required /></label>
                       <label>Available until<input type="time" value={availabilityEnd} onChange={(event) => setAvailabilityEnd(event.target.value)} required /></label>
-                      <button type="submit" className="secondary-btn" disabled={busy}>Add window</button>
+                      <button type="submit" className="primary-btn" disabled={busy}>Add window</button>
                     </form>
                     {selectedAvailability.windows.length > 0 ? (
                       <ul className="jury-window-list">
@@ -749,7 +749,7 @@ export function JurySetupPage() {
             </div>
             <div className="jury-dialog-actions">
               <button type="button" className="secondary-btn" disabled={busy} onClick={() => setPanelDialog(null)}>Cancel</button>
-              <button type="submit" className="primary-btn" disabled={busy}>{busy ? "Saving…" : "Save Panel"}</button>
+              <button type="submit" className={panelDialog.panel_uuid ? "" : "primary-btn"} disabled={busy}>{busy ? "Saving…" : "Save Panel"}</button>
             </div>
           </form>
         </dialog>

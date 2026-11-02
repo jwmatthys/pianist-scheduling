@@ -144,7 +144,7 @@ function TutorDialog({
           <button type="button" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="primary-btn" disabled={saving}>
+          <button type="submit" className={tutor ? "" : "primary-btn"} disabled={saving}>
             {tutor ? "Save Changes" : "Add Tutor"}
           </button>
         </div>

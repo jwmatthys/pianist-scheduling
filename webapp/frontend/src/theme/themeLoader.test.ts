@@ -3,16 +3,26 @@ import { join } from "node:path";
 import { zlibSync } from "fflate";
 import { describe, expect, it, vi } from "vitest";
 import { parseThemePalettePng, ThemePngError, THEME_PNG_CELL_SIZE, THEME_PNG_HEIGHT, THEME_PNG_WIDTH } from "./pngPalette";
+import { DEFAULT_THEME_PALETTE, type ThemePalette } from "./ThemePalette";
 import {
   applyThemeCssVariables,
   createThemeCssVariables,
-  DEFAULT_THEME_PALETTE,
   loadThemePalette,
   validateThemePalette,
-  type ThemePalette,
 } from "./themeLoader";
+import {
+  contrastRatio,
+  validateErrorContrast,
+  validateFocusVisibility,
+  validateSuccessContrast,
+  validateTextContrast,
+  validateThemeAccessibility,
+  validateWarningContrast,
+} from "./themeValidation";
+import { initializeTheme } from "./themeRuntime";
 
 const themeCss = readFileSync(join(process.cwd(), "src", "theme", "theme.css"), "utf8");
+const defaultThemePng = new Uint8Array(readFileSync(join(process.cwd(), "src", "theme", "default-theme.png")));
 
 const palette: ThemePalette = {
   primary: "#112233",
@@ -29,6 +39,7 @@ const palette: ThemePalette = {
 
 describe("theme palette", () => {
   it("validates exactly ten six-digit color values", () => {
+    expect(Object.keys(palette)).toHaveLength(10);
     expect(validateThemePalette(palette)).toEqual(palette);
     expect(() => validateThemePalette({ ...palette, other: "#FFFFFF" })).toThrow(/exactly the ten/);
     const { error: _error, ...withoutError } = palette;
@@ -64,6 +75,62 @@ describe("theme palette", () => {
     expect(contrastRatio(readableMuted, DEFAULT_THEME_PALETTE.background)).toBeGreaterThanOrEqual(4.5);
   });
 
+  it("meets WCAG AA text contrast for semantic status colors", () => {
+    const { surface, text, primary, success, warning, error } = DEFAULT_THEME_PALETTE;
+    const successSoft = mixHex(surface, success, 0.08);
+    const warningSoft = mixHex(surface, warning, 0.12);
+    const errorSoft = mixHex(surface, error, 0.12);
+    const warningForeground = mixHex(text, warning, 0.7);
+
+    expect(contrastRatio(text, surface)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(surface, primary)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(success, successSoft)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(warningForeground, warningSoft)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(error, errorSoft)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("meets WCAG non-text contrast for borders against app surfaces", () => {
+    expect(themeCss).toContain(
+      "--theme-border-strong: color-mix(in srgb, var(--theme-border) 30%, var(--theme-text-muted));",
+    );
+    const { border, textMuted, background, surface } = DEFAULT_THEME_PALETTE;
+    const strongBorder = mixHex(textMuted, border, 0.3);
+
+    for (const color of [border, strongBorder]) {
+      expect(contrastRatio(color, background)).toBeGreaterThanOrEqual(3);
+      expect(contrastRatio(color, surface)).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("passes the accessibility validator for the default palette", () => {
+    expect(validateThemeAccessibility(DEFAULT_THEME_PALETTE)).toEqual([]);
+    expect(contrastRatio(DEFAULT_THEME_PALETTE.primary, DEFAULT_THEME_PALETTE.surface)).toBeGreaterThanOrEqual(3);
+  });
+
+  it("reports insufficient text, warning, error, and focus contrast", () => {
+    const unreadableText = { ...DEFAULT_THEME_PALETTE, text: "#FFFFFF" };
+    const unreadableSuccess = { ...DEFAULT_THEME_PALETTE, success: "#FFFFFF" };
+    const unreadableWarning = { ...DEFAULT_THEME_PALETTE, warning: "#FFFFFF" };
+    const unreadableError = { ...DEFAULT_THEME_PALETTE, error: "#FFFFFF" };
+    const invisibleFocus = { ...DEFAULT_THEME_PALETTE, primary: "#FFFFFF" };
+
+    expect(validateTextContrast(unreadableText)).toContainEqual(
+      expect.objectContaining({ code: "TEXT_CONTRAST_INSUFFICIENT" }),
+    );
+    expect(validateSuccessContrast(unreadableSuccess)).toContainEqual(
+      expect.objectContaining({ code: "SUCCESS_CONTRAST_INSUFFICIENT" }),
+    );
+    expect(validateWarningContrast(unreadableWarning)).toContainEqual(
+      expect.objectContaining({ code: "WARNING_CONTRAST_INSUFFICIENT" }),
+    );
+    expect(validateErrorContrast(unreadableError)).toContainEqual(
+      expect.objectContaining({ code: "ERROR_CONTRAST_INSUFFICIENT" }),
+    );
+    expect(validateFocusVisibility(invisibleFocus)).toContainEqual(
+      expect.objectContaining({ code: "FOCUS_CONTRAST_INSUFFICIENT" }),
+    );
+  });
+
   it("generates and applies only the ten base CSS variables", () => {
     const variables = createThemeCssVariables(palette);
     const setProperty = vi.fn();
@@ -84,8 +151,8 @@ describe("theme palette", () => {
   });
 
   it("returns a loaded palette when the candidate is valid", async () => {
-    await expect(loadThemePalette(async () => palette)).resolves.toEqual({
-      palette,
+    await expect(loadThemePalette(async () => DEFAULT_THEME_PALETTE)).resolves.toEqual({
+      palette: DEFAULT_THEME_PALETTE,
       source: "loaded",
     });
   });
@@ -104,6 +171,58 @@ describe("theme palette", () => {
       message: "Theme loading failed; using the built-in default palette.",
     }));
   });
+
+  it("falls back when a structurally valid palette fails accessibility checks", async () => {
+    const reportWarning = vi.fn();
+    const result = await loadThemePalette(
+      async () => ({ ...DEFAULT_THEME_PALETTE, text: "#FFFFFF" }),
+      reportWarning,
+    );
+    expect(result.source).toBe("fallback");
+    expect(reportWarning).toHaveBeenCalledWith(expect.objectContaining({
+      causeCode: "THEME_ACCESSIBILITY_INVALID",
+      issues: expect.arrayContaining([expect.objectContaining({ code: "TEXT_CONTRAST_INSUFFICIENT" })]),
+    }));
+    if (result.source === "fallback") {
+      expect(result.warning.causeCode).toBe("THEME_ACCESSIBILITY_INVALID");
+      expect(result.warning.cause).toContain("Body text contrast");
+    }
+  });
+
+  it("loads the default PNG through the runtime pipeline and applies exactly ten variables", async () => {
+    expect(parseThemePalettePng(defaultThemePng)).toEqual(DEFAULT_THEME_PALETTE);
+    const setProperty = vi.fn();
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(toArrayBuffer(defaultThemePng)));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const result = await initializeTheme({ target: { setProperty } });
+
+      expect(result.source).toBe("loaded");
+      expect(result.palette).toEqual(DEFAULT_THEME_PALETTE);
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(setProperty).toHaveBeenCalledTimes(10);
+      expect(setProperty).toHaveBeenCalledWith("--theme-border", DEFAULT_THEME_PALETTE.border);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("continues with the built-in palette when the default PNG cannot be decoded", async () => {
+    const setProperty = vi.fn();
+    const reportWarning = vi.fn();
+    const result = await initializeTheme({
+      loadPng: async () => new Uint8Array([1, 2, 3]),
+      target: { setProperty },
+      reportWarning,
+    });
+
+    expect(result.source).toBe("fallback");
+    expect(reportWarning).toHaveBeenCalledWith(expect.objectContaining({
+      code: "THEME_LOAD_FALLBACK",
+      causeCode: "PNG_INVALID",
+    }));
+    expect(setProperty).toHaveBeenCalledWith("--theme-primary", DEFAULT_THEME_PALETTE.primary);
+  });
 });
 
 describe("theme PNG parser", () => {
@@ -116,8 +235,13 @@ describe("theme PNG parser", () => {
   });
 
   it("rejects images with incorrect dimensions", () => {
-    expect(() => parseThemePalettePng(createPalettePng({ width: THEME_PNG_WIDTH - 1 })))
-      .toThrow(new ThemePngError("Theme PNG must be exactly 40x16 pixels."));
+    try {
+      parseThemePalettePng(createPalettePng({ width: THEME_PNG_WIDTH - 1 }));
+      throw new Error("Expected invalid dimensions to be rejected.");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ThemePngError);
+      expect(error).toMatchObject({ code: "PNG_DIMENSIONS_INVALID" });
+    }
   });
 
   it("rejects a missing transparent palette cell", () => {
@@ -134,9 +258,29 @@ describe("theme PNG parser", () => {
     corrupt[corrupt.length - 1] ^= 0xff;
     expect(() => parseThemePalettePng(corrupt)).toThrow(/corrupt IEND chunk/);
   });
+
+  it("returns a structured error when image data or palette cells are missing", () => {
+    expect(() => parseThemePalettePng(new Uint8Array()))
+      .toThrow(expect.objectContaining({ code: "PNG_INVALID" }));
+    expect(() => parseThemePalettePng(createPalettePng({ includeImageData: false })))
+      .toThrow(expect.objectContaining({ code: "PNG_IMAGE_DATA_MISSING" }));
+    expect(() => parseThemePalettePng(createPalettePng({ transparentCell: 8 })))
+      .toThrow(expect.objectContaining({ code: "PALETTE_INVALID" }));
+  });
+
+  it("returns a structured error for corrupt compressed image data", () => {
+    expect(() => parseThemePalettePng(createPalettePng({ invalidImageData: true })))
+      .toThrow(expect.objectContaining({ code: "PNG_IMAGE_DATA_INVALID" }));
+  });
 });
 
-function createPalettePng(options: { width?: number; transparentCell?: number; colorType?: 2 | 6 } = {}): Uint8Array {
+function createPalettePng(options: {
+  width?: number;
+  transparentCell?: number;
+  colorType?: 2 | 6;
+  includeImageData?: boolean;
+  invalidImageData?: boolean;
+} = {}): Uint8Array {
   const width = options.width ?? THEME_PNG_WIDTH;
   const height = THEME_PNG_HEIGHT;
   const colorType = options.colorType ?? 6;
@@ -175,7 +319,9 @@ function createPalettePng(options: { width?: number; transparentCell?: number; c
   return concatenate([
     new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
     createPngChunk("IHDR", header),
-    createPngChunk("IDAT", zlibSync(scanlines)),
+    ...(options.includeImageData === false
+      ? []
+      : [createPngChunk("IDAT", options.invalidImageData ? new Uint8Array([1, 2, 3]) : zlibSync(scanlines))]),
     createPngChunk("IEND", new Uint8Array()),
   ]);
 }
@@ -218,18 +364,10 @@ function mixHex(base: string, mix: string, mixRatio: number): string {
   return `#${channels.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
 }
 
-function contrastRatio(foreground: string, background: string): number {
-  const luminance = (color: string): number => {
-    const channels = [0, 2, 4].map((offset) => Number.parseInt(color.slice(offset + 1, offset + 3), 16) / 255);
-    const linear = channels.map((channel) => (
-      channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
-    ));
-    return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
-  };
-  const foregroundLuminance = luminance(foreground);
-  const backgroundLuminance = luminance(background);
-  return (Math.max(foregroundLuminance, backgroundLuminance) + 0.05)
-    / (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.length);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
 }
 
 function crc32(bytes: Uint8Array): number {

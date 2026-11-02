@@ -49,7 +49,7 @@ export function ReportsPage() {
         Generate a report from the current saved lesson roster.
       </p>
       <div className="reports-actions">
-        <button className="primary-btn" onClick={generate} disabled={busy}>
+        <button onClick={generate} disabled={busy}>
           {busy ? "Generating\u2026" : "Generate report"}
         </button>
         <ReportExportButton

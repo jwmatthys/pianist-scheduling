@@ -167,7 +167,7 @@ export function JuryReportsPage() {
       {report && <StaleReportBanner stale={report.stale} generatedAt={report.generatedAt} />}
       <p className="muted">Generate a report from the current saved Jury schedule.</p>
       <div className="reports-actions">
-        <button className="primary-btn" type="button" onClick={() => void generate()} disabled={busy}>
+        <button type="button" onClick={() => void generate()} disabled={busy}>
           {busy ? "Generating…" : "Generate report"}
         </button>
         <ReportExportButton

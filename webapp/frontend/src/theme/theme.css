@@ -8,7 +8,7 @@
   --theme-text: #1f2933;
   --theme-text-muted: #6b7280;
   --theme-text-muted-readable: color-mix(in srgb, var(--theme-text-muted) 97%, var(--theme-text));
-  --theme-border: #d1d5db;
+  --theme-border: #858b96;
   --theme-success: #2e7d32;
   --theme-warning: #b7791f;
   --theme-error: #c53030;
@@ -72,4 +72,8 @@
   --tag-preferred-soft: var(--theme-warning-soft);
   --tag-restricted-soft: var(--theme-error-soft);
   --tag-neutral-soft: var(--theme-surface-muted);
+}
+
+:root[data-theme-scheme="dark"] {
+  color-scheme: dark;
 }

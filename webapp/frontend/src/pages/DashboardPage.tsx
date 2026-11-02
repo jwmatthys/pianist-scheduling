@@ -1,6 +1,9 @@
 import { useEffect, useRef } from "react";
 import { SCHEDULING_MODULES, formatSessionIdentity, type ModuleKey } from "../moduleRegistry";
 import type { SchedulingSession } from "../lib/types";
+import { ThemeDialog } from "../components/ThemeDialog";
+
+const INDEPENDENT_MODULE_KEYS: ModuleKey[] = ["lesson", "tutor", "clinical"];
 
 type Props = {
   session: SchedulingSession | null;
@@ -27,8 +30,28 @@ export function DashboardPage({
     headingRef.current?.focus();
   }, []);
 
+  function renderCard(key: ModuleKey) {
+    const module = SCHEDULING_MODULES.find((candidate) => candidate.key === key);
+    if (!module) return null;
+    return (
+      <button
+        type="button"
+        key={module.key}
+        className={`module-card ${module.availability === "shell" ? "module-card-shell" : ""}`}
+        onClick={() => onOpenModule(module.key)}
+      >
+        <span className="module-card-title">{module.name}</span>
+        <span className="module-card-description">{module.description}</span>
+        <span className="module-card-action">
+          {module.availability === "available" ? "Open module" : "View module shell"}
+        </span>
+      </button>
+    );
+  }
+
   return (
     <main className="app-dashboard">
+      <ThemeDialog />
       <header className="dashboard-header">
         <h1 ref={headingRef} tabIndex={-1}>Scheduling Maestro</h1>
       </header>
@@ -63,22 +86,22 @@ export function DashboardPage({
         <div className="dashboard-section-heading">
           <h2 id="modules-heading">Scheduling Modules</h2>
         </div>
-        <nav className="module-card-grid" aria-label="Scheduling modules">
-          {SCHEDULING_MODULES.map((module) => (
-            <button
-              type="button"
-              key={module.key}
-              className={`module-card ${module.availability === "shell" ? "module-card-shell" : ""}`}
-              onClick={() => onOpenModule(module.key)}
-            >
-              <span className="module-card-title">{module.name}</span>
-              <span className="module-card-description">{module.description}</span>
-              <span className="module-card-action">
-                {module.availability === "available" ? "Open module" : "View module shell"}
-              </span>
-            </button>
-          ))}
-        </nav>
+        <div className="module-layout">
+          <nav className="module-card-grid" aria-label="Independent scheduling modules">
+            {INDEPENDENT_MODULE_KEYS.map(renderCard)}
+          </nav>
+          <nav className="module-dependency-row" aria-label="Accompanist to jury scheduling workflow">
+            {renderCard("accompanist")}
+            <div className="module-dependency" role="note">
+              <svg className="module-dependency-arrow" viewBox="0 0 64 12" aria-hidden="true" focusable="false">
+                <path d="M2 6h54" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="m50 1 8 5-8 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span className="module-dependency-caption">Uses finalized accompanist assignments</span>
+            </div>
+            {renderCard("juries")}
+          </nav>
+        </div>
       </section>
     </main>
   );

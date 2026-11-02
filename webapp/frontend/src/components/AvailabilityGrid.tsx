@@ -205,7 +205,7 @@ export const AvailabilityGrid = forwardRef<AvailabilityGridHandle, { pianist: Pi
         ))}
       </div>
       <div className="availability-actions">
-        <button onClick={save} disabled={!dirty || saving} className="primary-btn">
+        <button onClick={save} disabled={!dirty || saving}>
           {saving ? "Saving\u2026" : dirty ? "Save availability" : "Saved"}
         </button>
       </div>

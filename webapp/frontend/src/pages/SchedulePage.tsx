@@ -125,11 +125,11 @@ export function SchedulePage({ onImportLessons }: Props) {
         <button className="secondary-btn" onClick={onImportLessons} disabled={busy}>
           Import lessons from spreadsheet
         </button>
-        <button className="secondary-btn" onClick={addLesson}>
+        <button className="primary-btn" onClick={addLesson}>
           + Add lesson
         </button>
         <button
-          className="secondary-btn"
+          className="danger-btn"
           onClick={clearAssignments}
           disabled={busy || !lessons.some((lesson) => lesson.assigned_pianist_id !== null)}
         >

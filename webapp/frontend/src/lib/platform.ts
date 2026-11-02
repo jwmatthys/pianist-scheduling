@@ -194,3 +194,11 @@ export async function saveTextFile(
   const mimeType = extension.toLowerCase() === "md" ? "text/markdown;charset=utf-8" : "text/csv;charset=utf-8";
   return saveBinaryFile(new Blob([contents], { type: mimeType }), suggestedName, description, extension);
 }
+
+export function getLocalPreference(key: string): string | null {
+  return window.localStorage.getItem(key);
+}
+
+export function setLocalPreference(key: string, value: string): void {
+  window.localStorage.setItem(key, value);
+}

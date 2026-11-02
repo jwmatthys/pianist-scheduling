@@ -144,7 +144,7 @@ function InstructorDialog({
           <button type="button" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="primary-btn" disabled={saving}>
+          <button type="submit" className={instructor ? "" : "primary-btn"} disabled={saving}>
             {instructor ? "Save Changes" : "Add Instructor"}
           </button>
         </div>

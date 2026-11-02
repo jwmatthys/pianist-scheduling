@@ -96,7 +96,7 @@ export function TutorTagManagerDialog({
                     value={editing.name}
                     onChange={(event) => setEditing({ id: tag.id, name: event.target.value })}
                   />
-                  <button type="submit" className="primary-btn">
+                  <button type="submit">
                     Save
                   </button>
                   <button type="button" onClick={() => setEditing(null)}>

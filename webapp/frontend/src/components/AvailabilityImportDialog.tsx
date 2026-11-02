@@ -238,7 +238,7 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
           {success && <div className="availability-success" role="status">{success}</div>}
 
           <div className="availability-import-file-row">
-            <button type="button" className="primary-btn" disabled={busy} onClick={() => void selectFile()}>
+            <button type="button" disabled={busy} onClick={() => void selectFile()}>
               {inspection ? "Choose another file" : "Choose spreadsheet"}
             </button>
             <button type="button" className="template-download-button" disabled={busy} onClick={() => void saveAvailabilityTemplate()}>
@@ -343,7 +343,7 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
                                   columns={inspection.columns}
                                   onChange={(value) => changeWideWindow(day, index, "end_column", value)}
                                 />
-                                <button type="button" className="danger-btn small" onClick={() => updateMapping(() => setWideWindows((current) => ({
+                                <button type="button" onClick={() => updateMapping(() => setWideWindows((current) => ({
                                   ...current,
                                   [day]: current[day].filter((_, pairIndex) => pairIndex !== index),
                                 })))}>
@@ -384,7 +384,7 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
               </p>
 
               <div className="availability-import-actions">
-                <button type="button" className="primary-btn" disabled={busy} onClick={() => void createPreview()}>
+                <button type="button" disabled={busy} onClick={() => void createPreview()}>
                   {busy ? "Reviewing…" : "Preview and validate"}
                 </button>
               </div>
@@ -444,7 +444,7 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
                 </div>
               )}
               <div className="availability-import-actions">
-                <button type="button" className="primary-btn" disabled={busy || !preview.can_apply} onClick={() => void applyPreview()}>
+                <button type="button" className="danger-btn" disabled={busy || !preview.can_apply} onClick={() => void applyPreview()}>
                   {busy ? "Applying…" : "Apply availability"}
                 </button>
               </div>

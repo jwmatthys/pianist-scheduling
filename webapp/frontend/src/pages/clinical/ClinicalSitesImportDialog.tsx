@@ -128,7 +128,7 @@ export function ClinicalSitesImportDialog({
           </div>
         )}
         <div>
-          <button type="button" className="primary-btn" disabled={busy} onClick={() => void selectFile()}>
+          <button type="button" disabled={busy} onClick={() => void selectFile()}>
             {inspection ? "Choose another file" : "Choose spreadsheet"}
           </button>
         </div>
@@ -183,7 +183,6 @@ export function ClinicalSitesImportDialog({
             <div className="dialog-actions">
               <button
                 type="button"
-                className="primary-btn"
                 disabled={busy || missingRequired}
                 onClick={() => void runPreview()}
               >
@@ -249,7 +248,6 @@ export function ClinicalSitesImportDialog({
                 <div className="dialog-actions">
                   <button
                     type="button"
-                    className="primary-btn"
                     disabled={busy || !preview.can_apply}
                     onClick={() => setConfirming(true)}
                   >

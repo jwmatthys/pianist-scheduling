@@ -112,7 +112,7 @@ export function JuryPanelImportDialog({ onApplied }: Props) {
           {success && <div className="availability-success" role="status">{success}</div>}
 
           <div className="availability-import-file-row">
-            <button type="button" className="primary-btn" disabled={busy} onClick={() => void selectFile()}>
+            <button type="button" disabled={busy} onClick={() => void selectFile()}>
               {inspection ? "Choose another file" : "Choose spreadsheet"}
             </button>
           </div>
@@ -170,7 +170,7 @@ export function JuryPanelImportDialog({ onApplied }: Props) {
               </p>
 
               <div className="availability-import-actions">
-                <button type="button" className="primary-btn" disabled={busy || missingRequired} onClick={() => void applyImport()}>
+                <button type="button" className="danger-btn" disabled={busy || missingRequired} onClick={() => void applyImport()}>
                   {busy ? "Importing…" : "Import jury panels"}
                 </button>
               </div>

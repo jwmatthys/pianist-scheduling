@@ -24,7 +24,9 @@
 .find-on-page button {
   min-width: 2rem;
   padding: 0.25rem 0.45rem;
-  font: inherit;
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1.2;
   cursor: pointer;
 }
 

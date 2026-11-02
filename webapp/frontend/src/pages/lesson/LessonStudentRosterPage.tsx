@@ -147,7 +147,7 @@ function StudentDialog({
           <button type="button" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="primary-btn" disabled={saving}>
+          <button type="submit" className={student ? "" : "primary-btn"} disabled={saving}>
             {student ? "Save Student" : "Add Student"}
           </button>
         </div>

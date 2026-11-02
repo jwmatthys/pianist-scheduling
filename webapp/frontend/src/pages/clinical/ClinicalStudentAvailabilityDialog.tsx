@@ -106,7 +106,7 @@ export function ClinicalStudentAvailabilityDialog({
         <button type="button" onClick={requestClose}>
           Cancel
         </button>
-        <button type="button" className="primary-btn" disabled={!cells || saving} onClick={() => void save()}>
+        <button type="button" disabled={!cells || saving} onClick={() => void save()}>
           Save Availability
         </button>
       </div>

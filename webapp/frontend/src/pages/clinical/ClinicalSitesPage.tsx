@@ -214,7 +214,7 @@ function OpportunityDialog({
           <button type="button" onClick={onClose}>
             {opportunity ? "Close" : "Cancel"}
           </button>
-          <button type="submit" className="primary-btn" disabled={saving}>
+          <button type="submit" className={opportunity ? "" : "primary-btn"} disabled={saving}>
             {opportunity ? "Save Changes" : "Add Opportunity"}
           </button>
         </div>
@@ -304,6 +304,7 @@ function TagManagerDialog({
       <div className="clinical-tag-add">
         <button
           type="button"
+          className="danger-btn"
           disabled={unusedTags.length === 0}
           onClick={() => setConfirmingUnused(true)}
         >
@@ -327,7 +328,7 @@ function TagManagerDialog({
                   value={editing.name}
                   onChange={(event) => setEditing({ id: tag.id, name: event.target.value })}
                 />
-                <button type="submit" className="primary-btn">
+                <button type="submit">
                   Save
                 </button>
                 <button type="button" onClick={() => setEditing(null)}>

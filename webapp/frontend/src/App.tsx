@@ -13,8 +13,9 @@ import { TutorModule } from "./pages/TutorModule";
 import { AccompanistModule, type AccompanistModuleHandle } from "./pages/AccompanistModule";
 import { DashboardPage } from "./pages/DashboardPage";
 import { JurySetupPage } from "./pages/JurySetupPage";
+import { ThemeProvider } from "./theme/ThemeContext";
 
-function App() {
+function AppContent() {
   const [activeModule, setActiveModule] = useState<ModuleKey | null>(null);
   const [session, setSession] = useState<SchedulingSession | null>(null);
   const [editingSession, setEditingSession] = useState(false);
@@ -179,7 +180,7 @@ function App() {
             <button type="button" className="secondary-btn" disabled={busy} onClick={() => newSessionDialogRef.current?.close()}>
               Cancel
             </button>
-            <button type="submit" className="primary-btn" disabled={busy}>
+            <button type="submit" className={editingSession ? "" : "primary-btn"} disabled={busy}>
               {busy ? "Working…" : editingSession ? "Update Session" : "Create Session"}
             </button>
           </div>
@@ -189,4 +190,10 @@ function App() {
   );
 }
 
-export default App;
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
+  );
+}

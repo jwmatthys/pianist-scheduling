@@ -133,7 +133,7 @@ export function ImportPage({ onImported }: { onImported: () => void }) {
             </table>
           </div>
 
-          <button className="primary-btn" onClick={commit} disabled={busy}>
+          <button className="danger-btn" onClick={commit} disabled={busy}>
             {busy ? "Importing\u2026" : "Import lessons"}
           </button>
         </>

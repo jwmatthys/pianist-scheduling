@@ -1,12 +1,15 @@
 import { unzlibSync } from "fflate";
-import type { ThemePalette } from "./themeLoader";
-import { validateThemePalette } from "./themeLoader";
+import type { ThemePalette } from "./ThemePalette";
+import { validateThemePalette } from "./themeValidation";
 
 export const THEME_PNG_WIDTH = 40;
 export const THEME_PNG_HEIGHT = 16;
 export const THEME_PNG_CELL_SIZE = 8;
 
 const PNG_SIGNATURE = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+// Each tuple is [palette key, zero-based cell column, zero-based cell row].
+// Sample centers are primary(4,4), accent(12,4), background(20,4), surface(28,4), text(36,4),
+// textMuted(4,12), border(12,12), success(20,12), warning(28,12), and error(36,12).
 const PALETTE_CELLS = [
   ["primary", 0, 0],
   ["accent", 1, 0],
@@ -20,8 +23,16 @@ const PALETTE_CELLS = [
   ["error", 4, 1],
 ] as const satisfies readonly (readonly [keyof ThemePalette, number, number])[];
 
+export type ThemePngErrorCode =
+  | "PNG_INVALID"
+  | "PNG_DIMENSIONS_INVALID"
+  | "PNG_FORMAT_UNSUPPORTED"
+  | "PNG_IMAGE_DATA_MISSING"
+  | "PNG_IMAGE_DATA_INVALID"
+  | "PALETTE_INVALID";
+
 export class ThemePngError extends Error {
-  constructor(message: string) {
+  constructor(message: string, readonly code: ThemePngErrorCode = "PNG_INVALID") {
     super(message);
     this.name = "ThemePngError";
   }
@@ -40,10 +51,13 @@ export function parseThemePalettePng(input: ArrayBuffer | Uint8Array): ThemePale
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   const image = decodePng(bytes);
   if (image.width !== THEME_PNG_WIDTH || image.height !== THEME_PNG_HEIGHT) {
-    throw new ThemePngError(`Theme PNG must be exactly ${THEME_PNG_WIDTH}x${THEME_PNG_HEIGHT} pixels.`);
+    throw new ThemePngError(
+      `Theme PNG must be exactly ${THEME_PNG_WIDTH}x${THEME_PNG_HEIGHT} pixels.`,
+      "PNG_DIMENSIONS_INVALID",
+    );
   }
   if (image.bitDepth !== 8 || (image.colorType !== 2 && image.colorType !== 6) || image.interlace !== 0) {
-    throw new ThemePngError("Theme PNG must use non-interlaced 8-bit RGB or RGBA color.");
+    throw new ThemePngError("Theme PNG must use non-interlaced 8-bit RGB or RGBA color.", "PNG_FORMAT_UNSUPPORTED");
   }
 
   const channels = image.colorType === 2 ? 3 : 4;
@@ -56,7 +70,7 @@ export function parseThemePalettePng(input: ArrayBuffer | Uint8Array): ThemePale
     const y = row * THEME_PNG_CELL_SIZE + Math.floor(THEME_PNG_CELL_SIZE / 2);
     const offset = y * rowLength + x * channels;
     if (channels === 4 && decoded[offset + 3] !== 255) {
-      throw new ThemePngError(`Theme PNG palette cell "${name}" must be fully opaque.`);
+      throw new ThemePngError(`Theme PNG palette cell "${name}" must be fully opaque.`, "PALETTE_INVALID");
     }
     palette[name] = `#${[0, 1, 2].map((channel) => decoded[offset + channel].toString(16).padStart(2, "0")).join("")}`;
   }
@@ -64,7 +78,10 @@ export function parseThemePalettePng(input: ArrayBuffer | Uint8Array): ThemePale
   try {
     return validateThemePalette(palette);
   } catch (error) {
-    throw new ThemePngError(error instanceof Error ? error.message : "Theme PNG palette is invalid.");
+    throw new ThemePngError(
+      error instanceof Error ? error.message : "Theme PNG palette is invalid.",
+      "PALETTE_INVALID",
+    );
   }
 }
 
@@ -111,10 +128,16 @@ function decodePng(bytes: Uint8Array): PngImage {
         interlace: data[12],
       };
       if (header.width !== THEME_PNG_WIDTH || header.height !== THEME_PNG_HEIGHT) {
-        throw new ThemePngError(`Theme PNG must be exactly ${THEME_PNG_WIDTH}x${THEME_PNG_HEIGHT} pixels.`);
+        throw new ThemePngError(
+          `Theme PNG must be exactly ${THEME_PNG_WIDTH}x${THEME_PNG_HEIGHT} pixels.`,
+          "PNG_DIMENSIONS_INVALID",
+        );
       }
       if (header.bitDepth !== 8 || (header.colorType !== 2 && header.colorType !== 6) || header.interlace !== 0) {
-        throw new ThemePngError("Theme PNG must use non-interlaced 8-bit RGB or RGBA color.");
+        throw new ThemePngError(
+          "Theme PNG must use non-interlaced 8-bit RGB or RGBA color.",
+          "PNG_FORMAT_UNSUPPORTED",
+        );
       }
       if (data[10] !== 0 || data[11] !== 0) {
         throw new ThemePngError("Theme PNG uses unsupported compression or filtering.");
@@ -132,7 +155,10 @@ function decodePng(bytes: Uint8Array): PngImage {
     } else if (type === "tRNS") {
       throw new ThemePngError("Theme PNG transparency-key chunks are not supported.");
     } else if (type === "IEND") {
-      if (length !== 0 || !sawImageData) throw new ThemePngError("Theme PNG has an invalid IEND chunk.");
+      if (!sawImageData) {
+        throw new ThemePngError("Theme PNG is missing image data.", "PNG_IMAGE_DATA_MISSING");
+      }
+      if (length !== 0) throw new ThemePngError("Theme PNG has an invalid IEND chunk.");
       sawEnd = true;
       offset = crcEnd;
       break;
@@ -147,7 +173,7 @@ function decodePng(bytes: Uint8Array): PngImage {
   }
 
   if (!sawEnd || !header || offset !== bytes.length) {
-    throw new ThemePngError("Theme PNG is incomplete or contains trailing data.");
+    throw new ThemePngError("Theme PNG is incomplete or contains trailing data.", "PNG_IMAGE_DATA_MISSING");
   }
 
   const compressed = new Uint8Array(imageDataLength);
@@ -161,7 +187,7 @@ function decodePng(bytes: Uint8Array): PngImage {
   try {
     imageData = unzlibSync(compressed);
   } catch {
-    throw new ThemePngError("Theme PNG image data is corrupt.");
+    throw new ThemePngError("Theme PNG image data is corrupt.", "PNG_IMAGE_DATA_INVALID");
   }
 
   return { ...header, imageData };
@@ -171,7 +197,7 @@ function unfilterImageData(data: Uint8Array, width: number, height: number, chan
   const rowLength = width * channels;
   const expectedLength = (rowLength + 1) * height;
   if (data.length !== expectedLength) {
-    throw new ThemePngError("Theme PNG image data has an invalid length.");
+    throw new ThemePngError("Theme PNG image data has an invalid length.", "PNG_IMAGE_DATA_INVALID");
   }
 
   const pixels = new Uint8Array(rowLength * height);

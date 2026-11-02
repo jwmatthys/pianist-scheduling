@@ -114,7 +114,7 @@ export function LessonAvailabilityDialog({
         <button type="button" onClick={requestClose}>
           Cancel
         </button>
-        <button type="button" className="primary-btn" disabled={!cells || saving} onClick={() => void submit()}>
+        <button type="button" disabled={!cells || saving} onClick={() => void submit()}>
           Save Availability
         </button>
       </div>
