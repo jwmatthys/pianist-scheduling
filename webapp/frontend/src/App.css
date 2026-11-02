@@ -1126,14 +1126,16 @@ button:disabled {
 }
 
 .lesson-jury-required-control {
-  display: inline-flex;
+  display: flex;
+  justify-content: center;
   align-items: center;
   gap: 0.35rem;
   white-space: nowrap;
 }
 
 .lesson-pianist-required-control {
-  display: inline-flex;
+  display: flex;
+  justify-content: center;
   align-items: center;
   gap: 0.35rem;
   white-space: nowrap;
@@ -1146,13 +1148,9 @@ button:disabled {
   white-space: normal;
 }
 
-.lesson-pianist-required-control input {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--theme-primary);
-}
-
+.lesson-pianist-required-control input,
 .lesson-jury-required-control input {
+  margin: 0;
   width: 16px;
   height: 16px;
   accent-color: var(--theme-primary);
