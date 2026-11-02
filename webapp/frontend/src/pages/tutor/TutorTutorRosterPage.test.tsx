@@ -47,6 +47,8 @@ const tutor = (overrides: Partial<TutorTutor> = {}): TutorTutor => ({
   capacity: 1,
   tags: [],
   availability_window_count: 0,
+  available_minutes: 0,
+  tentative_minutes: 0,
   created_at: "2026-01-01T00:00:00",
   updated_at: "2026-01-01T00:00:00",
   ...overrides,
@@ -64,6 +66,7 @@ const inspection: TutorTutorImportInspection = {
     lesson_length: null,
     capacity: null,
     days: { Monday: "Mon" },
+    tags: "Specialty",
   },
 };
 
@@ -141,6 +144,19 @@ describe("Tutor Roster", () => {
         tag_ids: ["t1"],
       }),
     );
+  });
+
+  it("summarizes available and tentative hours on separate lines instead of a window count", async () => {
+    vi.mocked(api.listTutorTutors).mockResolvedValue([
+      tutor({ id: "a", name: "Ada Example", availability_window_count: 3, available_minutes: 450, tentative_minutes: 60 }),
+      tutor({ id: "b", name: "Ben Example", availability_window_count: 0 }),
+    ]);
+    render(<TutorTutorRosterPage />);
+    await screen.findByText("Ada Example");
+    expect(screen.getByText("Available: 7.5 hrs")).toBeTruthy();
+    expect(screen.getByText("Tentative: 1 hr")).toBeTruthy();
+    expect(screen.queryByText(/windows?$/)).toBeNull();
+    expect(screen.getByText("Not set")).toBeTruthy();
   });
 
   it("edits a tutor and updates tags in the same save", async () => {

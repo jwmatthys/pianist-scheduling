@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Iterable, Mapping, Sequence
 
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from .. import models
@@ -404,6 +404,20 @@ class LessonRepository:
             .group_by(LessonInstructorAvailabilityWindow.instructor_id)
             .all()
         )
+
+    def instructor_availability_minutes(self) -> dict[str, tuple[int, int]]:
+        """Weekly (Available, Tentative) minutes per instructor; Unavailable windows are not counted."""
+        duration = LessonInstructorAvailabilityWindow.end_minute - LessonInstructorAvailabilityWindow.start_minute
+        rows = (
+            self.db.query(
+                LessonInstructorAvailabilityWindow.instructor_id,
+                func.coalesce(func.sum(case((LessonInstructorAvailabilityWindow.status == "Available", duration), else_=0)), 0),
+                func.coalesce(func.sum(case((LessonInstructorAvailabilityWindow.status == "Tentative", duration), else_=0)), 0),
+            )
+            .group_by(LessonInstructorAvailabilityWindow.instructor_id)
+            .all()
+        )
+        return {key: (int(available), int(tentative)) for key, available, tentative in rows}
 
     # --- availability -------------------------------------------------
 

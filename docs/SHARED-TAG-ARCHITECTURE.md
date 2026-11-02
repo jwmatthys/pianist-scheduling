@@ -392,7 +392,10 @@ Advanced
 
 ## Multiple Tag Columns
 
-Modules may define multiple tag-related columns.
+Modules may define multiple tag-related columns when each carries a distinct
+module-defined meaning (for example Required, Preferred, and Restricted). Current
+Sites, Instructor, and Tutor rosters import tags through exactly one Tags column;
+mapping several columns into one tag list is not supported.
 
 Example:
 

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useScrollToPreview } from "../../lib/useScrollToPreview";
 import { api } from "../../lib/api";
 import { chooseLocalFile } from "../../lib/platform";
 import type {
@@ -8,6 +9,7 @@ import type {
   LessonInstructorImportPreview,
 } from "../../lib/types";
 import { ConfirmDialog, Modal } from "../clinical/ClinicalDialogs";
+import { ImportTemplateLinks } from "../../components/ImportTemplateLinks";
 
 const FIELDS: { key: LessonInstructorImportField; label: string; required: boolean }[] = [
   { key: "instructor_name", label: "Instructor Name", required: true },
@@ -15,6 +17,7 @@ const FIELDS: { key: LessonInstructorImportField; label: string; required: boole
   { key: "room", label: "Room", required: false },
   { key: "lesson_length", label: "Lesson Length", required: false },
   { key: "capacity", label: "Capacity", required: false },
+  { key: "tags", label: "Tags", required: false },
 ];
 const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -61,6 +64,7 @@ export function LessonInstructorImportDialog({
   const [inspection, setInspection] = useState<LessonInstructorImportInspection | null>(null);
   const [mapping, setMapping] = useState<LessonInstructorImportMapping | null>(null);
   const [preview, setPreview] = useState<LessonInstructorImportPreview | null>(null);
+  const previewRef = useScrollToPreview<HTMLElement>(preview);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -155,10 +159,11 @@ export function LessonInstructorImportDialog({
             {error}
           </div>
         )}
-        <div>
+        <div className="availability-import-file-row">
           <button type="button" disabled={busy} onClick={() => void selectFile()}>
             {inspection ? "Choose another file" : "Choose spreadsheet"}
           </button>
+          <ImportTemplateLinks template="lessonInstructors" disabled={busy} />
         </div>
 
         {inspection && mapping && (
@@ -209,9 +214,7 @@ export function LessonInstructorImportDialog({
               </div>
               <p className="dialog-note">
                 Weekday cells list Availability Windows such as 8:00 AM-12:00 PM; prefix an entry with T for
-                Tentative and separate entries with semicolons. Blank cells mean no availability. Every column not
-                mapped above is read as tags: each nonblank cell is exactly one tag (not split on commas or
-                semicolons), and the column heading is ignored. Lesson Length defaults to 60 minutes and Capacity to 1
+                Tentative and separate entries with semicolons. Blank cells mean no availability. Map one column to Tags and separate multiple tags in a cell with semicolons. Lesson Length defaults to 60 minutes and Capacity to 1
                 when omitted.
               </p>
             </section>
@@ -227,14 +230,14 @@ export function LessonInstructorImportDialog({
             </div>
 
             {preview && (
-              <section aria-label="Import preview">
+              <section aria-label="Import preview" ref={previewRef}>
                 <h3>Preview</h3>
                 <p role="status">
                   {preview.total_rows} {preview.total_rows === 1 ? "row" : "rows"}: {preview.valid_rows} valid,{" "}
                   {preview.invalid_rows} with errors.
                 </p>
                 <p className="muted">
-                  Tag columns: {preview.tag_columns.length ? preview.tag_columns.join(", ") : "none"}. New tags:{" "}
+                  Tags column: {preview.tag_columns.length ? preview.tag_columns[0] : "none"}. New tags:{" "}
                   {preview.new_tags.length ? preview.new_tags.join(", ") : "none"}. Existing tags reused:{" "}
                   {preview.reused_tags.length ? preview.reused_tags.join(", ") : "none"}.
                 </p>

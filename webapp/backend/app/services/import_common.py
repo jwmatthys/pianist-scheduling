@@ -39,6 +39,21 @@ def cell_text(value: object) -> str:
     return str(value).strip()
 
 
+TAG_HEADER_ALIASES = ("tags", "tag", "tag names", "tag list")
+
+
+def split_tag_cell(value: object) -> list[str]:
+    """Split a tag cell on semicolons, trimming whitespace and dropping empty values."""
+    return [part.strip() for part in cell_text(value).split(";") if part.strip()]
+
+
+def suggest_tags_column(columns: list[str], taken: set[str]) -> str | None:
+    """Suggest an unmapped column whose header contains the word "tag"; exact "Tags" headers win."""
+    free = [column for column in columns if column not in taken]
+    exact = next((c for c in free if header_key(c) in TAG_HEADER_ALIASES), None)
+    return exact or next((c for c in free if "tag" in c.casefold()), None)
+
+
 def read_frame(filename: str, content: bytes, sheet_name: str | None) -> tuple[pd.DataFrame, list[str], str | None]:
     if len(content) > MAX_UPLOAD_BYTES:
         raise ImportFileError("FILE_TOO_LARGE", "Import files must be 25 MB or smaller.")

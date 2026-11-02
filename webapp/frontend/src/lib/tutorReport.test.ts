@@ -46,6 +46,8 @@ function tutor(overrides: Partial<TutorTutor>): TutorTutor {
     capacity: 3,
     tags: [],
     availability_window_count: 1,
+    available_minutes: 60,
+    tentative_minutes: 0,
     created_at: "",
     updated_at: "",
     ...overrides,

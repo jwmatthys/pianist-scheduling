@@ -15,10 +15,11 @@ from app.services import clinical_sites_importer as importer
 from app.services.time_parsing import parse_time_of_day
 from tests.test_clinical_foundation import ClinicalTestCase, opportunity_input
 
-HEADERS = ["Site", "Address", "Day", "Start", "End", "Session", "Travel", "Cap", "Pop", "Focus"]
+HEADERS = ["Site", "Address", "Day", "Start", "End", "Session", "Travel", "Cap", "Tags", "Notes"]
 MAPPING = {
     "site_name": "Site", "site_address": "Address", "day_of_week": "Day", "start_time": "Start",
     "end_time": "End", "session_length": "Session", "travel_time": "Travel", "capacity": "Cap",
+    "tags": "Tags",
 }
 
 
@@ -32,7 +33,7 @@ def xlsx_bytes(rows, headers=HEADERS) -> bytes:
     return buffer.getvalue()
 
 
-GOOD_ROW = ["Synthetic Clinic", "1 Example Way", "tue", "8:00 AM", "5:00 PM", 60, 15, 2, "mental health", "Pediatric"]
+GOOD_ROW = ["Synthetic Clinic", "1 Example Way", "tue", "8:00 AM", "5:00 PM", 60, 15, 2, "mental health; Pediatric", "ignored"]
 
 
 def mapping(**overrides):
@@ -91,21 +92,48 @@ class ParsingTests(unittest.TestCase):
         blank = parse([GOOD_ROW[:7] + [None] + GOOD_ROW[8:]]).rows[0]
         self.assertEqual((blank.capacity, blank.errors), (1, []))
 
-    def test_tags_one_cell_one_tag_no_splitting_and_collapse(self):
-        row = GOOD_ROW[:8] + ["a, b; c", "  A, B; C  "]
+    def test_tag_cells_split_on_semicolons_and_collapse(self):
+        row = GOOD_ROW[:8] + ["a, b; c; A, B ;; ", "x"]
         site = parse([row]).rows[0]
-        self.assertEqual(site.tags, ["A, B; C"])
-        row = GOOD_ROW[:8] + ["kids", "KIDS"]
+        self.assertEqual(site.tags, ["A, B", "C"])
+        row = GOOD_ROW[:8] + ["kids; KIDS", "x"]
         self.assertEqual(parse([row]).rows[0].tags, ["KIDS"])
-        row = GOOD_ROW[:8] + ["", None]
+        row = GOOD_ROW[:8] + ["", "x"]
         self.assertEqual(parse([row]).rows[0].tags, [])
 
-    def test_unmapped_columns_become_tag_columns_regardless_of_heading(self):
-        parsed = parse([GOOD_ROW])
-        self.assertEqual(parsed.tag_columns, ["Pop", "Focus"])
-        parsed = parse([GOOD_ROW], capacity=None)
-        self.assertEqual(parsed.tag_columns, ["Cap", "Pop", "Focus"])
-        self.assertEqual(parsed.rows[0].tags, ["2", "MENTAL HEALTH", "PEDIATRIC"])
+    def test_unmapped_columns_never_become_tags(self):
+        parsed = parse([GOOD_ROW], tags=None)
+        self.assertEqual((parsed.tag_columns, parsed.rows[0].tags), ([], []))
+        parsed = parse([GOOD_ROW], tags="Notes")
+        self.assertEqual((parsed.tag_columns, parsed.rows[0].tags), (["Notes"], ["IGNORED"]))
+        parsed = parse([GOOD_ROW], capacity=None, tags="Tags")
+        self.assertEqual(parsed.rows[0].tags, ["MENTAL HEALTH", "PEDIATRIC"])
+
+    def test_one_tags_column_holds_semicolon_separated_tags(self):
+        headers = ["Site", "Day", "Start", "End", "Session", "Tags"]
+        data = csv_bytes([["A", "Mon", "8:00", "9:00", 30, "Mental Health; Virtual ; mental health;"]], headers)
+        inspection = importer.inspect_file("s.csv", data, None)
+        self.assertEqual(inspection.suggested_mapping["tags"], "Tags")
+        parsed = importer.parse_sites("s.csv", data, None, importer.ClinicalSitesImportMapping(
+            site_name="Site", day_of_week="Day", start_time="Start", end_time="End", session_length="Session",
+            tags="Tags",
+        ))
+        self.assertEqual(parsed.rows[0].tags, ["MENTAL HEALTH", "VIRTUAL"])
+
+    def test_tag_column_mapping_is_validated(self):
+        for bad in ("Missing", "Site"):
+            with self.assertRaises(importer.ClinicalSitesImportError):
+                parse([GOOD_ROW], tags=bad)
+
+    def test_columns_containing_tag_are_suggested_for_tags(self):
+        headers = ["Site Name", "Day of Week", "Start Time", "End Time", "Session Length", "Site Tag List"]
+        inspection = importer.inspect_file("s.csv", csv_bytes([["A", "Mon", "8:00", "9:00", 30, "x"]], headers), None)
+        self.assertEqual(inspection.suggested_mapping["tags"], "Site Tag List")
+
+    def test_unlabeled_columns_are_not_suggested_as_tags(self):
+        headers = ["Site Name", "Day of Week", "Start Time", "End Time", "Session Length", "Misc"]
+        inspection = importer.inspect_file("s.csv", csv_bytes([["A", "Mon", "8:00", "9:00", 30, "x"]], headers), None)
+        self.assertIsNone(inspection.suggested_mapping["tags"])
 
     def test_blank_rows_skipped_and_row_numbers_match_sheet(self):
         parsed = parse([[None] * 10, GOOD_ROW])
@@ -193,7 +221,7 @@ class ReplacementTests(ClinicalTestCase):
     def test_full_replacement_preserves_registry_and_students(self):
         student = self.seed()
         before = self.repo.get_state().source_data_revision
-        result = self.apply([GOOD_ROW, ["Second", "", "Wed", "9:00", "11:00", 30, 0, 1, "", "PEDIATRIC"]])
+        result = self.apply([GOOD_ROW, ["Second", "", "Wed", "9:00", "11:00", 30, 0, 1, "PEDIATRIC", ""]])
         self.assertEqual(
             (result.opportunities_removed, result.placements_removed, result.opportunities_created, result.tags_created),
             (1, 1, 2, 1),

@@ -33,6 +33,21 @@ class JuryPanelImportTests(unittest.TestCase):
         inspection = importer.inspect_file("panels.csv", csv.encode(), None)
         return importer.JuryPanelImportMapping(**inspection.suggested_mapping)
 
+    def test_preview_validates_and_reports_impact_without_writing(self):
+        csv = HEADER + "2026-12-01,Voice,Room A,9:00 AM,,20,No,,,No,,\n"
+        with Session(self.engine) as db:
+            create_panel(db, JuryPanelFields(
+                panel_name="Old", jury_date=date(2026, 11, 1),
+                earliest_start_minute=540, jury_length_minutes=20,
+            ))
+            preview = importer.preview_import(db, "panels.csv", csv.encode(), None, self.mapping(csv))
+            self.assertEqual([p.panel_name for p in preview.panels], ["Voice"])
+            self.assertEqual((preview.panels_to_remove, preview.assignments_to_clear), (1, 0))
+            self.assertEqual([p.panel_name for p in list_panels(db)], ["Old"])
+            with self.assertRaises(importer.JuryPanelImportError):
+                bad = HEADER + "not a date,Voice,,9:00,,20,No,,,No,,\n"
+                importer.preview_import(db, "panels.csv", bad.encode(), None, self.mapping(bad))
+
     def test_import_replaces_panels_and_clears_assignments(self):
         csv = HEADER + (
             "2026-12-01,Voice,Room A,9:00 AM,9:30 AM,20,Yes,4,10,Yes,12:00,13:00\n"

@@ -61,10 +61,9 @@ export function WeeklyAvailabilityEditor({
         <span className="legend-chip slot-available">Available</span>
         <span className="legend-chip slot-tentative">Tentative</span>
         <span className="legend-chip slot-unavailable">Unavailable</span>
-        <span className="legend-chip slot-unset">Unmarked</span>
         <span className="legend-hint">
           Click to cycle Available, Tentative, and Unavailable; drag to paint; right-click for Unavailable. Unmarked
-          cells are saved as Unavailable.
+          cells look the same as Unavailable and are saved as Unavailable.
         </span>
       </div>
       <div className="availability-grid" style={{ gridTemplateColumns: `90px repeat(${WEEK_DAYS.length}, 1fr)` }}>

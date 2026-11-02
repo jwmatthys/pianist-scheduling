@@ -60,10 +60,13 @@ export const AccompanistModule = forwardRef<AccompanistModuleHandle>(function Ac
         )}
         {tab === "reports" && <ReportsPage />}
       </div>
-      <dialog className="lesson-import-dialog" ref={lessonImportDialogRef}>
-        <div className="lesson-import-dialog-content">
-          <header className="lesson-import-dialog-heading">
-            <h2>Import lessons from spreadsheet</h2>
+      <dialog className="availability-import-dialog" ref={lessonImportDialogRef}>
+        <div className="availability-import-content">
+          <header className="availability-import-heading">
+            <div>
+              <h2>Import Lessons</h2>
+              <p className="muted">CSV, XLSX, or XLS</p>
+            </div>
             <button type="button" className="dialog-close" aria-label="Close" onClick={() => lessonImportDialogRef.current?.close()}>
               ×
             </button>

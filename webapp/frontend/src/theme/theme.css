@@ -57,6 +57,8 @@
   --status-available-soft: var(--theme-success-soft);
   --status-tentative-soft: var(--theme-warning-soft);
   --status-unavailable-soft: var(--theme-unavailable-soft);
+  --status-available-cell: color-mix(in srgb, var(--theme-success) 40%, var(--theme-surface));
+  --status-tentative-cell: color-mix(in srgb, var(--theme-warning) 40%, var(--theme-surface));
   --status-ready-soft: var(--theme-success-soft);
   --status-warning-soft: var(--theme-warning-soft);
   --status-stale-soft: var(--theme-warning-soft);

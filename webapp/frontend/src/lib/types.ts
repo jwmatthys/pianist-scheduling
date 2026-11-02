@@ -199,6 +199,21 @@ export interface JuryPanelImportInspection {
   suggested_mapping: JuryPanelImportMapping;
 }
 
+export interface JuryPanelImportPreviewPanel {
+  panel_name: string;
+  room: string;
+  jury_date: string;
+  earliest_start_minute: number;
+  preferred_start_minute: number | null;
+  jury_length_minutes: number;
+}
+
+export interface JuryPanelImportPreview {
+  panels: JuryPanelImportPreviewPanel[];
+  panels_to_remove: number;
+  assignments_to_clear: number;
+}
+
 export interface JuryPanelImportResult {
   panels_removed: number;
   assignments_cleared: number;
@@ -433,7 +448,8 @@ export type ClinicalSitesImportField =
   | "end_time"
   | "session_length"
   | "travel_time"
-  | "capacity";
+  | "capacity"
+  | "tags";
 
 export type ClinicalSitesImportMapping = Record<ClinicalSitesImportField, string | null>;
 
@@ -669,6 +685,8 @@ export interface LessonInstructor extends LessonInstructorFields {
   id: string;
   tags: { id: string; name: string }[];
   availability_window_count: number;
+  available_minutes: number;
+  tentative_minutes: number;
   created_at: string;
   updated_at: string;
 }
@@ -678,7 +696,8 @@ export type LessonInstructorImportField =
   | "instructor_email"
   | "room"
   | "lesson_length"
-  | "capacity";
+  | "capacity"
+  | "tags";
 
 export interface LessonInstructorImportMapping {
   instructor_name: string | null;
@@ -687,6 +706,7 @@ export interface LessonInstructorImportMapping {
   lesson_length: string | null;
   capacity: string | null;
   days: Record<string, string | null>;
+  tags: string | null;
 }
 
 export interface LessonInstructorImportInspection {
@@ -904,6 +924,8 @@ export interface TutorTutor extends TutorTutorFields {
   id: string;
   tags: { id: string; name: string }[];
   availability_window_count: number;
+  available_minutes: number;
+  tentative_minutes: number;
   created_at: string;
   updated_at: string;
 }
@@ -913,7 +935,8 @@ export type TutorTutorImportField =
   | "tutor_email"
   | "room"
   | "lesson_length"
-  | "capacity";
+  | "capacity"
+  | "tags";
 
 export interface TutorTutorImportMapping {
   tutor_name: string | null;
@@ -922,6 +945,7 @@ export interface TutorTutorImportMapping {
   lesson_length: string | null;
   capacity: string | null;
   days: Record<string, string | null>;
+  tags: string | null;
 }
 
 export interface TutorTutorImportInspection {

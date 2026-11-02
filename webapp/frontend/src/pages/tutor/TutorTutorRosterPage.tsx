@@ -5,6 +5,7 @@ import { ConfirmDialog, Modal } from "../clinical/ClinicalDialogs";
 import { TutorTutorAvailabilityDialog } from "./TutorTutorAvailabilityDialog";
 import { TutorTutorImportDialog } from "./TutorTutorImportDialog";
 import { TutorTagChip, TutorTagManagerDialog } from "./TutorTagManagerDialog";
+import { formatHours } from "../../lib/availabilityHours";
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -248,9 +249,14 @@ export function TutorTutorRosterPage() {
                 <td>{item.lesson_length_minutes} min</td>
                 <td>{item.capacity}</td>
                 <td>
-                  {item.availability_window_count === 0
-                    ? "Not set"
-                    : `${item.availability_window_count} ${item.availability_window_count === 1 ? "window" : "windows"}`}
+                  {item.availability_window_count === 0 ? (
+                    "Not set"
+                  ) : (
+                    <>
+                      <div>Available: {formatHours(item.available_minutes)}</div>
+                      <div>Tentative: {formatHours(item.tentative_minutes)}</div>
+                    </>
+                  )}
                 </td>
                 <td>
                   {item.tags.map((tag) => (

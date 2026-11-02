@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useScrollToPreview } from "../../lib/useScrollToPreview";
 import { api } from "../../lib/api";
 import { chooseLocalFile } from "../../lib/platform";
 import type {
@@ -8,6 +9,7 @@ import type {
   ClinicalStudentsImportPreview,
 } from "../../lib/types";
 import { ConfirmDialog, Modal } from "./ClinicalDialogs";
+import { ImportTemplateLinks } from "../../components/ImportTemplateLinks";
 
 const FIELDS: { key: ClinicalStudentsImportField; label: string; required: boolean }[] = [
   { key: "student_id", label: "Student ID", required: true },
@@ -32,6 +34,7 @@ export function ClinicalStudentRosterImportDialog({
   const [inspection, setInspection] = useState<ClinicalStudentsImportInspection | null>(null);
   const [mapping, setMapping] = useState<ClinicalStudentsImportMapping | null>(null);
   const [preview, setPreview] = useState<ClinicalStudentsImportPreview | null>(null);
+  const previewRef = useScrollToPreview<HTMLElement>(preview);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -130,10 +133,11 @@ export function ClinicalStudentRosterImportDialog({
             {error}
           </div>
         )}
-        <div>
+        <div className="availability-import-file-row">
           <button type="button" disabled={busy} onClick={() => void selectFile()}>
             {inspection ? "Choose another file" : "Choose spreadsheet"}
           </button>
+          <ImportTemplateLinks template="clinicalStudents" disabled={busy} />
         </div>
 
         {inspection && mapping && (
@@ -215,7 +219,7 @@ export function ClinicalStudentRosterImportDialog({
             </div>
 
             {preview && (
-              <section aria-label="Import preview">
+              <section aria-label="Import preview" ref={previewRef}>
                 <h3>Preview</h3>
                 <p role="status">
                   {preview.total_rows} {preview.total_rows === 1 ? "row" : "rows"}: {preview.valid_rows} valid,{" "}

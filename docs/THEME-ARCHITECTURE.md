@@ -398,3 +398,7 @@ local custom PNG is already implemented.
 6. Add theme switching later.
 
 Preserve current visual appearance until theme switching is intentionally introduced.
+
+## Availability Cell Contrast
+
+Available and Tentative scheduling cells (`.slot-available`, `.slot-tentative`) use the derived tokens `--status-available-cell` and `--status-tentative-cell` (a 40% mix of Success/Warning with Surface) plus a 2px inner outline in the status color. The outline provides the 3:1 non-text boundary against the surface (WCAG 1.4.11) and the fill keeps legend text above 4.5:1 in both built-in themes; `availabilityCellContrast.test.ts` enforces both. The softer `*-soft` tokens remain for banners and row tints.

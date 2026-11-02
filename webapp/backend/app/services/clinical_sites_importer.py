@@ -1,7 +1,8 @@
 """Local CSV/XLSX/XLS parsing and validation for Clinical Sites import.
 
 This module is pure parsing: it never touches the database. The router combines it
-with ClinicalRepository.replace_opportunities for the commit phase.
+with ClinicalRepository.replace_opportunities for the commit phase. Tags come only from the single
+column explicitly mapped to Tags (semicolon-separated); unmapped columns never become tags.
 """
 
 from __future__ import annotations
@@ -21,6 +22,8 @@ from .import_common import (
     header_key as _header_key,
     is_blank as _is_blank,
     read_frame as _frame,
+    split_tag_cell,
+    suggest_tags_column,
 )
 from .availability import normalize_day
 from .time_parsing import parse_time_of_day
@@ -78,6 +81,7 @@ class ClinicalSitesImportMapping(BaseModel):
     session_length: str | None = None
     travel_time: str | None = None
     capacity: str | None = None
+    tags: str | None = None
 
 
 class ClinicalSitesImportPreviewRow(BaseModel):
@@ -146,6 +150,7 @@ def inspect_file(filename: str, content: bytes, sheet_name: str | None) -> Clini
         suggested[field_name] = match
         if match:
             taken.add(match)
+    suggested["tags"] = suggest_tags_column(columns, taken)
     return ClinicalSitesImportInspection(
         sheets=sheets,
         selected_sheet=selected,
@@ -188,6 +193,14 @@ def validate_mapping(mapping: ClinicalSitesImportMapping, columns: list[str]) ->
             issues.append(f"{used[column]} and {FIELD_LABELS[field_name]} cannot use the same column.")
         else:
             used[column] = FIELD_LABELS[field_name]
+    column = mapping.tags
+    if column:
+        if column not in columns:
+            issues.append("The column mapped to Tags is not in the selected worksheet.")
+        elif column in used:
+            issues.append(f"{used[column]} and Tags cannot use the same column.")
+        else:
+            used[column] = "Tags"
     if issues:
         raise ClinicalSitesImportError("INVALID_MAPPING", issues[0], issues)
 
@@ -199,12 +212,7 @@ def parse_sites(
     columns = list(frame.columns)
     validate_mapping(mapping, columns)
     mapped = {name: getattr(mapping, name) for name in FIELD_ALIASES if getattr(mapping, name)}
-    mapped_columns = set(mapped.values())
-    tag_columns = [
-        column
-        for column in columns
-        if column not in mapped_columns and not all(_is_blank(value) for value in frame[column])
-    ]
+    tag_columns = [mapping.tags] if mapping.tags else []
 
     rows: list[ParsedSite] = []
     for index, (_, record) in enumerate(frame.iterrows()):
@@ -276,11 +284,12 @@ def parse_sites(
 
         seen: set[str] = set()
         for column in tag_columns:
-            name = normalize_tag_name(_text(record[column]))
-            key = tag_identity_key(name)
-            if key and key not in seen:
-                seen.add(key)
-                site.tags.append(name)
+            for part in split_tag_cell(record[column]):
+                name = normalize_tag_name(part)
+                key = tag_identity_key(name)
+                if key and key not in seen:
+                    seen.add(key)
+                    site.tags.append(name)
         rows.append(site)
 
     if not rows:

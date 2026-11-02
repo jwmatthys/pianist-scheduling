@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useScrollToPreview } from "../../lib/useScrollToPreview";
 import { api } from "../../lib/api";
 import { chooseLocalFile } from "../../lib/platform";
 import { formatMinutes } from "../../lib/time";
@@ -9,6 +10,7 @@ import type {
   ClinicalSitesImportPreview,
 } from "../../lib/types";
 import { ConfirmDialog, Modal } from "./ClinicalDialogs";
+import { ImportTemplateLinks } from "../../components/ImportTemplateLinks";
 
 const FIELDS: { key: ClinicalSitesImportField; label: string; required: boolean }[] = [
   { key: "site_name", label: "Site Name", required: true },
@@ -22,6 +24,7 @@ const FIELDS: { key: ClinicalSitesImportField; label: string; required: boolean 
   { key: "session_length", label: "Session Length", required: true },
   { key: "travel_time", label: "Travel Time", required: false },
   { key: "capacity", label: "Capacity", required: false },
+  { key: "tags", label: "Tags", required: false },
 ];
 
 function errorText(error: unknown): string {
@@ -39,6 +42,7 @@ export function ClinicalSitesImportDialog({
   const [inspection, setInspection] = useState<ClinicalSitesImportInspection | null>(null);
   const [mapping, setMapping] = useState<ClinicalSitesImportMapping | null>(null);
   const [preview, setPreview] = useState<ClinicalSitesImportPreview | null>(null);
+  const previewRef = useScrollToPreview<HTMLElement>(preview);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -127,10 +131,11 @@ export function ClinicalSitesImportDialog({
             {error}
           </div>
         )}
-        <div>
+        <div className="availability-import-file-row">
           <button type="button" disabled={busy} onClick={() => void selectFile()}>
             {inspection ? "Choose another file" : "Choose spreadsheet"}
           </button>
+          <ImportTemplateLinks template="clinicalSites" disabled={busy} />
         </div>
 
         {inspection && mapping && (
@@ -175,8 +180,7 @@ export function ClinicalSitesImportDialog({
                 ))}
               </div>
               <p className="dialog-note">
-                Every column not mapped above is read as tags: each nonblank cell is exactly one tag (not split on
-                commas or semicolons), and the column heading is ignored. Capacity defaults to 1 when omitted.
+                Map one column to Tags and separate multiple tags in a cell with semicolons. Capacity defaults to 1 when omitted.
               </p>
             </section>
 
@@ -191,14 +195,14 @@ export function ClinicalSitesImportDialog({
             </div>
 
             {preview && (
-              <section aria-label="Import preview">
+              <section aria-label="Import preview" ref={previewRef}>
                 <h3>Preview</h3>
                 <p role="status">
                   {preview.total_rows} {preview.total_rows === 1 ? "row" : "rows"}: {preview.valid_rows} valid,{" "}
                   {preview.invalid_rows} with errors.
                 </p>
                 <p className="muted">
-                  Tag columns: {preview.tag_columns.length ? preview.tag_columns.join(", ") : "none"}. New tags:{" "}
+                  Tags column: {preview.tag_columns.length ? preview.tag_columns[0] : "none"}. New tags:{" "}
                   {preview.new_tags.length ? preview.new_tags.join(", ") : "none"}. Existing tags reused:{" "}
                   {preview.reused_tags.length ? preview.reused_tags.join(", ") : "none"}.
                 </p>

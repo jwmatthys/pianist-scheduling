@@ -18,6 +18,7 @@ import type {
   JuryPanelInput,
   JuryPanelImportInspection,
   JuryPanelImportMapping,
+  JuryPanelImportPreview,
   JuryPanelImportResult,
   JuryReadiness,
   JuryScheduleHistoryItem,
@@ -249,6 +250,13 @@ export const api = {
     form.append("file", file);
     if (sheetName) form.append("sheet_name", sheetName);
     return request<JuryPanelImportInspection>("/api/jury/panels/import/inspect", { method: "POST", body: form });
+  },
+  previewJuryPanelImport: (file: File, sheetName: string | null, mapping: JuryPanelImportMapping) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (sheetName) form.append("sheet_name", sheetName);
+    form.append("mapping", JSON.stringify(mapping));
+    return request<JuryPanelImportPreview>("/api/jury/panels/import/preview", { method: "POST", body: form });
   },
   applyJuryPanelImport: (file: File, sheetName: string | null, mapping: JuryPanelImportMapping) => {
     const form = new FormData();

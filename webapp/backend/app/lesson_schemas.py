@@ -145,6 +145,8 @@ class LessonInstructorOut(LessonInstructorFields):
     id: str
     tags: list[LessonTagRef]
     availability_window_count: int
+    available_minutes: int = 0
+    tentative_minutes: int = 0
     created_at: datetime
     updated_at: datetime
 

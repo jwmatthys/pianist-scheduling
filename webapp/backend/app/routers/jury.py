@@ -80,6 +80,25 @@ async def inspect_panel_import(file: UploadFile = File(...), sheet_name: str | N
         raise _import_http_error(error) from error
 
 
+@router.post("/panels/import/preview", response_model=jury_panel_importer.JuryPanelImportPreview)
+async def preview_panel_import(
+    file: UploadFile = File(...),
+    mapping: str = Form(...),
+    sheet_name: str | None = Form(default=None),
+    db: Session = Depends(get_db),
+):
+    try:
+        try:
+            parsed = jury_panel_importer.JuryPanelImportMapping.model_validate_json(mapping)
+        except ValidationError as error:
+            raise JuryPanelImportError("INVALID_MAPPING", "The column mapping is not valid.") from error
+        return jury_panel_importer.preview_import(
+            db, file.filename or "", await _read_upload(file), sheet_name or None, parsed
+        )
+    except JuryPanelImportError as error:
+        raise _import_http_error(error) from error
+
+
 @router.post("/panels/import/apply", response_model=jury_panel_importer.JuryPanelImportResult)
 async def apply_panel_import(
     file: UploadFile = File(...),

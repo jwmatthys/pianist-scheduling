@@ -57,6 +57,7 @@ def _commit(db: Session) -> None:
 
 
 def _tutor_out(repo: TutorRepository, tutor: TutorTutor) -> schemas.TutorTutorOut:
+    minutes = repo.tutor_availability_minutes().get(tutor.id, (0, 0))
     return schemas.TutorTutorOut(
         id=tutor.id,
         name=tutor.name,
@@ -66,6 +67,8 @@ def _tutor_out(repo: TutorRepository, tutor: TutorTutor) -> schemas.TutorTutorOu
         capacity=tutor.capacity,
         tags=[schemas.TutorTagRef(id=tag.id, name=tag.name) for tag in tutor.tags],
         availability_window_count=repo.tutor_availability_counts().get(tutor.id, 0),
+        available_minutes=minutes[0],
+        tentative_minutes=minutes[1],
         created_at=tutor.created_at,
         updated_at=tutor.updated_at,
     )

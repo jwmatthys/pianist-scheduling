@@ -66,7 +66,7 @@ On Unix the service is launched in a dedicated process group, which is terminate
 
 React's API client depends on `getApiBase()` in `src/lib/platform.ts`. The Tauri adapter obtains the endpoint from a Rust command. Browser builds retain their existing environment/query configuration. No Tauri APIs are called from React pages or components.
 
-The main-window capability grants only dialog open/save and filesystem read/write operations for paths selected by those dialogs. There is no shell, opener, updater, or generic filesystem access exposed to the frontend. Session archives and the synthetic Accompanist availability CSV template use the platform file service: Tauri uses a native Save dialog and writes only to the selected path; browser mode uses a local save picker or download. The custom endpoint command is registered by the Rust application.
+The main-window capability grants only dialog open/save and filesystem read/write operations for paths selected by those dialogs. There is no shell, opener, updater, or generic filesystem access exposed to the frontend. Session archives and the synthetic CSV/XLSX import templates use the platform file service: Tauri uses a native Save dialog and writes only to the selected path; browser mode uses a local save picker or download. The custom endpoint command is registered by the Rust application.
 
 ## Scheduling Sessions and Portable Archives
 
@@ -77,7 +77,8 @@ Archive format version 1 is a ZIP-compatible `.mpsession` containing only `manif
 Restore rejects malformed, oversized, duplicate, unexpected, encrypted, path-traversing, checksum-mismatched, incompatible, or corrupt input. It stages the fixed database payload in a private temporary directory, checks SQLite integrity and the actual schema version, migrates and validates metadata there, then creates a recovery archive and atomically replaces the active database. Any failure before replacement leaves the active session unchanged.
 
 Automatic recovery archives are valid `.mpsession` files under the active database's `recovery/` directory (Tauri: the per-user application-data directory). Retention is the latest three snapshots. They are distinct from user-exported files and are not shown in a session history UI. Archives are unencrypted and may contain student educational information; users must store and transfer them under institutional policy. The application does not upload session data.
-
+
+
 ## Startup Profiling
 
 Startup timing is opt-in, measurement-only, and logs fixed phase labels plus elapsed milliseconds (never session, student, or imported data). Each layer prefixes lines with `[STARTUP`: Rust `src-tauri/src/startup.rs` (`[STARTUP +Nms]`, owns the end-to-end clock and summary), Python `app/startup_profile.py` (`[STARTUP backend +Nms]`, own clock starting at backend process entry), and React `lib/startupProfile.ts` (`[STARTUP frontend +Nms]`, `performance.now()`; forwards milestones to Rust through the allowlisted `startup_mark` command via `lib/platform.ts`). To remove it, delete those three modules and the `startup`/`startupProfile.mark(...)` calls.

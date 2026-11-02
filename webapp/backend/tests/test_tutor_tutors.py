@@ -20,15 +20,16 @@ from app.services.tutor_repository import TutorInput, TutorValidationError
 from tests.test_tutor_foundation import TutorTestCase, window
 
 HEADERS = ["Tutor Name", "Tutor Email", "Room", "Lesson Length", "Capacity",
-           "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun", "Tag 1", "Tag 2"]
+           "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun", "Tags", "Notes"]
 MAPPING = {
     "tutor_name": "Tutor Name", "tutor_email": "Tutor Email", "room": "Room",
     "lesson_length": "Lesson Length", "capacity": "Capacity",
     "days": {"Monday": "Mon", "Tuesday": "Tue", "Wednesday": "Wed", "Thursday": "Thu",
              "Friday": "Fri", "Saturday": "Sat", "Sunday": "Sun"},
+    "tags": "Tags",
 }
 GOOD_ROW = ["Synthetic Teacher", "teacher@example.test", "Room 101", 45, 2,
-            "9:00 AM-12:00 PM; T 1:00 PM-3:00 PM", "", "", "", "", "", "", "violin", "Strings"]
+            "9:00 AM-12:00 PM; T 1:00 PM-3:00 PM", "", "", "", "", "", "", "violin; Strings; violin;", ""]
 BLANK_DAYS = ["", "", "", "", "", "", ""]
 
 
@@ -182,6 +183,8 @@ class AvailabilityApiTests(TutorTestCase):
         )
         self.assertEqual(len(tutor_api.get_tutor_availability(tutor.id, db=self.db).windows), 3)
         self.assertEqual(tutor_api.list_tutors(db=self.db)[0].availability_window_count, 3)
+        listed = tutor_api.list_tutors(db=self.db)[0]
+        self.assertEqual((listed.available_minutes, listed.tentative_minutes), (60, 60))
         tutor_api.set_tutor_availability(tutor.id, schemas.TutorTutorAvailabilityIO(windows=[]), db=self.db)
         self.assertEqual(tutor_api.get_tutor_availability(tutor.id, db=self.db).windows, [])
 

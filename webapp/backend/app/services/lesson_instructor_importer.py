@@ -6,8 +6,8 @@ preview data is never trusted).
 
 Weekday cells and spreadsheet reading reuse the pure, module-neutral helpers that the Clinical
 imports (``weekly_availability_cells`` and ``import_common``).
-Mapped columns become instructor fields and weekday availability; every other non-empty
-column is a tag column, exactly like the Clinical Sites import.
+Mapped columns become instructor fields and weekday availability. Tags come only from the single
+column explicitly mapped to Tags (semicolon-separated); unmapped columns never become tags.
 """
 
 from __future__ import annotations
@@ -36,6 +36,8 @@ from .import_common import (
     header_key as _header_key,
     is_blank as _is_blank,
     read_frame as _frame,
+    split_tag_cell,
+    suggest_tags_column,
 )
 from .time_parsing import format_time_of_day
 
@@ -76,6 +78,7 @@ class LessonInstructorImportMapping(BaseModel):
     lesson_length: str | None = None
     capacity: str | None = None
     days: dict[str, str | None] = Field(default_factory=dict)
+    tags: str | None = None
 
 
 LessonInstructorImportInspection.model_rebuild()
@@ -149,7 +152,7 @@ def inspect_file(filename: str, content: bytes, sheet_name: str | None) -> Lesso
         selected_sheet=selected,
         columns=columns,
         sample_rows=frame.head(10).fillna("").astype(str).to_dict(orient="records"),
-        suggested_mapping=LessonInstructorImportMapping(**suggested, days=suggest_day_columns(columns, taken)),
+        suggested_mapping=LessonInstructorImportMapping(**suggested, days=suggest_day_columns(columns, taken), tags=suggest_tags_column(columns, taken | {c for c in suggested.values() if c})),
     )
 
 
@@ -185,6 +188,7 @@ def validate_mapping(mapping: LessonInstructorImportMapping, columns: list[str])
         issues.append("Availability columns must be mapped to weekdays.")
     for day in WEEKDAYS:
         claim(mapping.days.get(day), day)
+    claim(mapping.tags, "Tags")
     if issues:
         raise LessonInstructorImportError("INVALID_MAPPING", issues[0], issues)
 
@@ -197,12 +201,7 @@ def parse_instructors(
     validate_mapping(mapping, columns)
     mapped = {name: getattr(mapping, name) for name in FIELD_ALIASES if getattr(mapping, name)}
     day_columns = mapped_day_columns(mapping.days)
-    mapped_columns = set(mapped.values()) | set(day_columns.values())
-    tag_columns = [
-        column
-        for column in columns
-        if column not in mapped_columns and not all(_is_blank(value) for value in frame[column])
-    ]
+    tag_columns = [mapping.tags] if mapping.tags else []
 
     rows: list[ParsedInstructor] = []
     seen_names: set[str] = set()
@@ -246,11 +245,12 @@ def parse_instructors(
 
         seen: set[str] = set()
         for column in tag_columns:
-            name = normalize_lesson_tag_name(_text(record[column]))
-            key = lesson_tag_identity_key(name)
-            if key and key not in seen:
-                seen.add(key)
-                row.tags.append(name)
+            for part in split_tag_cell(record[column]):
+                name = normalize_lesson_tag_name(part)
+                key = lesson_tag_identity_key(name)
+                if key and key not in seen:
+                    seen.add(key)
+                    row.tags.append(name)
         rows.append(row)
 
     if not rows:

@@ -1,7 +1,8 @@
 import { useRef, useState } from "react";
 import { api } from "../lib/api";
-import { chooseLocalFile, saveTextFile } from "../lib/platform";
-import { generateAvailabilityTemplateCsv } from "../lib/availabilityTemplate";
+import { chooseLocalFile } from "../lib/platform";
+import { useScrollToPreview } from "../lib/useScrollToPreview";
+import { ImportTemplateLinks } from "./ImportTemplateLinks";
 import { DAYS_ORDER, type AvailabilityImportInspection, type AvailabilityImportLayout, type AvailabilityImportMapping, type AvailabilityImportPreview, type AvailabilityStatus, type AvailabilityWindowColumns } from "../lib/types";
 
 type Props = {
@@ -79,6 +80,7 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
   const [wideStatus, setWideStatus] = useState<AvailabilityStatus>("Available");
   const [wideWindows, setWideWindows] = useState<Record<string, AvailabilityWindowColumns[]>>({});
   const [preview, setPreview] = useState<AvailabilityImportPreview | null>(null);
+  const previewRef = useScrollToPreview<HTMLElement>(preview);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -194,22 +196,6 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
     }
   }
 
-  async function saveAvailabilityTemplate() {
-    setError(null);
-    setSuccess(null);
-    try {
-      const saved = await saveTextFile(
-        generateAvailabilityTemplateCsv(),
-        "pianist-availability-template.csv",
-        "Pianist availability CSV",
-        "csv",
-      );
-      if (saved) setSuccess("Availability template saved.");
-    } catch {
-      setError("Could not save the availability template. Check the selected destination and try again.");
-    }
-  }
-
   function changeWideWindow(day: string, index: number, property: keyof AvailabilityWindowColumns, value: string | null) {
     updateMapping(() => setWideWindows((current) => ({
       ...current,
@@ -241,9 +227,7 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
             <button type="button" disabled={busy} onClick={() => void selectFile()}>
               {inspection ? "Choose another file" : "Choose spreadsheet"}
             </button>
-            <button type="button" className="template-download-button" disabled={busy} onClick={() => void saveAvailabilityTemplate()}>
-              Download CSV template
-            </button>
+            <ImportTemplateLinks template="pianistAvailability" disabled={busy} />
           </div>
 
           {inspection && (
@@ -385,14 +369,14 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
 
               <div className="availability-import-actions">
                 <button type="button" disabled={busy} onClick={() => void createPreview()}>
-                  {busy ? "Reviewing…" : "Preview and validate"}
+                  {busy ? "Reviewing…" : "Preview Import"}
                 </button>
               </div>
             </>
           )}
 
           {preview && (
-            <section className="availability-import-review" aria-live="polite">
+            <section className="availability-import-review" aria-live="polite" ref={previewRef}>
               <h3>Import review</h3>
               <p className="availability-import-summary">
                 {preview.incoming_pianist_count} incoming Pianists · {preview.valid_window_count} Availability Windows · {preview.warnings.length} warnings · {preview.errors.length} errors

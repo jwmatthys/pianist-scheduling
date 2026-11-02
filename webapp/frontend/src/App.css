@@ -219,12 +219,14 @@ button:disabled {
   flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
   background: none;
   border: none;
   cursor: pointer;
   padding: 0;
-  text-align: left;
+  text-align: center;
 }
 
 .pianists-detail {
@@ -272,6 +274,8 @@ button:disabled {
 }
 
 .legend-chip {
+  color: var(--theme-text);
+  border: 1px solid var(--theme-border-strong);
   padding: 0.15rem 0.55rem;
   border-radius: 4px;
   font-size: 0.8rem;
@@ -320,16 +324,20 @@ button:disabled {
   background: var(--theme-surface);
 }
 
+/* Stronger fill plus a status-colored inner outline keeps Available and Tentative distinct from the surface (WCAG 1.4.11). */
 .slot-available {
-  background: var(--status-available-soft);
+  background: var(--status-available-cell);
+  box-shadow: inset 0 0 0 2px var(--status-available);
 }
 
 .slot-tentative {
-  background: var(--status-tentative-soft);
+  background: var(--status-tentative-cell);
+  box-shadow: inset 0 0 0 2px var(--status-tentative);
 }
 
+/* Unavailable intentionally matches the unset ("Not supplied") fill. */
 .slot-unavailable {
-  background: var(--status-unavailable-soft);
+  background: var(--theme-surface);
 }
 
 .availability-actions {
@@ -940,48 +948,6 @@ button:disabled {
   background: var(--theme-primary);
 }
 
-.lesson-import-dialog {
-  position: fixed;
-  inset: 50% auto auto 50%;
-  width: min(1040px, calc(100vw - 28px));
-  max-height: min(92vh, 860px);
-  margin: 0;
-  padding: 0;
-  overflow: auto;
-  transform: translate(-50%, -50%);
-  border: 1px solid var(--theme-border);
-  border-radius: 6px;
-  color: var(--theme-text);
-  background: var(--theme-background);
-  box-shadow: 0 22px 60px var(--theme-shadow);
-}
-
-.lesson-import-dialog::backdrop {
-  background: var(--theme-overlay);
-}
-
-.lesson-import-dialog-content {
-  padding: 1.1rem 1.25rem 1.25rem;
-}
-
-.lesson-import-dialog-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.5rem;
-}
-
-.lesson-import-dialog-heading h2 {
-  margin: 0;
-  font-size: 1.15rem;
-}
-
-.lesson-import-dialog .import-page {
-  margin: 0;
-  padding: 0;
-}
-
 .module-shell .app-main {
   padding-top: 1.25rem;
 }
@@ -1372,14 +1338,16 @@ button:disabled {
   display: inline-block;
   margin: 0 0.25rem 0.25rem 0;
   padding: 0.1rem 0.5rem;
+  border: 1px solid var(--theme-accent);
   border-radius: 999px;
-  background: var(--theme-surface-muted);
+  background: var(--theme-accent-soft);
   color: var(--theme-text);
   font-size: 0.8rem;
   font-weight: 600;
 }
 
 .clinical-tag-unused {
+  border-color: var(--theme-border-strong);
   background: var(--theme-surface-muted);
   color: var(--theme-text-muted-readable);
 }
@@ -1906,4 +1874,17 @@ button:disabled {
 .report-generated-at {
   margin: 0.25rem 0;
   font-size: 0.85rem;
+}
+
+.import-template-links {
+  display: inline-flex;
+  justify-content: flex-end;
+  margin-left: auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1rem;
+}
+
+.import-template-error {
+  color: var(--theme-error);
 }

@@ -57,6 +57,7 @@ def _commit(db: Session) -> None:
 
 
 def _instructor_out(repo: LessonRepository, instructor: LessonInstructor) -> schemas.LessonInstructorOut:
+    minutes = repo.instructor_availability_minutes().get(instructor.id, (0, 0))
     return schemas.LessonInstructorOut(
         id=instructor.id,
         name=instructor.name,
@@ -66,6 +67,8 @@ def _instructor_out(repo: LessonRepository, instructor: LessonInstructor) -> sch
         capacity=instructor.capacity,
         tags=[schemas.LessonTagRef(id=tag.id, name=tag.name) for tag in instructor.tags],
         availability_window_count=repo.instructor_availability_counts().get(instructor.id, 0),
+        available_minutes=minutes[0],
+        tentative_minutes=minutes[1],
         created_at=instructor.created_at,
         updated_at=instructor.updated_at,
     )

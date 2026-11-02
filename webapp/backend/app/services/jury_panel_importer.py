@@ -81,6 +81,12 @@ class JuryPanelImportResult(BaseModel):
     panels_created: int
 
 
+class JuryPanelImportPreview(BaseModel):
+    panels: list[JuryPanelFields]
+    panels_to_remove: int
+    assignments_to_clear: int
+
+
 def _is_blank(value: object) -> bool:
     if value is None or (isinstance(value, str) and not value.strip()):
         return True
@@ -263,6 +269,30 @@ def _parse_rows(frame: pd.DataFrame, mapping: JuryPanelImportMapping) -> list[Ju
     if not panels:
         raise JuryPanelImportError("NO_PANELS", "The selected worksheet does not contain any Jury Panel rows.")
     return panels
+
+
+def preview_import(
+    db: Session,
+    filename: str,
+    content: bytes,
+    sheet_name: str | None,
+    mapping: JuryPanelImportMapping,
+) -> JuryPanelImportPreview:
+    """Parse and validate the file with the submitted mapping without writing anything."""
+    frame, _, _ = _frame(filename, content, sheet_name)
+    _validate_mapping(mapping, list(frame.columns))
+    panels = _parse_rows(frame, mapping)
+    session_uuid = active_session_uuid(db)
+    panels_to_remove = db.query(module_models.JuryPanel).filter(
+        module_models.JuryPanel.session_uuid == session_uuid
+    ).count()
+    assignments_to_clear = db.query(module_models.JuryLessonEntry).filter(
+        module_models.JuryLessonEntry.session_uuid == session_uuid,
+        module_models.JuryLessonEntry.panel_uuid.is_not(None),
+    ).count()
+    return JuryPanelImportPreview(
+        panels=panels, panels_to_remove=panels_to_remove, assignments_to_clear=assignments_to_clear
+    )
 
 
 def apply_import(

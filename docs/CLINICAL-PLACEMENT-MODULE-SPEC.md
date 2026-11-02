@@ -86,8 +86,8 @@ Editing source data must not silently delete an existing schedule. See Section 9
 
 Accept local CSV and XLSX through the application's existing local import/mapping/preview infrastructure.
 Tag behavior follows the canonical [Shared Tag Architecture](SHARED-TAG-ARCHITECTURE.md).
-Each imported tag column must be explicitly mapped to the Clinical `Tags` field;
-unmapped columns never become tags.
+A single source column is explicitly mapped to the Clinical `Tags` field, with
+semicolon-separated tags in each cell; unmapped columns never become tags.
 
 The intended source data includes the standard fields:
 
@@ -113,11 +113,10 @@ shared normalization determines case-insensitive identity.
 
 Import should use explicit preview/validation before commit. Do not silently infer or consolidate separate Placement Opportunities.
 
-Implementation alignment: the current Clinical Sites importer still treats
-unmapped columns as tag columns. That legacy behavior conflicts with the
-canonical Shared Tag Architecture and is not the approved import contract; the
-import UI and parser must require explicit tag-field mappings before this
-import path is considered aligned.
+Implementation alignment: the Clinical Sites importer reads tags only from
+the single column explicitly mapped to Tags (suggested only for headers
+named "Tag"/"Tags"). Tag cells are semicolon-separated; unmapped columns never
+become tags.
 
 ## 5. Clinical Tags
 

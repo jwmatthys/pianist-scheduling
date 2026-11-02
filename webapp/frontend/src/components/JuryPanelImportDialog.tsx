@@ -1,7 +1,10 @@
 import { useRef, useState } from "react";
 import { api } from "../lib/api";
 import { chooseLocalFile } from "../lib/platform";
-import type { JuryPanelImportInspection, JuryPanelImportMapping } from "../lib/types";
+import { formatMinutes } from "../lib/time";
+import { useScrollToPreview } from "../lib/useScrollToPreview";
+import type { JuryPanelImportInspection, JuryPanelImportMapping, JuryPanelImportPreview } from "../lib/types";
+import { ImportTemplateLinks } from "./ImportTemplateLinks";
 
 type Props = {
   onApplied: (message: string) => Promise<void>;
@@ -27,6 +30,8 @@ export function JuryPanelImportDialog({ onApplied }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [inspection, setInspection] = useState<JuryPanelImportInspection | null>(null);
   const [mapping, setMapping] = useState<JuryPanelImportMapping | null>(null);
+  const [preview, setPreview] = useState<JuryPanelImportPreview | null>(null);
+  const previewRef = useScrollToPreview<HTMLElement>(preview);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -34,6 +39,7 @@ export function JuryPanelImportDialog({ onApplied }: Props) {
   function loadInspection(next: JuryPanelImportInspection) {
     setInspection(next);
     setMapping(next.suggested_mapping);
+    setPreview(null);
   }
 
   function openDialog() {
@@ -73,6 +79,20 @@ export function JuryPanelImportDialog({ onApplied }: Props) {
 
   const missingRequired = !mapping || FIELDS.some((field) => field.required && !mapping[field.key]);
 
+  async function runPreview() {
+    if (!file || !inspection || !mapping || missingRequired) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setPreview(await api.previewJuryPanelImport(file, inspection.selected_sheet, mapping));
+    } catch (cause) {
+      setPreview(null);
+      setError(cause instanceof Error ? cause.message : "Could not preview Jury Panels.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function applyImport() {
     if (!file || !inspection || !mapping || missingRequired) return;
     const confirmed = window.confirm(
@@ -88,6 +108,7 @@ export function JuryPanelImportDialog({ onApplied }: Props) {
       setFile(null);
       setInspection(null);
       setMapping(null);
+      setPreview(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not import Jury Panels.");
     } finally {
@@ -115,6 +136,7 @@ export function JuryPanelImportDialog({ onApplied }: Props) {
             <button type="button" disabled={busy} onClick={() => void selectFile()}>
               {inspection ? "Choose another file" : "Choose spreadsheet"}
             </button>
+            <ImportTemplateLinks template="juryPanels" disabled={busy} />
           </div>
 
           {inspection && mapping && (
@@ -141,7 +163,10 @@ export function JuryPanelImportDialog({ onApplied }: Props) {
                       <select
                         aria-label={field.label}
                         value={mapping[field.key] ?? ""}
-                        onChange={(event) => setMapping({ ...mapping, [field.key]: event.target.value || null })}
+                        onChange={(event) => {
+                          setMapping({ ...mapping, [field.key]: event.target.value || null });
+                          setPreview(null);
+                        }}
                       >
                         <option value="">{field.required ? "Choose column" : "Not in file"}</option>
                         {inspection.columns.map((column) => <option key={column} value={column}>{column}</option>)}
@@ -170,10 +195,44 @@ export function JuryPanelImportDialog({ onApplied }: Props) {
               </p>
 
               <div className="availability-import-actions">
-                <button type="button" className="danger-btn" disabled={busy || missingRequired} onClick={() => void applyImport()}>
-                  {busy ? "Importing…" : "Import jury panels"}
+                <button type="button" disabled={busy || missingRequired} onClick={() => void runPreview()}>
+                  Preview Import
                 </button>
               </div>
+
+              {preview && (
+                <section aria-label="Import preview" ref={previewRef}>
+                  <h3>Preview</h3>
+                  <p role="status">
+                    {preview.panels.length} {preview.panels.length === 1 ? "Panel" : "Panels"} will be imported;{" "}
+                    {preview.panels_to_remove} existing {preview.panels_to_remove === 1 ? "Panel" : "Panels"} and{" "}
+                    {preview.assignments_to_clear} Lesson Panel {preview.assignments_to_clear === 1 ? "assignment" : "assignments"} will be removed.
+                  </p>
+                  <div className="preview-table-wrap">
+                    <table className="preview-table">
+                      <thead>
+                        <tr><th>Panel</th><th>Date</th><th>Room</th><th>Earliest start</th><th>Jury length</th></tr>
+                      </thead>
+                      <tbody>
+                        {preview.panels.map((panel) => (
+                          <tr key={panel.panel_name}>
+                            <td>{panel.panel_name}</td>
+                            <td>{panel.jury_date}</td>
+                            <td>{panel.room || "—"}</td>
+                            <td>{formatMinutes(panel.earliest_start_minute)}</td>
+                            <td>{panel.jury_length_minutes} min</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="availability-import-actions">
+                    <button type="button" className="danger-btn" disabled={busy} onClick={() => void applyImport()}>
+                      {busy ? "Importing…" : "Import jury panels"}
+                    </button>
+                  </div>
+                </section>
+              )}
             </>
           )}
         </div>

@@ -38,6 +38,7 @@ const inspection: ClinicalSitesImportInspection = {
     session_length: null,
     travel_time: null,
     capacity: null,
+    tags: "Focus",
   },
 };
 
@@ -102,7 +103,7 @@ describe("Clinical Sites import dialog", () => {
     expect(preview.disabled).toBe(true);
     await mapRequired(user);
     expect(preview.disabled).toBe(false);
-    expect(screen.getByText(/Every column not mapped above is read as tags/)).toBeTruthy();
+    expect((screen.getByLabelText("Tags") as HTMLSelectElement).value).toBe("Focus");
   });
 
   it("renders the preview with 12-hour times, tags, and tag registry impact", async () => {

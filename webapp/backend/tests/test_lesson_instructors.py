@@ -20,15 +20,16 @@ from app.services.lesson_repository import InstructorInput, LessonValidationErro
 from tests.test_lesson_foundation import LessonTestCase, window
 
 HEADERS = ["Instructor Name", "Instructor Email", "Room", "Lesson Length", "Capacity",
-           "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun", "Tag 1", "Tag 2"]
+           "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun", "Tags", "Notes"]
 MAPPING = {
     "instructor_name": "Instructor Name", "instructor_email": "Instructor Email", "room": "Room",
     "lesson_length": "Lesson Length", "capacity": "Capacity",
     "days": {"Monday": "Mon", "Tuesday": "Tue", "Wednesday": "Wed", "Thursday": "Thu",
              "Friday": "Fri", "Saturday": "Sat", "Sunday": "Sun"},
+    "tags": "Tags",
 }
 GOOD_ROW = ["Synthetic Teacher", "teacher@example.test", "Room 101", 45, 2,
-            "9:00 AM-12:00 PM; T 1:00 PM-3:00 PM", "", "", "", "", "", "", "violin", "Strings"]
+            "9:00 AM-12:00 PM; T 1:00 PM-3:00 PM", "", "", "", "", "", "", "violin; Strings; violin;", ""]
 BLANK_DAYS = ["", "", "", "", "", "", ""]
 
 
@@ -182,6 +183,8 @@ class AvailabilityApiTests(LessonTestCase):
         )
         self.assertEqual(len(lesson.get_instructor_availability(instructor.id, db=self.db).windows), 3)
         self.assertEqual(lesson.list_instructors(db=self.db)[0].availability_window_count, 3)
+        listed = lesson.list_instructors(db=self.db)[0]
+        self.assertEqual((listed.available_minutes, listed.tentative_minutes), (60, 60))
         lesson.set_instructor_availability(instructor.id, schemas.LessonInstructorAvailabilityIO(windows=[]), db=self.db)
         self.assertEqual(lesson.get_instructor_availability(instructor.id, db=self.db).windows, [])
 

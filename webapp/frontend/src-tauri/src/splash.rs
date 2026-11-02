@@ -18,6 +18,8 @@ use tauri::{
     window::Color,
     AppHandle, Manager, Runtime, UriSchemeContext, Url, WebviewUrl, WebviewWindowBuilder,
 };
+#[cfg(target_os = "linux")]
+use tauri::LogicalSize;
 
 pub const SCHEME: &str = "splash";
 const LABEL: &str = "splash";
@@ -191,7 +193,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .parse()
         .map_err(tauri::Error::InvalidUrl)?;
     let (width, height) = window_size(app);
-    WebviewWindowBuilder::new(app, LABEL, WebviewUrl::CustomProtocol(url))
+    let builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::CustomProtocol(url))
         .title("Scheduling Maestro")
         .inner_size(width, height)
         .decorations(false)
@@ -202,8 +204,18 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .background_color(Color(0, 0, 0, 255))
         .initialization_script(format!(
             "window.__splash={{m:{message:?},set:function(m){{this.m=m;if(this.apply)this.apply();}}}};"
-        ))
-        .build()?;
+        ));
+    // GTK may grow an undecorated, non-resizable window after it is mapped, leaving an empty strip
+    // below the page. Pinning min/max to the exact size and re-applying it keeps the size fixed.
+    #[cfg(target_os = "linux")]
+    let builder = builder.min_inner_size(width, height).max_inner_size(width, height);
+    #[allow(unused_variables)]
+    let window = builder.build()?;
+    #[cfg(target_os = "linux")]
+    {
+        let _ = window.set_size(LogicalSize::new(width, height));
+        let _ = window.center();
+    }
     Ok(())
 }
 

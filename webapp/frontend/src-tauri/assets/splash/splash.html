@@ -5,9 +5,9 @@
 <title>Scheduling Maestro</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; cursor: default; user-select: none; }
-  /* contain: scale proportionally, never stretch or crop */
-  body { background: #000 url(splash.png) center / contain no-repeat; animation: fade-in 0.3s ease-out; }
+  html, body { margin: 0; width: 100%; height: 100vh; min-height: 100%; overflow: hidden; background: #000; cursor: default; user-select: none; }
+  /* The window is sized to the artwork's 16:9 ratio, so cover fills it without a letterbox strip. */
+  body { background: #000 url(splash.png) center top / cover no-repeat; animation: fade-in 0.3s ease-out; }
   .shade { position: fixed; left: 0; right: 0; bottom: 0; height: 30%;
            background: linear-gradient(to top, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0)); }
   .status { position: fixed; left: 0; right: 0; bottom: 6%; margin: 0 5%; text-align: center; color: #fff;

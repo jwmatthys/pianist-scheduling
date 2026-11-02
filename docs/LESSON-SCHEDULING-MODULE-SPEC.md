@@ -768,8 +768,8 @@ Reports generated from stale schedules must display a warning.
 Lesson imports should follow the same inspect/map/preview/apply interaction
 and error/confirmation presentation patterns as Clinical imports wherever
 practical. Import targets and replacement/preservation rules remain
-Lesson-owned; every imported tag field must be explicitly mapped, and
-unmapped columns must never become tags.
+Lesson-owned; the instructor and tutor imports map a single column to Tags,
+and unmapped columns must never become tags.
 
 Current Lesson roster imports are full replacements. They preserve existing
 placement decisions against their original stable student and instructor
@@ -793,8 +793,8 @@ Supported fields:
 - Availability
 - Tags, when explicitly mapped to the Lesson tag field
 
-Mapped tag values use the shared semicolon-separated format. Only columns
-explicitly mapped as Lesson tag fields are parsed; unmapped columns never
+Mapped tag values use the shared semicolon-separated format. Only the single
+column explicitly mapped to Tags is parsed; unmapped columns never
 become tags. Import preview shows matched and newly created Lesson tags.
 
 ## Student Import

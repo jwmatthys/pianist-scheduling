@@ -63,7 +63,7 @@ Tauri stores `pianist_scheduling.db` under its per-user application-data directo
 
 `.mpsession` archives are unencrypted and can include student educational information. Exported archives should be stored and transferred according to institutional policy. Export creates a portable copy; normal application edits are persisted automatically to the active local SQLite database.
 
-The Accompanist availability CSV template is generated locally from synthetic examples. Tauri opens a native Save dialog and writes only to the chosen destination; canceling does not save elsewhere. Browser mode uses a local save picker when available and otherwise a conventional download.
+Every spreadsheet import dialog (Accompanist lessons, Pianist Availability, Jury Panels, Clinical Sites, Clinical Student Roster, and the Lesson and Tutor student and instructor/tutor rosters) offers Download CSV template and Download XLSX template. Templates list every importable field (including a single semicolon-separated Tags column for the Lesson instructor, Tutor, and Clinical Sites imports) as a column header plus one synthetic sample row, are defined in `webapp/frontend/src/lib/importTemplates.ts`, and are generated locally from synthetic examples. Tauri opens a native Save dialog and writes only to the chosen destination; canceling does not save elsewhere. Browser mode uses a local save picker when available and otherwise a conventional download.
 
 ## Schema Migration Tests
 
