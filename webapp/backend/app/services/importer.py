@@ -9,11 +9,15 @@ multi-worker deployment would swap this for a short-lived DB/blob cache.
 from __future__ import annotations
 
 import uuid
-
-import pandas as pd
+from typing import TYPE_CHECKING
 
 from ..models import DAYS_ORDER
 from . import tabular
+
+if TYPE_CHECKING:
+    import pandas as pd
+
+# pandas is imported inside the functions that use it so it stays out of application startup.
 
 # Fields the app understands; the user maps their spreadsheet's columns to these.
 TARGET_FIELDS = [
@@ -58,6 +62,8 @@ def stage_upload(filename: str, content: bytes) -> tuple[str, list[str], list[di
 
 
 def normalize_day(value) -> str:
+    import pandas as pd
+
     if pd.isna(value):
         return ""
     key = str(value).strip().upper()
@@ -65,6 +71,8 @@ def normalize_day(value) -> str:
 
 
 def parse_time_to_minutes(value) -> int | None:
+    import pandas as pd
+
     if pd.isna(value) or value == "":
         return None
     if hasattr(value, "hour"):
@@ -77,6 +85,8 @@ def parse_time_to_minutes(value) -> int | None:
 
 def parse_optional_boolean(value) -> bool | None:
     """Parse supported spreadsheet booleans; blank is the conservative false default."""
+    import pandas as pd
+
     if value is None or pd.isna(value):
         return False
     normalized = str(value).strip().casefold()
@@ -94,6 +104,8 @@ def commit_upload(token: str, mapping: dict[str, str | None]) -> tuple[list[dict
 
     Returns (list of lesson dicts ready for Lesson creation, list of warnings).
     """
+    import pandas as pd
+
     df = _UPLOAD_CACHE.get(token)
     if df is None:
         raise KeyError("Upload token not found or expired; please re-upload the file.")

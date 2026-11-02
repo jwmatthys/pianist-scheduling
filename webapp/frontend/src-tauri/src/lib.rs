@@ -10,9 +10,17 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tauri::{Manager, RunEvent, State, WindowEvent};
+use tauri::{webview::PageLoadEvent, AppHandle, Manager, RunEvent, State, WebviewWindowBuilder, WindowEvent};
+
+mod splash;
+mod startup;
 
 const SERVICE_STARTUP_TIMEOUT: Duration = Duration::from_secs(60);
+// Failure watchdog for the whole startup (backend wait plus frontend load).
+const STARTUP_WATCHDOG: Duration = Duration::from_secs(90);
+const OFFSCREEN_POSITION: f64 = -32000.0;
+const BACKEND_EVENT_PREFIX: &str = "STARTUP-EVENT ";
+const BACKEND_EVENTS_ENV: &str = "SCHEDULING_MAESTRO_STARTUP_EVENTS";
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -67,7 +75,7 @@ impl BackendProcess {
         let data_dir = app.path().app_data_dir()?;
         fs::create_dir_all(&data_dir)?;
         let database_path = data_dir.join("pianist_scheduling.db");
-        let stderr = if cfg!(debug_assertions) {
+        let stderr = if cfg!(debug_assertions) || startup::enabled() {
             Stdio::inherit()
         } else {
             Stdio::null()
@@ -82,20 +90,33 @@ impl BackendProcess {
             use std::os::windows::process::CommandExt;
             command.creation_flags(CREATE_NO_WINDOW);
         }
+        if startup::enabled() {
+            command.env(startup::ENV_FLAG, "1");
+        }
+        startup::mark("Backend spawn begin", None);
         let mut child = command
             .arg("--port")
             .arg(port.to_string())
             .env("PIANIST_SCHEDULING_DB_PATH", database_path)
+            .env(BACKEND_EVENTS_ENV, "1")
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
+            .stdout(Stdio::piped())
             .stderr(stderr)
             .spawn()?;
+        startup::mark("Backend spawn complete", None);
+        let events_thread = child.stdout.take().map(|stdout| thread::spawn(move || forward_backend_events(stdout)));
 
+        startup::mark("Backend health check begin", None);
         if let Err(error) = wait_for_service(&mut child, port) {
             terminate_process_tree(&mut child);
             let _ = child.wait();
+            // The pipe closes with the process; join so a final failure event is not lost.
+            if let Some(events_thread) = events_thread {
+                let _ = events_thread.join();
+            }
             return Err(error.into());
         }
+        startup::mark("Backend health check success", None);
 
         Ok(Self {
             port,
@@ -200,23 +221,119 @@ fn service_is_ready(port: u16) -> bool {
     read > 0 && (status_line.starts_with("HTTP/1.1 200 ") || status_line.starts_with("HTTP/1.0 200 "))
 }
 
+/// Reads fixed `STARTUP-EVENT <token>` lines from the backend's stdout until it closes.
+/// Unknown tokens and any other output are ignored (and never logged).
+fn forward_backend_events(stdout: impl io::Read) {
+    for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+        let Some(token) = line.strip_prefix(BACKEND_EVENT_PREFIX) else {
+            continue;
+        };
+        if let Some((_, label)) = startup::BACKEND_EVENTS.iter().find(|(known, _)| *known == token.trim()) {
+            startup::mark(label, None);
+        }
+    }
+}
+
 #[tauri::command]
 fn get_api_base(backend: State<'_, BackendProcess>) -> String {
     format!("http://127.0.0.1:{}", backend.port)
 }
 
+/// Receives frontend startup milestones; only allowlisted labels are accepted.
+/// Async so window operations triggered by the splash never run on the main thread.
+#[tauri::command]
+async fn startup_mark(label: String) {
+    if startup::FRONTEND_MILESTONES.contains(&label.as_str()) {
+        startup::mark(&label, None);
+        if label == "First usable UI rendered" {
+            startup::log_summary();
+        }
+    }
+}
+
+/// Creates the main window from tauri.conf.json. WebView2 suspends pages in hidden windows,
+/// so no startup milestone would ever fire; instead the window is created "visible" but
+/// off-screen and out of the taskbar, and the splash moves it on-screen when ready.
+fn create_main_window(app: &AppHandle) -> tauri::Result<()> {
+    for config in app.config().app.windows.iter().filter(|window| window.label == "main") {
+        WebviewWindowBuilder::from_config(app, config)?
+            .visible(true)
+            .decorations(true)
+            .maximizable(true)
+            .minimizable(true)
+            .closable(true)
+            .skip_taskbar(true)
+            .position(OFFSCREEN_POSITION, OFFSCREEN_POSITION)
+            .build()?;
+    }
+    Ok(())
+}
+
+fn start_backend_and_main_window(app: AppHandle) {
+    match BackendProcess::start(&app) {
+        Ok(backend) => {
+            app.manage(backend);
+            startup::mark("API endpoint published", None);
+            if let Err(error) = create_main_window(&app) {
+                eprintln!("[STARTUP] Main window creation failed: {error}");
+                splash::fail(splash::MSG_WINDOW_FAILED);
+            }
+        }
+        Err(error) => {
+            eprintln!("[STARTUP] Backend failed to start: {error}");
+            let timed_out = error
+                .downcast_ref::<io::Error>()
+                .is_some_and(|error| error.kind() == io::ErrorKind::TimedOut);
+            // No-op when the backend already reported a more specific failure.
+            splash::fail(if timed_out { splash::MSG_TIMED_OUT } else { splash::MSG_BACKEND_FAILED });
+        }
+    }
+}
+
 pub fn run() -> Result<(), Box<dyn Error>> {
+    startup::init();
+    startup::set_listener(splash::on_milestone);
+    startup::mark("App launch", None);
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .register_uri_scheme_protocol(splash::SCHEME, splash::protocol)
         .setup(|app| {
-            app.manage(BackendProcess::start(&app.handle())?);
+            if let Err(error) = splash::create(app.handle()) {
+                eprintln!("[STARTUP] Splash window creation failed: {error}");
+            }
+            startup::mark("Setup begin", None);
+            splash::watch(STARTUP_WATCHDOG);
+            // Off the setup thread so the event loop can paint the splash while the backend starts.
+            let handle = app.handle().clone();
+            thread::spawn(move || start_backend_and_main_window(handle));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_api_base])
+        .on_page_load(|webview, payload| {
+            if webview.label() != "main" {
+                return;
+            }
+            match payload.event() {
+                PageLoadEvent::Started => startup::mark("Webview page load started", None),
+                PageLoadEvent::Finished => startup::mark("Webview page load finished", None),
+            };
+        })
+        .invoke_handler(tauri::generate_handler![get_api_base, startup_mark])
         .build(tauri::generate_context!())?;
+    startup::mark("Tauri application built", None);
 
     app.run(|app_handle, event| match event {
+        RunEvent::Ready => {
+            let detail = match app_handle
+                .get_webview_window("splash")
+                .and_then(|window| window.is_visible().ok())
+            {
+                Some(true) => "splash window visible",
+                Some(false) => "splash window hidden",
+                None => "splash window unavailable",
+            };
+            startup::mark("Event loop ready", Some(detail));
+        }
         RunEvent::WindowEvent {
             event: WindowEvent::CloseRequested { .. },
             ..

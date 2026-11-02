@@ -14,6 +14,12 @@
       {
         "label": "main",
         "title": "Scheduling Maestro",
+        "create": false,
+        "visible": false,
+        "decorations": true,
+        "maximizable": true,
+        "minimizable": true,
+        "closable": true,
         "width": 1440,
         "height": 920,
         "minWidth": 1024,

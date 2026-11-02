@@ -33,6 +33,8 @@ From `webapp/frontend`:
 
 Tauri starts its development or packaged API process itself on an ephemeral loopback port; do not start Uvicorn separately for `npm run tauri:dev`.
 
+`npm run tauri:dev` also prints `[STARTUP]` timing lines (Rust, backend, and frontend phases plus a `Total startup time` summary) to the terminal. To profile any other build, set `SCHEDULING_MAESTRO_STARTUP_PROFILE=1` and run it from a terminal; `=0` disables it. See "Startup Profiling" in [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Tauri Production Build
 
 From `webapp/frontend`:

@@ -14,14 +14,17 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
+from . import startup_profile
+
 DB_PATH = Path(
     os.environ.get("PIANIST_SCHEDULING_DB_PATH", Path(__file__).resolve().parent.parent / "pianist_scheduling.db")
 ).expanduser().resolve()
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 DATABASE_URL = f"sqlite:///{DB_PATH}"
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+with startup_profile.measure("SQLAlchemy engine and sessionmaker creation"):
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 DATABASE_LOCK = RLock()
 DATABASE_QUIESCENCE = Condition(DATABASE_LOCK)
 ACTIVE_DATABASE_SESSIONS = 0
@@ -57,7 +60,10 @@ def database_operation_lock():
 
 
 def init_db():
-    return migrate_database(engine)
+    startup_profile.mark("Migration check begin")
+    report = migrate_database(engine)
+    startup_profile.mark("Migration check complete")
+    return report
 
 
 class DatabaseState(str, Enum):

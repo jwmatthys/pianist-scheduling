@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import re
-
-import pandas as pd
+from typing import TYPE_CHECKING
 
 from . import tabular
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
@@ -21,6 +23,8 @@ class ImportFileError(RuntimeError):
 def is_blank(value: object) -> bool:
     if value is None or (isinstance(value, str) and not value.strip()):
         return True
+    import pandas as pd
+
     try:
         return bool(pd.isna(value))
     except (TypeError, ValueError):

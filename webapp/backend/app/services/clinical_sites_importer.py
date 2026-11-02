@@ -10,7 +10,6 @@ import math
 import re
 from dataclasses import dataclass, field
 
-import pandas as pd
 from pydantic import BaseModel
 
 from ..clinical_models import normalize_tag_name, tag_identity_key

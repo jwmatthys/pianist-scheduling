@@ -2,8 +2,16 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readFile, writeFile } from "@tauri-apps/plugin-fs";
+import * as startupProfile from "./startupProfile";
 
 let apiBasePromise: Promise<string> | undefined;
+
+if (isTauri()) {
+  startupProfile.setStartupSink((label) => {
+    void invoke("startup_mark", { label }).catch(() => undefined);
+  });
+}
+startupProfile.mark("Platform initialized");
 
 async function dialogStart(fileName?: string): Promise<string | undefined> {
   try {
@@ -17,13 +25,18 @@ async function dialogStart(fileName?: string): Promise<string | undefined> {
 
 export function getApiBase(): Promise<string> {
   if (!apiBasePromise) {
-    apiBasePromise = isTauri()
+    startupProfile.mark("API base resolution begin");
+    apiBasePromise = (isTauri()
       ? invoke<string>("get_api_base")
       : Promise.resolve(
           new URLSearchParams(window.location.search).get("apiBase")
             ?? import.meta.env.VITE_API_BASE
             ?? "http://localhost:8123"
-        );
+        )
+    ).then((base) => {
+      startupProfile.mark("API base resolution complete");
+      return base;
+    });
   }
   return apiBasePromise;
 }

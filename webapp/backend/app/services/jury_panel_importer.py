@@ -5,8 +5,8 @@ from __future__ import annotations
 import math
 import re
 from datetime import date, datetime
+from typing import TYPE_CHECKING
 
-import pandas as pd
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
@@ -15,6 +15,9 @@ from ..jury_schemas import JuryPanelFields
 from . import tabular
 from .availability import parse_time_minutes
 from .module_lifecycle import active_session_uuid, bump_jury_revision
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_ERRORS_REPORTED = 25
@@ -81,6 +84,8 @@ class JuryPanelImportResult(BaseModel):
 def _is_blank(value: object) -> bool:
     if value is None or (isinstance(value, str) and not value.strip()):
         return True
+    import pandas as pd
+
     try:
         return bool(pd.isna(value))
     except (TypeError, ValueError):

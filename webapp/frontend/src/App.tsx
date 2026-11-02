@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import "./App.css";
 import { api } from "./lib/api";
 import { chooseSessionArchive, saveSessionArchive } from "./lib/platform";
+import * as startupProfile from "./lib/startupProfile";
 import type { SchedulingSession, SchedulingSessionInput } from "./lib/types";
 import { SCHEDULING_MODULES, type ModuleKey } from "./moduleRegistry";
 import { ModuleShell } from "./components/ModuleShell";
@@ -24,10 +25,26 @@ function App() {
   const newSessionDialogRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
-    void api.getSession().then(setSession).catch((error: unknown) => {
+    startupProfile.mark("Session load begin");
+    void api.getSession().then((loaded) => {
+      startupProfile.mark("Session load complete");
+      setSession(loaded);
+    }).catch((error: unknown) => {
+      startupProfile.mark("Session load failed");
       setSessionError(error instanceof Error ? error.message : "Could not load the active session.");
     });
   }, []);
+
+  if (session) startupProfile.mark("Dashboard render begin");
+  useEffect(() => {
+    if (!session) return;
+    startupProfile.mark("Dashboard render complete");
+    const frame = requestAnimationFrame(() => {
+      startupProfile.mark("First usable UI rendered");
+      startupProfile.logSummary();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [session]);
 
   async function returnToDashboard() {
     await accompanistModuleRef.current?.saveAvailabilityBeforeLeaving();

@@ -5,8 +5,8 @@ from __future__ import annotations
 import re
 import uuid
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
-import pandas as pd
 from sqlalchemy.orm import Session
 
 from .. import models, module_models, schemas
@@ -28,6 +28,9 @@ from .module_lifecycle import (
     remove_pianist_identity_mapping,
 )
 from .jury_sync import sync_jury_with_accompanist
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_STAGED_UPLOADS = 20
@@ -77,6 +80,8 @@ class PreparedImport:
 def _is_blank(value: object) -> bool:
     if value is None or isinstance(value, str) and not value.strip():
         return True
+    import pandas as pd
+
     try:
         return bool(pd.isna(value))
     except (TypeError, ValueError):

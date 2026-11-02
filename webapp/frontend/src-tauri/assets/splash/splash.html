@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Scheduling Maestro</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; cursor: default; user-select: none; }
+  /* contain: scale proportionally, never stretch or crop */
+  body { background: #000 url(splash.png) center / contain no-repeat; animation: fade-in 0.3s ease-out; }
+  .shade { position: fixed; left: 0; right: 0; bottom: 0; height: 30%;
+           background: linear-gradient(to top, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0)); }
+  .status { position: fixed; left: 0; right: 0; bottom: 6%; margin: 0 5%; text-align: center; color: #fff;
+            font: 500 clamp(14px, 2.4vw, 22px) / 1.3 "Segoe UI", system-ui, -apple-system, sans-serif;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 8px rgba(0, 0, 0, 0.6); }
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { body { animation: none; } }
+</style>
+</head>
+<body>
+<div class="shade"></div>
+<div class="status" role="status" aria-live="polite"><span id="message"></span></div>
+<script>
+  (function () {
+    var s = window.__splash || { m: "Starting Scheduling Maestro..." };
+    window.__splash = s;
+    s.set = s.set || function (m) { s.m = m; if (s.apply) s.apply(); };
+    s.apply = function () {
+      document.getElementById("message").textContent = s.m;
+    };
+    s.apply();
+  })();
+</script>
+</body>
+</html>

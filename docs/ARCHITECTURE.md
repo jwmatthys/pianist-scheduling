@@ -78,6 +78,41 @@ Restore rejects malformed, oversized, duplicate, unexpected, encrypted, path-tra
 
 Automatic recovery archives are valid `.mpsession` files under the active database's `recovery/` directory (Tauri: the per-user application-data directory). Retention is the latest three snapshots. They are distinct from user-exported files and are not shown in a session history UI. Archives are unencrypted and may contain student educational information; users must store and transfer them under institutional policy. The application does not upload session data.
 
+## Startup Profiling
+
+Startup timing is opt-in, measurement-only, and logs fixed phase labels plus elapsed milliseconds (never session, student, or imported data). Each layer prefixes lines with `[STARTUP`: Rust `src-tauri/src/startup.rs` (`[STARTUP +Nms]`, owns the end-to-end clock and summary), Python `app/startup_profile.py` (`[STARTUP backend +Nms]`, own clock starting at backend process entry), and React `lib/startupProfile.ts` (`[STARTUP frontend +Nms]`, `performance.now()`; forwards milestones to Rust through the allowlisted `startup_mark` command via `lib/platform.ts`). To remove it, delete those three modules and the `startup`/`startupProfile.mark(...)` calls.
+
+Enable it with `npm run tauri:dev` (Rust and frontend are on in debug builds) or any build with `SCHEDULING_MAESTRO_STARTUP_PROFILE=1` (`=0` forces off); Rust passes the flag to the backend and inherits its stderr. Release builds on Windows have no console, so run them from a terminal or capture stderr. Standalone backend: set the variable and run `python desktop_server.py --port N`. Frontend marks always reach the shell (the splash needs them); console logging needs a dev build or `?startupProfile=1`.
+
+Measured phases: App launch; Tauri application built; Setup begin; Backend spawn begin/complete; Backend health check begin/success; API endpoint published; Event loop ready (reports main-window visibility); Webview page load started/finished; backend entry, server libraries imported, Configuration loaded, Router registration complete, Application import complete, Database initialization begin/complete, Migration check begin/complete, FastAPI startup complete, Health endpoint first served; React bootstrap begin, Platform initialized, API base resolution begin/complete, Initial API calls begin, Session load begin/complete, Dashboard render begin/complete, First usable UI rendered. The summary line `Total startup time` and its spans are printed only from measured marks; a span with a missing end is omitted. Tauri does not expose a separate "window shown" event, so main-window state is reported at Event loop ready.
+
+### Import-Time Profiling
+
+With profiling on, `app/startup_profile.py` also wraps `importlib._bootstrap._find_and_load` for the duration of backend startup, recording cumulative and self time (excluding nested imports) for every module loaded. When startup completes it prints a ranked "Top startup contributors" list (application modules individually, everything else grouped by top-level package), application modules by cumulative time, the tracked third-party packages (reported as "not imported during startup" when absent), the SQLAlchemy engine creation time, and per-router registration time via `startup_profile.measure(...)`. The hook is removed before the summary, so it adds nothing after startup, and nothing is patched when profiling is off. pandas (and numpy) are imported on first use inside the shared importer helpers (`tabular`, `import_common`, `importer`, and the availability and Jury Panel importers) so they stay out of normal startup; `test_lazy_spreadsheet_imports` guards this. The profiled backend writes several KB to stderr, so any harness that pipes it must keep reading (or redirect to a file).
+
+### Startup Splash Screen
+
+A native Tauri splash window is shown first and stays up until the frontend reports `First usable UI rendered`. It is driven only by the milestones above; there are no timers, estimated percentages or intermediate states. Artwork is the placeholder `src-tauri/assets/splash/splash.png` (2560x1440), embedded into the binary with `splash.html` and served through a `splash://` custom protocol, so replacing the PNG (any 16:9 image) and rebuilding is all that is needed. The splash is not in the capabilities file and has no IPC.
+
+Flow: `startup::mark` is the single event path. It records the milestone, logs it when profiling is on, and notifies one listener (`splash::on_milestone`), which maps the label to fixed text and updates the page with `window.eval`. Sources: Rust marks; backend milestones that cannot use health (the socket is not bound during database init) printed as `STARTUP-EVENT <token>` on the backend's stdout when `SCHEDULING_MAESTRO_STARTUP_EVENTS=1` and read against an allowlist (`startup::BACKEND_EVENTS`); and frontend marks through `startup_mark`, which `startupProfile.mark` now always forwards (only console logging is gated on profiling).
+
+Sequencing: `setup` creates the splash, then starts the backend on a worker thread (so the event loop can paint). When the backend is healthy the `main` window is created from `tauri.conf.json` (`create: false`) **visible but off-screen and out of the taskbar**, because WebView2 suspends pages in hidden windows and no milestone would ever arrive. On `First usable UI rendered` the splash shows `Ready`, the main window is centered, shown and focused, and the splash is destroyed.
+
+| Milestone | Splash text |
+|---|---|
+| `App launch` | Starting Scheduling Maestro... |
+| `Backend spawn begin` | Launching backend... |
+| `Backend health check begin` | Waiting for backend... |
+| `Database initialization begin` (backend) | Initializing database... |
+| `React bootstrap begin` | Loading application modules... |
+| `Session load begin` | Loading session... |
+| `Dashboard render begin` | Preparing dashboard... |
+| `First usable UI rendered` | Ready |
+
+Failures keep the splash up with a fixed, non-technical message and give it a title bar so it can be closed (closing it exits the app): `Unable to start backend.`, `Startup timed out.` (backend health timeout or the 90 s watchdog), `Database initialization failed.`, `Unable to load the session.`, `Unable to open the main window.` Technical details go to the `[STARTUP]`/stderr log only.
+
+Appearance: black background, image `contain`ed (no crop or distortion), 16:9 window clamped to 480-960 px wide and at most half the monitor width, centered, borderless, non-resizable, always on top, skipped in the taskbar; white status text with a shadow over a bottom scrim at bottom center; a 0.3 s fade-in (off under `prefers-reduced-motion`).
+
 ## Find on Page
 
 `ModuleShell` mounts one shared `FindOnPage` (`components/FindOnPage.tsx`, helpers in `lib/findOnPage.ts`) scoped to the module's `<main>` content. Ctrl+F (Cmd+F on macOS) opens a browser-style find bar; matching is case-insensitive substring search over the rendered text of the visible page, updated as the user types. It only highlights (CSS Custom Highlight API, so the React-managed DOM is never modified): it does not filter rows, change selection, or navigate. Arrow Down/Right or Enter go to the next match, Arrow Up/Left or Shift+Enter to the previous, and Esc closes the bar, clears highlights, and restores focus. Switching module tabs (detected by the `aria-current="page"` navigation control) or modules closes the search. It is frontend-only: no backend, storage, or cross-module search.

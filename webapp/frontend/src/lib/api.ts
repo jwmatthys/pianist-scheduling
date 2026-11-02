@@ -85,8 +85,10 @@ import type {
   PlacementOpportunityFields,
 } from "./types";
 import { getApiBase } from "./platform";
+import * as startupProfile from "./startupProfile";
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  startupProfile.mark("Initial API calls begin");
   const res = await fetch(`${await getApiBase()}${path}`, {
     headers: options.body instanceof FormData ? undefined : { "Content-Type": "application/json" },
     ...options,

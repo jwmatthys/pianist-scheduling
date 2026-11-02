@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from io import BytesIO
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import pandas as pd
+if TYPE_CHECKING:
+    import pandas as pd
 
 SUPPORTED_EXTENSIONS = {".csv", ".xlsx", ".xls"}
 
@@ -17,16 +19,21 @@ def _extension(filename: str) -> str:
     return extension
 
 
+# pandas is imported on first use so it stays out of application startup.
 def list_sheets(filename: str, content: bytes) -> list[str]:
     extension = _extension(filename)
     if extension == ".csv":
         return []
+    import pandas as pd
+
     with pd.ExcelFile(BytesIO(content)) as workbook:
         return list(workbook.sheet_names)
 
 
 def read_table(filename: str, content: bytes, sheet_name: str | int | None = None) -> pd.DataFrame:
     extension = _extension(filename)
+    import pandas as pd
+
     if extension == ".csv":
         if sheet_name not in (None, ""):
             raise ValueError("CSV files do not contain worksheets.")
