@@ -555,10 +555,11 @@ def readiness(db: Session) -> JuryReadinessOut:
         if not jury_required:
             continue
         required_count += 1
+        student = source.student_display_name or "this student"
         panel_date = None
         if not entry.panel_uuid or entry.panel_uuid not in panels:
             issues.append(_issue(
-                "PANEL_REQUIRED", "error", "Select a valid Jury Panel for this Jury-required lesson.", lesson_uuid
+                "PANEL_REQUIRED", "error", f"Select a valid Jury Panel for {student}'s Jury-required lesson.", lesson_uuid
             ))
         else:
             used_panels.add(entry.panel_uuid)
@@ -572,7 +573,7 @@ def readiness(db: Session) -> JuryReadinessOut:
             if assigned is None:
                 issues.append(_issue(
                     "FINALIZED_PIANIST_REQUIRED", "error",
-                    "This Jury-required lesson requires a pianist but has no finalized Accompanist assignment.",
+                    f"{student}'s Jury-required lesson requires a pianist but has no finalized Accompanist assignment.",
                     lesson_uuid,
                 ))
                 continue
@@ -586,7 +587,7 @@ def readiness(db: Session) -> JuryReadinessOut:
             if declaration is None or not declaration.is_complete:
                 issues.append(_issue(
                     "PIANIST_AVAILABILITY_INCOMPLETE", "error",
-                    "The assigned pianist has no complete declaration of Availability Windows for this Panel's Scheduling Date.",
+                    f"The pianist assigned to {student} has no complete declaration of Availability Windows for this Panel's Scheduling Date.",
                     lesson_uuid, str(assigned.person_uuid), str(panel.panel_uuid),
                 ))
 

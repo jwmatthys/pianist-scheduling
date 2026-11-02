@@ -13,9 +13,11 @@ import { TutorModule } from "./pages/TutorModule";
 import { AccompanistModule, type AccompanistModuleHandle } from "./pages/AccompanistModule";
 import { DashboardPage } from "./pages/DashboardPage";
 import { JurySetupPage } from "./pages/JurySetupPage";
+import { useDismissOnBackdrop } from "./lib/useDismissOnBackdrop";
 import { ThemeProvider } from "./theme/ThemeContext";
 
 function AppContent() {
+  useDismissOnBackdrop();
   const [activeModule, setActiveModule] = useState<ModuleKey | null>(null);
   const [session, setSession] = useState<SchedulingSession | null>(null);
   const [editingSession, setEditingSession] = useState(false);

@@ -3,7 +3,8 @@ import "./FindOnPage.css";
 import {
   applyHighlights,
   clearHighlights,
-  findTextRanges,
+  findMatches,
+  type FindMatch,
   pageSignature,
   scrollRangeIntoView,
 } from "../lib/findOnPage";
@@ -19,7 +20,7 @@ type Props = {
 export function FindOnPage({ scopeRef, resetKey }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [ranges, setRanges] = useState<Range[]>([]);
+  const [ranges, setRanges] = useState<FindMatch[]>([]);
   const [index, setIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
@@ -79,7 +80,7 @@ export function FindOnPage({ scopeRef, resetKey }: Props) {
     const root = scopeRef.current;
     scrollPendingRef.current = true;
     setIndex(0);
-    setRanges(root && query ? findTextRanges(root, query) : []);
+    setRanges(root && query ? findMatches(root, query) : []);
   }, [open, query, scopeRef]);
 
   // Content can change while searching (data loads, rows edited); a tab change closes the search.
@@ -87,6 +88,12 @@ export function FindOnPage({ scopeRef, resetKey }: Props) {
     const root = scopeRef.current;
     if (!open || !root) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => setRanges(query ? findMatches(root, query) : []), 100);
+    };
+    // Typing in a text box changes its value property, which the observer cannot see.
+    root.addEventListener("input", refresh);
     const observer = new MutationObserver(() => {
       if (pageSignature(root) !== signatureRef.current) {
         reset();
@@ -94,12 +101,13 @@ export function FindOnPage({ scopeRef, resetKey }: Props) {
       }
       clearTimeout(timer);
       timer = setTimeout(() => {
-        setRanges(query ? findTextRanges(root, query) : []);
+        setRanges(query ? findMatches(root, query) : []);
       }, 100);
     });
     observer.observe(root, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["aria-current", "hidden", "style", "class"] });
     return () => {
       observer.disconnect();
+      root.removeEventListener("input", refresh);
       clearTimeout(timer);
     };
   }, [open, query, scopeRef, reset]);

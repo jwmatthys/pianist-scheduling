@@ -55,6 +55,23 @@ function openFind() {
   return screen.getByRole("textbox", { name: "Find on page" }) as HTMLInputElement;
 }
 
+function ControlsHarness() {
+  const scopeRef = useRef<HTMLElement>(null);
+  return (
+    <div>
+      <main ref={scopeRef}>
+        <label>Name <input defaultValue="Alex Smith" /></label>
+        <label>Notes <textarea defaultValue="Likes smith chords" /></label>
+        <input type="password" defaultValue="smith" aria-label="secret" />
+        <input hidden defaultValue="smith" aria-label="hidden field" />
+        <input defaultValue="Taylor" aria-label="other" />
+        <p>Smith in text</p>
+      </main>
+      <FindOnPage scopeRef={scopeRef} />
+    </div>
+  );
+}
+
 describe("FindOnPage", () => {
   let registry: Map<string, FakeHighlight>;
   const scrollIntoView = vi.fn();
@@ -169,5 +186,18 @@ describe("FindOnPage", () => {
     const input = openFind();
     fireEvent.keyDown(input, { key: "Escape" });
     expect(document.activeElement).toBe(rosterButton);
+  });
+
+  it("also matches text boxes and marks them, skipping passwords and hidden fields", () => {
+    render(<ControlsHarness />);
+    const input = openFind();
+    fireEvent.change(input, { target: { value: "smith" } });
+    expect(screen.getByRole("status").textContent).toBe("1 of 3");
+
+    const marked = Array.from(document.querySelectorAll("[data-find-match]"));
+    expect(marked.map((element) => element.tagName)).toEqual(["INPUT", "TEXTAREA"]);
+
+    fireEvent.change(input, { target: { value: "" } });
+    expect(document.querySelectorAll("[data-find-match]").length).toBe(0);
   });
 });

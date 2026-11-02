@@ -58,3 +58,15 @@
   color: var(--theme-text);
   text-decoration: underline;
 }
+
+/* Text in form controls cannot be highlighted by range, so the whole control is marked. */
+[data-find-match] {
+  background-color: var(--theme-selection) !important;
+  outline: 2px solid var(--theme-border-strong);
+  outline-offset: -1px;
+}
+
+[data-find-match="current"] {
+  outline: 3px solid var(--theme-focus-ring);
+  outline-offset: 1px;
+}
