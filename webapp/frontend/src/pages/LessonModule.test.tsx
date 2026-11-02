@@ -87,7 +87,7 @@ describe("Lesson Scheduling module", () => {
     expect(screen.getByRole("button", { name: "Manage Tags" })).toBeTruthy();
   });
 
-  it("renders the Student Roster, Schedule readiness, and Reports placeholder", async () => {
+  it("renders the Student Roster, Schedule readiness, and Reports", async () => {
     const user = userEvent.setup();
     render(<LessonModule />);
 
@@ -102,6 +102,7 @@ describe("Lesson Scheduling module", () => {
     expect(screen.getByRole("button", { name: "Generate Schedule" })).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "Reports" }));
-    expect(screen.getByText("Reports not yet implemented.")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Lesson Reports" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Generate report" })).toBeTruthy();
   });
 });

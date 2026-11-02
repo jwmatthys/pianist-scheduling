@@ -146,6 +146,39 @@ describe("LessonSchedulePage readiness", () => {
     expect(screen.getByRole("button", { name: "Generate Schedule" }).hasAttribute("disabled")).toBe(true);
   });
 
+  it("treats an automatically unplaced student with no time as unplaced", async () => {
+    vi.mocked(api.getLessonSchedule).mockResolvedValue({
+      ...generatedSchedule,
+      students_scheduled: 1,
+      students_unscheduled: 1,
+      entries: [
+        ...generatedSchedule.entries,
+        {
+          student_id: "student-2",
+          student_name: "Bea Unplaced",
+          placement_type: "automatic",
+          placement_state: "assigned",
+          instructor_id: null,
+          instructor_name: null,
+          day: null,
+          start_minute: null,
+          end_minute: null,
+          preferred_tag_match_count: 0,
+          tentative_minutes: 0,
+          verified: false,
+          warnings: [],
+          unplaced_reason: "CAPACITY_LIMIT",
+        },
+      ],
+    });
+    render(<LessonSchedulePage />);
+    const row = (await screen.findByText("Bea Unplaced")).closest("tr")!;
+    const unplacedHeading = screen.getByRole("heading", { name: /Unplaced/ });
+    const placedRow = screen.getByText("Ari Example").closest("tr")!;
+    expect(row.closest("table")).not.toBe(placedRow.closest("table"));
+    expect(unplacedHeading).toBeTruthy();
+  });
+
   it("has no Refresh Readiness button and loads readiness on mount", async () => {
     render(<LessonSchedulePage />);
     await screen.findByText("Warnings");

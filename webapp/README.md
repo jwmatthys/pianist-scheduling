@@ -1,4 +1,4 @@
-# Music Program Scheduler Desktop App
+# Scheduling Maestro Desktop App
 
 A local-first desktop application for scheduling and resource management in university and private music programs.
 
@@ -6,7 +6,7 @@ The current application consists of a React/Tauri desktop frontend backed by a l
 
 ## Current Modules
 
-### Lesson Scheduling
+### Lesson Scheduling (complete)
 
 - Import instructor and student roster data from CSV/XLSX files.
 - Manage instructor availability, teaching loads, lesson lengths, and teaching tags.
@@ -14,6 +14,8 @@ The current application consists of a React/Tauri desktop frontend backed by a l
 - Minimize instructor and student gaps while respecting scheduling constraints.
 - Manually adjust assignments when needed.
 - View readiness warnings, conflicts, and scheduling diagnostics.
+- Generate reports (student roster, instructor roster, unplaced students, placement warnings) with stale-schedule warnings, and export them as Markdown, PDF, Excel, or CSV.
+- Lesson data is included in `.mpsession` session archives.
 
 ### Clinical Placement
 
@@ -214,7 +216,7 @@ Notable documents include:
 
 ## Project Status
 
-Music Program Scheduler has evolved from its original prototype command-line scheduling tools into a unified desktop application with:
+Scheduling Maestro (formerly Music Program Scheduler) has evolved from its original prototype command-line scheduling tools into a unified desktop application with:
 
 - React/Tauri frontend
 - FastAPI backend
@@ -225,4 +227,5 @@ Music Program Scheduler has evolved from its original prototype command-line sch
 - Lesson Scheduling module
 - Clinical Placement module
 
+Tutor Scheduling is planned and not yet implemented.
 All active functionality resides within the current webapp architecture.

@@ -4,7 +4,7 @@ from dataclasses import replace
 import unittest
 
 from app.lesson_models import LessonTagState
-from app.routers import lesson
+from app.routers import lesson_scheduling as lesson
 from app.services.availability import AvailabilityWindow
 from app.services.lesson_candidates import generate_lesson_candidates
 from app.services.lesson_readiness import analyze_lesson_readiness

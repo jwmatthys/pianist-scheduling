@@ -16,7 +16,7 @@ from ..services import clinical_sites_importer as importer
 from ..services.availability import AvailabilityWindow, normalize_day
 from ..services import clinical_students_importer as students_importer
 from ..services.clinical_candidates import generate_candidates
-from ..services.clinical_import_common import ClinicalImportError
+from ..services.import_common import ImportFileError as ClinicalImportError
 from ..services.clinical_scheduling_models import PlacementState
 from ..services.clinical_readiness import analyze_readiness
 from ..services.clinical_repository import (

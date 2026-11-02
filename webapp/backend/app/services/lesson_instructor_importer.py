@@ -5,7 +5,7 @@ LessonRepository.replace_instructors for the commit phase (Phase B re-parses the
 preview data is never trusted).
 
 Weekday cells and spreadsheet reading reuse the pure, module-neutral helpers that the Clinical
-imports already proved (``clinical_availability_importer`` and ``clinical_import_common``).
+imports (``weekly_availability_cells`` and ``import_common``).
 Mapped columns become instructor fields and weekday availability; every other non-empty
 column is a tag column, exactly like the Clinical Sites import.
 """
@@ -24,14 +24,14 @@ from ..lesson_models import (
     normalize_lesson_tag_name,
 )
 from .availability import WEEKDAYS, AvailabilityWindow
-from .clinical_availability_importer import (
+from .weekly_availability_cells import (
     mapped_day_columns,
     parse_week,
     suggest_day_columns,
 )
-from .clinical_import_common import (
+from .import_common import (
     MAX_UPLOAD_BYTES,
-    ClinicalImportError,
+    ImportFileError,
     cell_text as _text,
     header_key as _header_key,
     is_blank as _is_blank,
@@ -41,7 +41,7 @@ from .time_parsing import format_time_of_day
 
 __all__ = ["MAX_UPLOAD_BYTES", "LessonInstructorImportError"]
 
-LessonInstructorImportError = ClinicalImportError
+LessonInstructorImportError = ImportFileError
 
 FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "instructor_name": ("instructor name", "instructor", "teacher name", "teacher", "name"),

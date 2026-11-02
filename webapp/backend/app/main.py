@@ -3,14 +3,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .database import init_db
 from .routers import (
+    accompanist_lessons,
     accompanist_results,
     assignments,
     availability_imports,
     clinical,
     imports,
     jury,
-    lesson,
-    lessons,
+    lesson_scheduling,
     pianists,
     reports,
     session,
@@ -40,7 +40,7 @@ def on_startup():
 
 
 app.include_router(pianists.router)
-app.include_router(lessons.router)
+app.include_router(accompanist_lessons.router)
 app.include_router(imports.router)
 app.include_router(assignments.router)
 app.include_router(reports.router)
@@ -49,7 +49,7 @@ app.include_router(availability_imports.router)
 app.include_router(accompanist_results.router)
 app.include_router(jury.router)
 app.include_router(clinical.router)
-app.include_router(lesson.router)
+app.include_router(lesson_scheduling.router)
 
 
 @app.get("/api/health")

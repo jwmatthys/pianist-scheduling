@@ -19,7 +19,7 @@ The output is a timestamped XLSX. It has no stable internal person identity, per
 
 ## Characterized Behavior
 
-Thirteen synthetic tests in `webapp/backend/tests/test_jury_characterization.py` call the standalone loader and scheduler functions directly. No real student data or workbook fixture is used.
+Thirteen synthetic tests in `webapp/backend/tests/test_jury_characterization.py` called the standalone loader and scheduler functions directly. That script and its test have since been removed from the repository (the supported Jury scheduler is `webapp/backend/app/jury_optimizer.py`, covered by `test_jury_optimizer_contract.py`); this document is retained as historical characterization. No real student data or workbook fixture was used.
 
 - An assigned pianist is inflexible. The script schedules with the assigned pianist when they become free and never considers an alternate pianist.
 - Pianist availability is treated as a hard minute-level block. Each non-exact-`Available` value, including Tentative and blank, blocks the row's 30-minute interval. Rows missing from the sheet are not blocked, so the current loader is not a reliable closed-world completeness model.
@@ -80,7 +80,7 @@ At characterization time, the typed contract was intentionally left undefined. T
 ## Future Model Requirements
 
 - Students with Jury Required = No are excluded, regardless of Needs pianist?.
-- Every Jury-required lesson must have a Panel assignment. Lesson Entries activation assigns an unassigned Jury-required lesson only on a unique exact case-insensitive Instrument-to-Panel-Name match; existing choices and ambiguous/non-matching entries remain unchanged.
+- Every Jury-required lesson must have a Panel assignment. Lesson Roster activation assigns an unassigned Jury-required lesson only on a unique exact case-insensitive Instrument-to-Panel-Name match; existing choices and ambiguous/non-matching entries remain unchanged.
 - Jury-day pianist availability is Jury-owned, one-day, binary, and complete. Available windows are legal intervals; all other times are unavailable.
 - A pianist may not accompany overlapping juries in any panels/rooms. An existing finalized Accompanist assignment is not substitutable.
 - Missing required pianist assignment is a blocking readiness problem. Manual override policy remains undecided.

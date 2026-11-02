@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from typing import Sequence
 
-from ..lesson_models import LessonPlacementType, LessonTagState, LessonUnplacedReason
+from ..lesson_domain import LessonPlacementType, LessonTagState, LessonUnplacedReason
 from .availability import WEEKDAYS, validate_window
 from .lesson_scheduling_models import (
     LessonCandidateSet,

@@ -15,9 +15,9 @@ from pydantic import BaseModel
 
 from ..clinical_models import normalize_tag_name, tag_identity_key
 from . import tabular
-from .clinical_import_common import (
+from .import_common import (
     MAX_UPLOAD_BYTES,
-    ClinicalImportError,
+    ImportFileError,
     cell_text as _text,
     header_key as _header_key,
     is_blank as _is_blank,
@@ -56,7 +56,7 @@ FIELD_LABELS = {
 REQUIRED_FIELDS = ("site_name", "day_of_week", "start_time", "end_time", "session_length")
 
 
-ClinicalSitesImportError = ClinicalImportError
+ClinicalSitesImportError = ImportFileError
 
 
 class ClinicalSitesImportInspection(BaseModel):

@@ -4,7 +4,7 @@
 
 Canonical and authoritative shared infrastructure architecture.
 
-Tags are a shared infrastructure concept within Music Program Scheduler.
+Tags are a shared infrastructure concept within Scheduling Maestro.
 
 The application provides shared tag identity and infrastructure that may be
 used by multiple modules. Each module owns its own catalog and tag data. This
@@ -736,5 +736,5 @@ Module-Owned:
 - Workflow behavior
 - Reporting semantics
 
-This mirrors the established Music Program Scheduler pattern of shared
+This mirrors the established Scheduling Maestro pattern of shared
 infrastructure with module-owned business logic.

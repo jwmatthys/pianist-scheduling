@@ -7,7 +7,7 @@ with ClinicalRepository.apply_roster_import for the commit phase.
 One import handles identity and availability together. Students are matched by Student ID
 (case-insensitive): unknown IDs are created, known IDs are updated, and students absent
 from the file are left untouched. Optional weekday columns carry recurring Availability
-Windows (cell parsing lives in ``clinical_availability_importer``). When any weekday column
+Windows (cell parsing lives in ``weekly_availability_cells``). When any weekday column
 is mapped, each listed student's availability is replaced (blank cells mean no
 availability); when none is mapped, availability is left unchanged.
 """
@@ -20,14 +20,14 @@ from typing import Literal, Mapping
 from pydantic import BaseModel, Field
 
 from .availability import WEEKDAYS, AvailabilityWindow
-from .clinical_availability_importer import (
+from .weekly_availability_cells import (
     describe_change,
     mapped_day_columns,
     parse_week,
     suggest_day_columns,
 )
-from .clinical_import_common import (
-    ClinicalImportError,
+from .import_common import (
+    ImportFileError,
     cell_text,
     header_key,
     is_blank,
@@ -158,7 +158,7 @@ def validate_mapping(mapping: ClinicalStudentsImportMapping, columns: list[str])
     for day in WEEKDAYS:
         claim(mapping.days.get(day), day)
     if issues:
-        raise ClinicalImportError("INVALID_MAPPING", issues[0], issues)
+        raise ImportFileError("INVALID_MAPPING", issues[0], issues)
 
 
 def _student_change(existing: ExistingStudent | None, name_changed: bool, email_changed: bool) -> str:

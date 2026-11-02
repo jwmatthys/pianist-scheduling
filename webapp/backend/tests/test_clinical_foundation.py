@@ -411,6 +411,7 @@ class ClinicalMigrationTests(ClinicalTestCase):
             "add_saved_reports",
             "add_lesson_scheduling_module_tables",
             "add_lesson_automatic_schedule_results",
+            "align_lesson_schedule_lifecycle",
         ))
         with Session(self.engine) as db:
             self.assertEqual(db.get(models.Pianist, 7).name, "Synthetic Pianist")

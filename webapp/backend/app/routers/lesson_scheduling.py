@@ -141,6 +141,15 @@ def get_readiness(db: Session = Depends(get_db)):
     )
 
 
+def _placement_state(entry) -> LessonPlacementState:
+    """Derive the state from actual placement data: an automatically unplaced row has no lesson time."""
+    if entry.placement_type == "manuallyUnplaced":
+        return LessonPlacementState.MANUALLY_UNPLACED
+    if entry.day is None or entry.start_minute is None:
+        return LessonPlacementState.UNASSIGNED
+    return LessonPlacementState.ASSIGNED
+
+
 def _schedule_out(schedule: LessonSchedule) -> schemas.LessonScheduleOut:
     stats = schedule.statistics
     return schemas.LessonScheduleOut(
@@ -164,7 +173,7 @@ def _schedule_out(schedule: LessonSchedule) -> schemas.LessonScheduleOut:
                 student_id=item.student_id,
                 student_name=item.student_name,
                 placement_type=item.placement_type,
-                placement_state=LessonPlacementState.from_placement_type(item.placement_type).value,
+                placement_state=_placement_state(item).value,
                 instructor_id=item.instructor_id,
                 instructor_name=item.instructor_name,
                 day=item.day,

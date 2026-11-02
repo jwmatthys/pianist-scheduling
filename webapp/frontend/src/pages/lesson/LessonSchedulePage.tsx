@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../../lib/api";
 import { formatMinutes, parseTwelveHourTime } from "../../lib/time";
+import { isLessonEntryPlaced, lessonPlacementState } from "../../lib/lessonPlacement";
 import { ConfirmDialog } from "../clinical/ClinicalDialogs";
 import type {
   LessonInstructor,
@@ -99,11 +100,10 @@ function InstructorOptions({ instructors }: { instructors: LessonInstructor[] })
   );
 }
 
-function displayType(type: LessonScheduleEntry["placement_type"]): string {
-  if (type === "automatic") return "Automatic";
-  if (type === "manual") return "Manual";
-  if (type === "manuallyUnplaced") return "Manually Unplaced";
-  return "Unassigned";
+function displayType(entry: LessonScheduleEntry): string {
+  if (lessonPlacementState(entry) === "manuallyUnplaced") return "Manually Unplaced";
+  if (!isLessonEntryPlaced(entry)) return "Unassigned";
+  return entry.placement_type === "manual" ? "Manual" : "Automatic";
 }
 
 function LessonPlacementRow({
@@ -211,7 +211,7 @@ function LessonPlacementRow({
           )
         )}
       </td>
-      <td>{displayType(entry.placement_type)}</td>
+      <td>{displayType(entry)}</td>
       <td>
         {hasWarnings ? (
           <>
@@ -286,12 +286,8 @@ export function LessonSchedulePage() {
   const runScheduleAction = (action: "generate" | "clear") =>
     runScheduleMutation(action === "generate" ? api.generateLessonSchedule : api.clearLessonSchedule);
 
-  const placedEntries = (schedule?.entries ?? []).filter(
-    (entry) => entry.placement_type === "automatic" || entry.placement_type === "manual",
-  );
-  const unplacedEntries = (schedule?.entries ?? []).filter(
-    (entry) => entry.placement_type === null || entry.placement_type === "manuallyUnplaced",
-  );
+  const placedEntries = (schedule?.entries ?? []).filter(isLessonEntryPlaced);
+  const unplacedEntries = (schedule?.entries ?? []).filter((entry) => !isLessonEntryPlaced(entry));
 
   const scheduleStale = schedule !== null && moduleState !== null
     && (schedule.is_schedule_stale
@@ -419,7 +415,7 @@ export function LessonSchedulePage() {
                       <td>
                         <select
                           aria-label={`Instructor for ${entry.student_name}`}
-                          value={entry.placement_state === "manuallyUnplaced" ? MANUALLY_UNPLACED_OPTION : UNASSIGNED_OPTION}
+                          value={lessonPlacementState(entry) === "manuallyUnplaced" ? MANUALLY_UNPLACED_OPTION : UNASSIGNED_OPTION}
                           disabled={loading || actionLoading}
                           onChange={(event) => {
                             const value = event.target.value;
@@ -441,7 +437,7 @@ export function LessonSchedulePage() {
                         </select>
                       </td>
                       <td>{UNPLACED_REASONS[entry.unplaced_reason ?? "NO_FEASIBLE_CANDIDATE"] ?? entry.unplaced_reason}</td>
-                      <td>{displayType(entry.placement_type)}</td>
+                      <td>{displayType(entry)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -472,7 +468,7 @@ export function LessonSchedulePage() {
             <ul className="clinical-readiness-list" aria-label="Schedule lifecycle status">
               <li>Automatic: {schedule.automatic_count}</li>
               <li>Manual: {schedule.manual_count}</li>
-              <li>Unassigned: {unplacedEntries.filter((entry) => entry.placement_state === "unassigned").length}</li>
+              <li>Unassigned: {unplacedEntries.filter((entry) => lessonPlacementState(entry) === "unassigned").length}</li>
               <li>Manually Unplaced: {schedule.manually_unplaced_count}</li>
               <li>Verified: {schedule.verified_count}</li>
               <li>Unverified: {schedule.unverified_count}</li>

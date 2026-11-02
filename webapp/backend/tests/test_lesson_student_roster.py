@@ -13,7 +13,7 @@ from fastapi import HTTPException, UploadFile
 
 from app import lesson_schemas as schemas
 from app.lesson_models import LessonPlacementType, LessonTagState
-from app.routers import lesson
+from app.routers import lesson_scheduling as lesson
 from app.services import lesson_student_importer as importer
 from app.services.clinical_repository import ClinicalRepository
 from app.services.lesson_repository import LessonValidationError

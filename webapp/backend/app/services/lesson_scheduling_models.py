@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from ..lesson_models import LessonTagState, LessonUnplacedReason
+from ..lesson_domain import LessonTagState, LessonUnplacedReason
 from .availability import AvailabilityWindow, WEEKDAYS
 
 LESSON_START_INCREMENT_MINUTES = 15

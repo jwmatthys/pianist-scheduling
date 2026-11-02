@@ -6,7 +6,7 @@ data is never trusted).
 
 One import carries the roster and weekly availability together; there is no separate
 availability import. Spreadsheet reading and weekday-cell parsing reuse the pure,
-module-neutral helpers that the Clinical imports already proved. Unlike the Clinical
+module-neutral helpers shared with the Clinical imports. Unlike the Clinical
 roster import (which merges by Student ID), this import is a full replacement.
 """
 
@@ -17,14 +17,14 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel, Field
 
 from .availability import WEEKDAYS, AvailabilityWindow
-from .clinical_availability_importer import (
+from .weekly_availability_cells import (
     mapped_day_columns,
     parse_week,
     suggest_day_columns,
 )
-from .clinical_import_common import (
+from .import_common import (
     MAX_UPLOAD_BYTES,
-    ClinicalImportError,
+    ImportFileError,
     cell_text as _text,
     header_key as _header_key,
     is_blank as _is_blank,
@@ -34,7 +34,7 @@ from .time_parsing import format_time_of_day
 
 __all__ = ["MAX_UPLOAD_BYTES", "LessonStudentImportError"]
 
-LessonStudentImportError = ClinicalImportError
+LessonStudentImportError = ImportFileError
 
 FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "student_id": ("student id", "studentid", "id", "student number", "student", "emplid"),

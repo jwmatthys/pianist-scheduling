@@ -1079,8 +1079,14 @@ class LessonRepository:
             statistics=statistics,
             entries=entries,
             verification=verification,
-            automatic_count=sum(item.placement_type == LessonPlacementType.AUTOMATIC.value for item in entries),
-            manual_count=sum(item.placement_type == LessonPlacementType.MANUAL.value for item in entries),
+            automatic_count=sum(
+                item.placement_type == LessonPlacementType.AUTOMATIC.value and item.day is not None
+                for item in entries
+            ),
+            manual_count=sum(
+                item.placement_type == LessonPlacementType.MANUAL.value and item.day is not None
+                for item in entries
+            ),
             manually_unplaced_count=sum(
                 item.placement_type == LessonPlacementType.MANUALLY_UNPLACED.value for item in entries
             ),

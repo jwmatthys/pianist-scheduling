@@ -1,7 +1,7 @@
 # Clinical Placement Scheduling Module Overview and Implementation Specification
 
 **Status:** Approved module design for implementation.  
-**Product:** Music Program Scheduler  
+**Product:** Scheduling Maestro  
 **Module:** Clinical Placement Scheduling / Clinical Placements
 
 ## 1. Purpose and implementation guardrails
@@ -166,7 +166,7 @@ The user may add, edit, or delete students manually after import, and may edit t
 
 ### 6.1.1 Unified Student Roster import with weekly availability (implemented)
 
-Student Roster has a single **Import Student Roster** action (`clinical_students_importer.py`, routes `/api/clinical/students/import/{inspect,preview,apply}`) that creates/updates students and imports their recurring weekly Availability Windows in one operation. There is no standalone availability import. Weekly cell parsing is a pure shared subcomponent (`clinical_availability_importer.py`); persistence is `ClinicalRepository.apply_roster_import`.
+Student Roster has a single **Import Student Roster** action (`clinical_students_importer.py`, routes `/api/clinical/students/import/{inspect,preview,apply}`) that creates/updates students and imports their recurring weekly Availability Windows in one operation. There is no standalone availability import. Weekly cell parsing is a pure shared subcomponent (`weekly_availability_cells.py`, shared with Lesson Scheduling); persistence is `ClinicalRepository.apply_roster_import`.
 
 The two-phase model applies: Phase A (inspect, map, preview) writes nothing; Phase B requires explicit confirmation, re-reads, re-parses, and re-validates the file against the current roster (never trusting browser preview data), and commits in one transaction.
 

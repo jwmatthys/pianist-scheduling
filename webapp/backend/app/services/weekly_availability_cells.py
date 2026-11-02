@@ -1,6 +1,6 @@
-"""Pure weekly-availability cell parsing shared by the Clinical Student Roster import.
+"""Pure weekly-availability cell parsing shared by the Clinical and Lesson roster imports.
 
-This is a subcomponent of ``clinical_students_importer``: it turns the weekday cells of
+It turns the weekday cells of
 one spreadsheet row into normalized Availability Windows. It has no database access and
 no knowledge of students or files.
 
@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import Mapping
 
 from .availability import WEEKDAYS, AvailabilityStatus, AvailabilityWindow, normalize_day, normalize_windows
-from .clinical_import_common import cell_text
+from .import_common import cell_text
 from .time_parsing import format_time_of_day, parse_time_range
 
 MAX_ENTRIES_PER_CELL = 20

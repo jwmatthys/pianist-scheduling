@@ -18,7 +18,7 @@ from .lesson_scheduling_models import (
     LessonReadinessWarning,
     LessonSchedulingInput,
 )
-from ..lesson_models import LessonTagState
+from ..lesson_domain import LessonTagState
 
 _ERROR = LessonReadinessSeverity.ERROR
 _WARNING = LessonReadinessSeverity.WARNING

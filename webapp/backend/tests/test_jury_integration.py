@@ -33,7 +33,7 @@ from app.services.module_lifecycle import (
     synchronize_lesson_identity,
 )
 from app.routers import jury as jury_router
-from app.routers.lessons import delete_lesson, update_lesson
+from app.routers.accompanist_lessons import delete_lesson, update_lesson
 
 
 class JuryIntegrationTests(unittest.TestCase):

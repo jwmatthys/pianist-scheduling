@@ -1,4 +1,4 @@
-# Music Program Scheduler: Product and Module Architecture
+# Scheduling Maestro: Product and Module Architecture
 
 **Status:** Approved product and module architecture. Current runtime, schema, and implementation status are maintained in [ARCHITECTURE.md](ARCHITECTURE.md) and the module-specific design documents.
 
@@ -16,13 +16,13 @@ The portable `.mpsession` file should be a versioned archive with a manifest and
 
 The active desktop/runtime and SQLite schema are documented in [ARCHITECTURE.md](ARCHITECTURE.md). Accompanist behavior is characterized in [ACCOMPANIST-BEHAVIOR-CHARACTERIZATION.md](ACCOMPANIST-BEHAVIOR-CHARACTERIZATION.md). The standalone jury workbook tool remains separate; its behavior is documented in [JURY-SCHEDULER-CHARACTERIZATION.md](JURY-SCHEDULER-CHARACTERIZATION.md).
 
-Performance Juries now has setup/readiness, a pure-domain optimizer, readiness-gated generation, typed result persistence, stale-result detection, and a read-only Schedule UI; see [JURY-OPTIMIZER-CONTRACT.md](JURY-OPTIMIZER-CONTRACT.md). Manual schedule editing and finalization are not implemented.
+Performance Juries has setup (Jury Panels, Lesson Roster, Pianist Availability), readiness, a pure-domain optimizer, readiness-gated generation, typed result persistence, stale-result detection, a read-only Schedule UI, and Reports; the tab order is Jury Panels, Lesson Roster, Pianist Availability, Schedule, Reports, with Jury Panels first. See [JURY-OPTIMIZER-CONTRACT.md](JURY-OPTIMIZER-CONTRACT.md). Manual schedule editing and finalization are not implemented. Lesson Scheduling is implemented and complete (rosters, availability, tags, readiness, optimizer, manual placements, reports, exports, stale handling, `.mpsession` coverage). Tutor Scheduling is planned and not implemented.
 
 ## 3. Product Shell and Workflow
 
 ```mermaid
 flowchart TD
-    App[Music Program Scheduler]
+    App[Scheduling Maestro]
     App --> Open[Open or restore session]
     App --> New[Create blank session]
     Open --> Session[Active session: program + term]
@@ -305,11 +305,12 @@ The Accompanist and Jury boundaries are implemented and documented in [MODULE-AR
 Lesson Scheduling has implemented its foundation, rosters, candidate
 generation, readiness analysis, optimizer, automatic generation, manual
 assignment lifecycle, stale-state handling, verification, and Clinical-aligned
-regeneration. The remaining Lesson work is reports and exports. The Lesson
+regeneration, and reports and exports (Markdown, PDF, Excel, CSV; stale
+schedules remain exportable with a warning). The Lesson
 optimizer remains distinct because its constraints and objectives are
 Lesson-owned. See
 [LESSON-SCHEDULING-MODULE-SPEC.md](LESSON-SCHEDULING-MODULE-SPEC.md) for the
-phase checklist and remaining work.
+phase checklist.
 
 ## 16. Canonical References
 

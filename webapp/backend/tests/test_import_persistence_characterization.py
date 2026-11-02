@@ -12,7 +12,7 @@ from sqlalchemy.pool import StaticPool
 from app import models, module_models, schemas
 from app import database
 from app.database import Base
-from app.routers import assignments, imports, lessons, pianists
+from app.routers import accompanist_lessons as lessons, assignments, imports, pianists
 from app.services import importer
 
 

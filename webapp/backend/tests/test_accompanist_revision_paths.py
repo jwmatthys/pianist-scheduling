@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app import models, module_models, schemas
 from app.database import migrate_database
-from app.routers import assignments, imports, lessons, pianists
+from app.routers import accompanist_lessons as lessons, assignments, imports, pianists
 from app.services.accompanist_results import finalize_accompanist_result, get_current_accompanist_result
 from app.services.module_lifecycle import module_revision
 

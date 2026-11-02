@@ -1,3 +1,4 @@
+from contextlib import closing
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -191,7 +192,8 @@ class DatabaseMigrationTests(unittest.TestCase):
 
     def test_legacy_fixture_migrates_forward_without_losing_existing_records(self):
         self.engine.dispose()
-        with sqlite3.connect(self.database_path) as connection:
+        # sqlite3's context manager only commits; closing is required to release the file on Windows.
+        with closing(sqlite3.connect(self.database_path)) as connection:
             connection.executescript(LEGACY_FIXTURE.read_text(encoding="utf-8"))
         self.engine = create_engine(f"sqlite:///{self.database_path}")
 

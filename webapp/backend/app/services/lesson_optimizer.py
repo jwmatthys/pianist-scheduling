@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Sequence
 
-from ..lesson_models import LessonUnplacedReason
+from ..lesson_domain import LessonUnplacedReason
 from .availability import AvailabilityWindow, WEEKDAYS, validate_window
 from .lesson_scheduling_models import (
     MINUTES_PER_DAY,

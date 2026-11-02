@@ -1,6 +1,6 @@
-# 🎼 Music Program Scheduler
+# 🎼 Scheduling Maestro
 
-Music Program Scheduler is a desktop application for managing and optimizing scheduling workflows in collegiate and private music programs.
+Scheduling Maestro (formerly Music Program Scheduler) is a desktop application for managing and optimizing scheduling workflows in collegiate and private music programs.
 
 The application provides:
 
@@ -201,7 +201,7 @@ npm test
 
 ## Status
 
-Music Program Scheduler has evolved from its original prototype scheduling scripts into a unified desktop application featuring:
+Scheduling Maestro has evolved from its original prototype scheduling scripts into a unified desktop application featuring:
 
 - A React/Tauri frontend
 - A FastAPI backend

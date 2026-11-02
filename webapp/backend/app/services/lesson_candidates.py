@@ -13,7 +13,7 @@ from .lesson_scheduling_models import (
     LessonSchedulingInput,
     LessonStudentInput,
 )
-from ..lesson_models import LessonTagState
+from ..lesson_domain import LessonTagState
 
 
 class _DayCoverage:

@@ -215,12 +215,12 @@ class StudentImportParsingTests(unittest.TestCase):
         self.assertEqual(rows[2].errors, [])
 
     def test_mapping_errors_and_suggestions(self):
-        with self.assertRaises(importer.ClinicalImportError) as caught:
+        with self.assertRaises(importer.ImportFileError) as caught:
             importer.parse_students(
                 "r.csv", csv_bytes(GOOD), None, importer.ClinicalStudentsImportMapping(name="Student")
             )
         self.assertEqual(caught.exception.code, "INVALID_MAPPING")
-        with self.assertRaises(importer.ClinicalImportError):
+        with self.assertRaises(importer.ImportFileError):
             parse(GOOD, name="ID")
         inspection = importer.inspect_file("r.csv", csv_bytes(GOOD, ["Student ID", "Name", "Email", "x"]), None)
         self.assertEqual(

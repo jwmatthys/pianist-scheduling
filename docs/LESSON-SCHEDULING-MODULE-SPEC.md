@@ -1,7 +1,7 @@
 # LESSON-SCHEDULING-MODULE-SPEC.md
 
-**Status:** Approved  
-**Product:** Music Program Scheduler  
+**Status:** Approved — implemented and complete (all roadmap phases, including Phase 8 Reports and Export)  
+**Product:** Scheduling Maestro  
 **Module:** Lesson Scheduling
 
 ---
@@ -57,10 +57,12 @@ catalog, tag meanings, or optimizer.
 - ✅ Readiness Analysis
 - ✅ Optimizer / Schedule Generation Review
 - ✅ Manual Placement Management
-- ⬜ Reports and Export
+- ✅ Reports and Export
 
-The optimizer, automatic generation, and Clinical-aligned schedule lifecycle
-are implemented. Reports and Export remain pending.
+The optimizer, automatic generation, Clinical-aligned schedule lifecycle,
+and Reports and Export are implemented and tested. Lesson data and saved
+reports are included in `.mpsession` archives and covered by a round-trip
+test (`tests/test_lesson_session_archive.py`). Lesson Scheduling is complete.
 
 ## Phase Completion Notes
 
@@ -97,8 +99,8 @@ Candidate generation does not:
 - Enforce instructor overlap
 - Perform optimization
 
-At Phase 4 completion, readiness analysis, scheduling, and reporting remained
-pending.
+At Phase 4 completion, readiness analysis, scheduling, and reporting were
+not yet built; they were delivered in later phases and are all implemented.
 
 ### Phase 5: Readiness Analysis — Implemented
 
@@ -181,7 +183,7 @@ capacity limit, or instructor overlap. Schedule clearing removes the
 generated placements and unplaced records, advances `schedule_revision`, and
 clears stale state; it does not change source-data revision.
 
-Reports and Export remain pending.
+Reports and Export are implemented (see Section 15).
 
 ---
 
@@ -358,7 +360,7 @@ instructor's Availability Windows for that lesson interval.
 The instructor's capacity is exposed as candidate metadata only. Candidate
 generation does not consume capacity, prevent overlapping instructor
 candidates, assign lessons, or perform readiness analysis. Capacity and
-overlap enforcement belong to the future optimizer.
+overlap enforcement belong to the optimizer.
 
 Candidate issue codes identify missing Required tags and matching Restricted
 tags. A student/instructor pair with no shared legal Availability Window
@@ -651,10 +653,26 @@ Schedule tables.
 
 ---
 
-# 15. Reports — Pending
+# 15. Reports — Implemented
 
-Lesson reports should follow the Clinical reporting philosophy and use the
-same familiar report preview and local export patterns. Provide:
+Lesson reports follow the Clinical reporting pattern. They are built in the
+frontend from the existing schedule API (`lib/lessonReport.ts`), saved per
+session under the `lesson` module id, and exported through the shared export
+service. The Reports tab has a Generate report button, a preview, and an Export
+dialog offering Markdown, PDF, Excel, and CSV. A generated report is always the
+complete package (Student Placement Roster, Instructor Placement Roster,
+Unplaced Students, Placement Warnings); the preview and the Markdown and PDF
+exports always contain all of it. Excel and CSV carry the full
+one-row-per-student table.
+
+A report generated from, or later outdated by, a stale schedule is still
+viewable and exportable. The preview shows the shared out-of-date banner, and
+the report body carries a stale-schedule note and a stale line in Placement
+Warnings so the warning appears in every export. The Placement Warnings section
+lists the schedule's existing verification warnings and marks manual overrides;
+it does not recompute any rules.
+
+Provide:
 
 - a student-oriented lesson roster;
 - an instructor-oriented lesson roster;
@@ -703,8 +721,13 @@ No feasible instructor
 
 Capacity limit
 
+Instructor overlap
+
 Manually unplaced
 ```
+
+These map from the internal codes `NO_FEASIBLE_CANDIDATE`, `CAPACITY_LIMIT`,
+`INSTRUCTOR_OVERLAP`, and `MANUALLY_UNPLACED`, which are unchanged.
 
 ### Three-State Placement Model (Unassigned / Assigned / Manually Unplaced)
 
@@ -881,4 +904,4 @@ A coordinator can:
    review non-blocking warnings, and remove an override.
 7. Regenerate automatic assignments without changing manual decisions.
 8. Review student-oriented, instructor-oriented, unplaced, and warning
-   reports, and export them locally as Markdown or PDF.
+   reports, and export them locally as Markdown, PDF, Excel, or CSV.

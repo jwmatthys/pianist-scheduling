@@ -1,4 +1,4 @@
-"""Pure helpers shared by Clinical module file imports (no database access)."""
+"""Pure helpers shared by module file imports (Clinical and Lesson); no database access."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from . import tabular
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
 
-class ClinicalImportError(RuntimeError):
+class ImportFileError(RuntimeError):
     def __init__(self, code: str, message: str, issues: list[str] | None = None):
         self.code = code
         self.issues = issues or []
@@ -37,17 +37,17 @@ def cell_text(value: object) -> str:
 
 def read_frame(filename: str, content: bytes, sheet_name: str | None) -> tuple[pd.DataFrame, list[str], str | None]:
     if len(content) > MAX_UPLOAD_BYTES:
-        raise ClinicalImportError("FILE_TOO_LARGE", "Clinical import files must be 25 MB or smaller.")
+        raise ImportFileError("FILE_TOO_LARGE", "Import files must be 25 MB or smaller.")
     try:
         sheets = tabular.list_sheets(filename, content)
         selected = (sheet_name or sheets[0]) if sheets else None
         if selected is not None and selected not in sheets:
-            raise ClinicalImportError("UNKNOWN_SHEET", "Choose a worksheet that exists in the selected file.")
+            raise ImportFileError("UNKNOWN_SHEET", "Choose a worksheet that exists in the selected file.")
         frame = tabular.read_table(filename, content, selected)
-    except ClinicalImportError:
+    except ImportFileError:
         raise
     except Exception as error:
-        raise ClinicalImportError("FILE_READ_FAILED", f"Could not read the selected file: {error}") from error
+        raise ImportFileError("FILE_READ_FAILED", f"Could not read the selected file: {error}") from error
     frame = frame.copy()
     frame.columns = [str(column) for column in frame.columns]
     return frame, sheets, selected

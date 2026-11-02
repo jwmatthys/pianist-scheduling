@@ -23,47 +23,17 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from .lesson_domain import (  # noqa: F401  (re-exported for persistence callers)
+    LessonPlacementState,
+    LessonPlacementType,
+    LessonTagState,
+    LessonUnplacedReason,
+)
 from .module_models import ModuleBase
 
 LESSON_MODULE_ID = "lesson-scheduling"
 DEFAULT_LESSON_LENGTH_MINUTES = 60
 DEFAULT_INSTRUCTOR_CAPACITY = 1
-
-
-class LessonTagState(str, Enum):
-    NEUTRAL = "neutral"
-    REQUIRED = "required"
-    PREFERRED = "preferred"
-    RESTRICTED = "restricted"
-
-
-class LessonPlacementType(str, Enum):
-    AUTOMATIC = "automatic"
-    MANUAL = "manual"
-    MANUALLY_UNPLACED = "manuallyUnplaced"
-
-
-class LessonPlacementState(str, Enum):
-    """Coordinator-facing state of a student: no placement record is UNASSIGNED."""
-
-    UNASSIGNED = "unassigned"
-    ASSIGNED = "assigned"
-    MANUALLY_UNPLACED = "manuallyUnplaced"
-
-    @classmethod
-    def from_placement_type(cls, placement_type: str | None) -> "LessonPlacementState":
-        if placement_type is None:
-            return cls.UNASSIGNED
-        if placement_type == LessonPlacementType.MANUALLY_UNPLACED.value:
-            return cls.MANUALLY_UNPLACED
-        return cls.ASSIGNED
-
-
-class LessonUnplacedReason(str, Enum):
-    NO_FEASIBLE_CANDIDATE = "NO_FEASIBLE_CANDIDATE"
-    CAPACITY_LIMIT = "CAPACITY_LIMIT"
-    INSTRUCTOR_OVERLAP = "INSTRUCTOR_OVERLAP"
-    MANUALLY_UNPLACED = "MANUALLY_UNPLACED"
 
 
 def normalize_lesson_tag_name(value: str | None) -> str:

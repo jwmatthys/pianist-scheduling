@@ -1,12 +1,12 @@
 # Jury Module Data Design
 
-**Status:** Approved design implemented for Jury Integration Milestone A. The Schedule tab is a placeholder; Jury optimization and schedule generation remain out of scope.
+**Status:** Approved design implemented for Jury Integration Milestone A. This milestone's scope excluded the Schedule tab, optimization, and schedule generation; those were delivered later (see [JURY-OPTIMIZER-CONTRACT.md](JURY-OPTIMIZER-CONTRACT.md)).
 
 ## 1. Scope and Design Basis
 
 This milestone establishes stable identities, an immutable finalized Accompanist result, Jury-owned configuration and availability, dependency provenance, and readiness validation. It does not schedule juries. The accepted characterization explicitly rejects unbounded search and arithmetic failure: a future optimizer must terminate with every Jury-required lesson entry either validly scheduled or explicitly unscheduled with understandable reasons. Data and validation must give a future optimizer a finite Jury date and valid positive integer durations; the optimizer must still enforce its own bounded search and total-outcome invariant.
 
-The design started from schema version 3; the current schema is version 9. Historical v1-v8 migrations remain unchanged. Accompanist retains numeric `Pianist` and `Lesson` primary keys and current availability behavior while adding editable Pianist IDs, UUID identity mappings, source revisions, finalized-result history, and an Accompanist-owned per-lesson Jury Required extension. Jury persistence is module-owned and lesson-based.
+The design started from schema version 3; the current schema is version 14. Historical v1-v8 migrations remain unchanged. Accompanist retains numeric `Pianist` and `Lesson` primary keys and current availability behavior while adding editable Pianist IDs, UUID identity mappings, source revisions, finalized-result history, and an Accompanist-owned per-lesson Jury Required extension. Jury persistence is module-owned and lesson-based.
 
 ## 2. Shared Person Identity
 
@@ -35,7 +35,7 @@ The result envelope contains:
 - the source revision and input/result provenance used to create the snapshot;
 - an immutable payload of lesson-level Accompanist facts.
 
-Each relevant source lesson entry in contract v2 contains `source_lesson_uuid`, `student_person_uuid`, student display name, instrument, teacher, `pianist_required`, `jury_required`, and either no assigned pianist or the finalized assigned pianist's Person UUID and display name. Instrument and teacher are source-lesson facts displayed read-only in Jury. Jury Required is also authoritative Accompanist source data, but both Accompanist Schedule and Jury Lesson Entries edit that same value by stable Lesson UUID; finalized payloads remain immutable. Instrument is not a universal student property and must not be used to infer a Jury Panel. Preserve one result entry per source lesson; a student with multiple lessons can have different Jury Required values, instruments, teachers, pianist requirements, and assigned pianists on those lessons.
+Each relevant source lesson entry in contract v2 contains `source_lesson_uuid`, `student_person_uuid`, student display name, instrument, teacher, `pianist_required`, `jury_required`, and either no assigned pianist or the finalized assigned pianist's Person UUID and display name. Instrument and teacher are source-lesson facts displayed read-only in Jury. Jury Required is also authoritative Accompanist source data, but both Accompanist Schedule and the Jury Lesson Roster edit that same value by stable Lesson UUID; finalized payloads remain immutable. Instrument is not a universal student property and must not be used to infer a Jury Panel. Preserve one result entry per source lesson; a student with multiple lessons can have different Jury Required values, instruments, teachers, pianist requirements, and assigned pianists on those lessons.
 
 The standalone characterization consumes student name, instrument, pianist-required state, and the fixed pianist assignment. Contract v2 adds authoritative lesson-level Jury Required alongside stable student, lesson, and pianist identity. Teacher is included as read-only result presentation metadata and is not currently a Jury optimizer constraint. Do not aggregate lessons into one student-level Jury flag, pianist, or instrument, and do not join by name. Contract v1 remains immutable and decodable for historical results; new finalizations use v2.
 
@@ -57,12 +57,12 @@ When Accompanist source revision advances or its current finalized result change
 
 ## 7. Jury Lesson Participation Data
 
-Jury Required is authoritative Accompanist source lesson data, not a Jury-owned copy. It is editable in both Accompanist Schedule and Jury Lesson Entries through the Accompanist source service. Persist one Jury-owned `jury_lesson_entries` row per source lesson, keyed by `(session_uuid, source_lesson_uuid)`, containing:
+Jury Required is authoritative Accompanist source lesson data, not a Jury-owned copy. It is editable in both Accompanist Schedule and the Jury Lesson Roster through the Accompanist source service. Persist one Jury-owned `jury_lesson_entries` row per source lesson, keyed by `(session_uuid, source_lesson_uuid)`, containing:
 
 - `student_person_uuid`;
 - `panel_uuid NULL` until a user selects a panel.
 
-The source lesson UUID and student UUID come from the typed result boundary; the current Jury Required value is read and written through the authoritative Accompanist service. Jury persistence must not store a second requirement Boolean. Jury otherwise edits only the lesson's Panel selection, which remains stored when Jury Required is false and is ignored by readiness in that state. Therefore one student may have a Jury for one lesson but not another, separate panels for separate lessons, and different finalized pianist assignments for those lessons. Jury Required is independent of that lesson's Pianist Required; no panel assignment is inferred from teacher, Area, program, or Accompanist assignment. The only automatic assignment is on Lesson Entries activation: each unassigned Jury-required lesson whose full Instrument equals exactly one Panel Name (case-insensitive, no partial matching) is set to that Panel; existing selections and ambiguous matches are never changed. A Jury-required lesson whose pianist is not required needs no assigned pianist.
+The source lesson UUID and student UUID come from the typed result boundary; the current Jury Required value is read and written through the authoritative Accompanist service. Jury persistence must not store a second requirement Boolean. Jury otherwise edits only the lesson's Panel selection, which remains stored when Jury Required is false and is ignored by readiness in that state. Therefore one student may have a Jury for one lesson but not another, separate panels for separate lessons, and different finalized pianist assignments for those lessons. Jury Required is independent of that lesson's Pianist Required; no panel assignment is inferred from teacher, Area, program, or Accompanist assignment. The only automatic assignment is on Lesson Roster activation: each unassigned Jury-required lesson whose full Instrument equals exactly one Panel Name (case-insensitive, no partial matching) is set to that Panel; existing selections and ambiguous matches are never changed. A Jury-required lesson whose pianist is not required needs no assigned pianist.
 
 The initial Jury participation roster is built from lesson entries in the current finalized result. Every Jury entry must reference an authoritative source Lesson UUID; Jury-only participants are out of scope and would require a future explicit design.
 

@@ -5,6 +5,7 @@ import tempfile
 import unittest
 import warnings
 import zipfile
+from contextlib import closing
 from datetime import date
 from io import BytesIO
 from pathlib import Path
@@ -383,7 +384,8 @@ class SessionFileTests(unittest.TestCase):
             restore_session(self.engine, unsupported_format, self.recovery_directory)
 
         newer_path = self.directory / "newer.sqlite3"
-        with sqlite3.connect(newer_path) as connection:
+        # sqlite3's context manager only commits; closing is required to release the file on Windows.
+        with closing(sqlite3.connect(newer_path)) as connection:
             connection.executescript("CREATE TABLE marker (id INTEGER); PRAGMA user_version = 77;")
         newer_archive = self.make_archive(newer_path.read_bytes(), schema_version=77)
         with self.assertRaisesRegex(SessionFileError, "newer than supported"):

@@ -6,7 +6,7 @@ from fastapi import HTTPException
 
 from app.lesson_models import LessonPlacementType, LessonSchedulePlacement, LessonUnplacedStudent
 from app import lesson_schemas
-from app.routers import lesson
+from app.routers import lesson_scheduling as lesson
 from tests.test_lesson_foundation import LessonTestCase, window
 
 

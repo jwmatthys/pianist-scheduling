@@ -12,7 +12,7 @@ from app.clinical_models import ClinicalPlacement, PlacementType
 from app.routers import clinical
 from app.services import clinical_students_importer as importer
 from app.services.availability import AvailabilityWindow
-from app.services.clinical_import_common import ClinicalImportError
+from app.services.import_common import ImportFileError
 from tests.test_clinical_foundation import ClinicalTestCase, opportunity_input
 
 HEADERS = ["Student ID", "Mon", "Tue", "Wed", "Notes"]
@@ -157,7 +157,7 @@ class ParserTests(unittest.TestCase):
             importer.ClinicalStudentsImportMapping(student_id="Student ID", days={"Someday": "Mon"}),
         ]
         for mapping in bad:
-            with self.assertRaises(ClinicalImportError) as caught:
+            with self.assertRaises(ImportFileError) as caught:
                 importer.validate_mapping(mapping, columns)
             self.assertEqual(caught.exception.code, "INVALID_MAPPING")
 
