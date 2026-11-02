@@ -16,9 +16,7 @@ from .availability import (
     AvailabilityIssue,
     AvailabilityWindow,
     normalize_day,
-    normalize_status,
     normalize_windows,
-    parse_time_minutes,
 )
 from .module_lifecycle import (
     active_session_uuid,
@@ -27,6 +25,7 @@ from .module_lifecycle import (
     ensure_pianist_identity,
     remove_pianist_identity_mapping,
 )
+from .weekly_availability_cells import mapped_day_columns, parse_week, suggest_day_columns
 from .jury_sync import sync_jury_with_accompanist
 
 if TYPE_CHECKING:
@@ -57,6 +56,7 @@ class PianistImportPlan:
     key: str
     pianist_name: str
     email: str
+    max_hours_per_week: float | None = None
     row_numbers: set[int] = field(default_factory=set)
     days: set[str] = field(default_factory=set)
 
@@ -118,53 +118,21 @@ def _suggest_column(columns: list[str], aliases: tuple[str, ...]) -> str | None:
     return None
 
 
-def _suggest_wide_windows(columns: list[str]) -> dict[str, list[schemas.AvailabilityWindowColumns]]:
-    starts: dict[tuple[str, int], str] = {}
-    ends: dict[tuple[str, int], str] = {}
-    for column in columns:
-        tokens = re.findall(r"[a-z]+|\d+", column.casefold())
-        day = next((normalize_day(token) for token in tokens if normalize_day(token)), None)
-        if not day:
-            continue
-        kind = None
-        if any(token in {"start", "from", "begin", "begins"} for token in tokens):
-            kind = starts
-        elif any(token in {"end", "to", "until", "finish"} for token in tokens):
-            kind = ends
-        if kind is None:
-            continue
-        numbers = [int(token) for token in tokens if token.isdigit()]
-        window_index = numbers[-1] if numbers else 1
-        kind[(day, window_index)] = column
-
-    result: dict[str, list[schemas.AvailabilityWindowColumns]] = {}
-    for day, window_index in sorted(set(starts) | set(ends), key=lambda item: (models.DAYS_ORDER.index(item[0]), item[1])):
-        result.setdefault(day, []).append(schemas.AvailabilityWindowColumns(
-            start_column=starts.get((day, window_index)),
-            end_column=ends.get((day, window_index)),
-        ))
-    return result
-
-
 def _inspection(upload_token: str, upload: StagedUpload, sheet_name: str | None) -> schemas.AvailabilityImportInspection:
     frame = _frame_for(upload, sheet_name)
     columns = [str(column) for column in frame.columns]
-    suggested = {
-        "person_name_column": _suggest_column(columns, ("pianist name", "person name", "full name", "name", "pianist", "respondent")),
-        "email_column": _suggest_column(columns, ("pianist email", "email address", "email")),
-        "day_column": _suggest_column(columns, ("day", "weekday", "day of week")),
-        "start_column": _suggest_column(columns, ("start time", "start", "available from")),
-        "end_column": _suggest_column(columns, ("end time", "end", "available until")),
-        "status_column": _suggest_column(columns, ("availability status", "status", "availability")),
-    }
+    name_column = _suggest_column(columns, ("pianist name", "person name", "full name", "name", "pianist", "respondent"))
+    email_column = _suggest_column(columns, ("pianist email", "email address", "email"))
+    hours_column = _suggest_column(columns, ("max hours per week", "max hours", "max hrs wk", "hours per week"))
+    taken = {column for column in (name_column, email_column, hours_column) if column}
     return schemas.AvailabilityImportInspection(
         upload_token=upload_token,
         sheets=list(upload.sheets),
         selected_sheet=sheet_name,
         columns=columns,
         sample_rows=_sample_rows(frame),
-        suggested_normalized=suggested,
-        suggested_wide_windows=_suggest_wide_windows(columns),
+        suggested_columns={"person_name_column": name_column, "email_column": email_column, "max_hours_column": hours_column},
+        suggested_days=suggest_day_columns(columns, taken),
     )
 
 
@@ -219,63 +187,28 @@ def _mapping_columns(
 
     check(mapping.person_name_column, "pianist name", True)
     check(mapping.email_column, "email", False)
-    if mapping.layout == "normalized":
-        check(mapping.day_column, "weekday", True)
-        check(mapping.start_column, "start time", True)
-        check(mapping.end_column, "end time", True)
-        check(mapping.status_column, "availability status", True)
-    else:
-        mapped_days: set[str] = set()
-        for raw_day, pairs in mapping.wide_windows.items():
-            day = normalize_day(raw_day)
-            if not day:
-                issues.append(_issue("error", "INVALID_DAY_MAPPING", f"'{raw_day}' is not a weekday."))
-                continue
-            mapped_days.add(day)
-            if not pairs:
-                issues.append(_issue("error", "MISSING_MAPPING", f"Map at least one {day} start/end pair."))
-            for pair in pairs:
-                check(pair.start_column, f"{day} start time", True)
-                check(pair.end_column, f"{day} end time", True)
-        for day in models.DAYS_ORDER:
-            if day not in mapped_days:
-                issues.append(_issue(
-                    "error", "MISSING_MAPPING",
-                    f"Map at least one {day} start/end pair; blank mapped cells mean Unavailable.",
-                ))
+    check(mapping.max_hours_column, "max hours per week", False)
+    day_columns = {}
+    for raw_day, column in mapping.days.items():
+        day = normalize_day(raw_day)
+        if not day:
+            issues.append(_issue("error", "INVALID_DAY_MAPPING", f"'{raw_day}' is not a weekday."))
+        elif column:
+            day_columns[day] = column
+            check(column, day, False)
+    if not day_columns:
+        issues.append(_issue("error", "MISSING_MAPPING", "Map at least one weekday column."))
+    used: dict[str, str] = {}
+    labelled = [("pianist name", mapping.person_name_column), ("email", mapping.email_column), ("max hours per week", mapping.max_hours_column)]
+    labelled += list(day_columns.items())
+    for label, column in labelled:
+        if not column:
+            continue
+        if column in used:
+            issues.append(_issue("error", "DUPLICATE_MAPPING", f"The {label} and {used[column]} fields use the same column."))
+        else:
+            used[column] = label
     return issues
-
-
-def _parse_row_window(
-    *,
-    row: pd.Series,
-    row_number: int,
-    day_value: object,
-    start_value: object,
-    end_value: object,
-    status_value: object,
-    errors: list[AvailabilityIssue],
-) -> AvailabilityWindow | None:
-    day = normalize_day(day_value)
-    if not day:
-        errors.append(_issue("error", "INVALID_DAY", f"Unrecognized weekday '{day_value}'.", row_number))
-        return None
-    start = parse_time_minutes(start_value)
-    end = parse_time_minutes(end_value, allow_end_of_day=True)
-    if start is None:
-        errors.append(_issue("error", "INVALID_START_TIME", f"Invalid start time '{start_value}'.", row_number))
-    if end is None:
-        errors.append(_issue("error", "INVALID_END_TIME", f"Invalid end time '{end_value}'.", row_number))
-    if start is None or end is None:
-        return None
-    if end <= start:
-        errors.append(_issue("error", "INVALID_TIME_RANGE", "End time must be later than start time.", row_number))
-        return None
-    status = normalize_status(status_value)
-    if status is None:
-        errors.append(_issue("error", "INVALID_STATUS", f"Unrecognized availability status '{status_value}'.", row_number))
-        return None
-    return AvailabilityWindow(day, start, end, status, source="import", source_row=row_number)
 
 
 def _person_for_row(
@@ -308,13 +241,33 @@ def _person_for_row(
         ))
         return None
 
+    hours_value = row.get(mapping.max_hours_column) if mapping.max_hours_column else None
+    imported_hours: float | None = None
+    if not _is_blank(hours_value):
+        try:
+            imported_hours = float(str(hours_value).strip())
+            if not 0 <= imported_hours <= 168 or imported_hours != imported_hours:
+                raise ValueError
+        except ValueError:
+            prepared.errors.append(_issue(
+                "error", "INVALID_MAX_HOURS", "Max Hours Per Week must be a number from 0 to 168.", row_number,
+            ))
+            prepared.review_pianists.append(schemas.AvailabilityImportPianistOut(
+                action="invalid", pianist_name=name, days=[], row_numbers=[row_number],
+            ))
+            return None
+
     identity_key = name
     plan = prepared.pianists.get(identity_key)
     if plan is None:
-        plan = PianistImportPlan(key=identity_key, pianist_name=name, email=imported_email)
+        plan = PianistImportPlan(
+            key=identity_key, pianist_name=name, email=imported_email, max_hours_per_week=imported_hours,
+        )
         prepared.pianists[identity_key] = plan
     elif imported_email and not plan.email:
         plan.email = imported_email
+    if plan.max_hours_per_week is None and imported_hours is not None:
+        plan.max_hours_per_week = imported_hours
 
     plan.row_numbers.add(row_number)
     prepared.windows_by_pianist.setdefault(identity_key, [])
@@ -344,6 +297,7 @@ def preview_import(
     )
     prepared.errors.extend(_mapping_columns(request.mapping, columns))
     mapping = request.mapping
+    day_columns = mapped_day_columns({normalize_day(day) or day: column for day, column in mapping.days.items()})
     if not prepared.errors:
         for index, row in frame.iterrows():
             row_number = int(index) + 2 if isinstance(index, (int, float)) else 0
@@ -358,56 +312,12 @@ def preview_import(
             if pianist is None:
                 continue
 
-            row_windows: list[AvailabilityWindow] = []
-            if mapping.layout == "normalized":
-                values = [
-                    row.get(mapping.day_column),
-                    row.get(mapping.start_column),
-                    row.get(mapping.end_column),
-                    row.get(mapping.status_column),
-                ]
-                if all(_is_blank(value) for value in values):
-                    continue
-                window = _parse_row_window(
-                    row=row,
-                    row_number=row_number,
-                    day_value=values[0],
-                    start_value=values[1],
-                    end_value=values[2],
-                    status_value=values[3],
-                    errors=prepared.errors,
-                )
-                if window:
-                    row_windows.append(window)
-            else:
-                for raw_day, pairs in mapping.wide_windows.items():
-                    day = normalize_day(raw_day)
-                    if not day:
-                        continue
-                    for pair in pairs:
-                        if not pair.start_column or not pair.end_column:
-                            continue
-                        start_value = row.get(pair.start_column)
-                        end_value = row.get(pair.end_column)
-                        if _is_blank(start_value) and _is_blank(end_value):
-                            continue
-                        if _is_blank(start_value) or _is_blank(end_value):
-                            prepared.errors.append(_issue(
-                                "error", "MISSING_TIME_ENDPOINT",
-                                f"{day} needs both a start and end time, or both cells left blank.", row_number,
-                            ))
-                            continue
-                        window = _parse_row_window(
-                            row=row,
-                            row_number=row_number,
-                            day_value=day,
-                            start_value=start_value,
-                            end_value=end_value,
-                            status_value=mapping.wide_status,
-                            errors=prepared.errors,
-                        )
-                        if window:
-                            row_windows.append(window)
+            week = parse_week({column: row.get(column) for column in columns}, day_columns, row_number)
+            for message in week.errors:
+                prepared.errors.append(_issue("error", "INVALID_AVAILABILITY", message, row_number))
+            for message in week.warnings:
+                prepared.warnings.append(_issue("warning", "AVAILABILITY_WARNING", message, row_number))
+            row_windows = week.windows
             prepared.windows_by_pianist[pianist.key].extend(row_windows)
             pianist.days.update(window.day for window in row_windows)
 
@@ -443,7 +353,7 @@ def preview_import(
             action="new",
             pianist_name=plan.pianist_name,
             email=plan.email,
-            max_hours_per_week=40,
+            max_hours_per_week=plan.max_hours_per_week if plan.max_hours_per_week is not None else 40,
             days=sorted(plan.days, key=models.DAYS_ORDER.index),
             row_numbers=sorted(plan.row_numbers),
         )
@@ -533,7 +443,7 @@ def apply_import(
                 organization_id=1,
                 name=plan.pianist_name,
                 email=plan.email,
-                max_hours_per_week=40,
+                max_hours_per_week=plan.max_hours_per_week if plan.max_hours_per_week is not None else 40,
             )
             db.add(pianist)
             db.flush()

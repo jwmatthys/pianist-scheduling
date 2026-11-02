@@ -6,16 +6,9 @@ This project is a modular scheduling application for university and conservatory
 
 The current production has a module for scheduling accompanists for student lessons, and uses that module's finalized results to schedule performance juries. Another module for music therapy clinical placements is implemented. A music lesson scheduling module is in development, and a music tutor scheduling module is planned.
 
-The performance jury scheduling module is downstream of the accompanist scheduling module. The clinical placement scheduling module is independent of the other modules. The music lesson scheduling module and planned music tutor scheduling module are independent of the other modules
-
-Planned future modules include:
-- Music Tutor Scheduling
+The performance jury scheduling module is downstream of the accompanist scheduling module. The clinical placement scheduling, lesson scheduling, and tutor scheduling modules are independent of the other modules.
 
 Other music-program scheduling modules may be added later.
-
-Do not treat this application internally as only an "Accompanist Scheduler."
-
-The accompanist scheduler is a module within the larger Scheduling Maestro product.
 
 One Scheduling Session represents exactly one institution/program and one academic term. “Project” is a user-facing synonym, not a separate persisted entity. Initially, only one session/database is active at a time; do not build an in-app session history library.
 
@@ -289,9 +282,9 @@ Allow modules to have different input schemas.
 
 Do not create one giant universal spreadsheet format merely to make modules look alike.
 
-Availability is a demonstrated shared concept. A shared `AvailabilityWindow` may represent recurring weekday or dated windows with Available/Tentative/Unavailable status and import provenance, but status meaning/scoring, owner associations, validation policy, and entry UI remain module-specific. Missing availability is not equivalent to Unavailable. Same-status imported overlaps may be merged; conflicting-status overlaps must be surfaced for review. Import Microsoft Forms exports locally from CSV/XLS/XLSX; do not add Forms/Graph API integration. Imported availability is normal editable data, and manual graphical editing must remain available.
+Availability is a demonstrated shared concept. A shared `AvailabilityWindow` may represent recurring weekday or dated windows with Available/Tentative/Unavailable status and import provenance, but status meaning/scoring, owner associations, validation policy, and entry UI remain module-specific. Missing availability is not equivalent to Unavailable. Same-status imported overlaps may be merged; conflicting-status overlaps must be surfaced for review. Import availability locally from CSV/XLS/XLSX using the one shared weekly format (one column per weekday; time spans such as `8:00 AM-12:00 PM`, semicolon-separated for multiple windows, `T` prefix for Tentative); every module that imports availability must use it. Do not add Forms/Graph API integration. Imported availability is normal editable data, and manual graphical editing must remain available.
 
-Accompanist Availability import is a full Pianist-roster replacement. Within one import, group rows only by Pianist Name after trimming surrounding whitespace and collapsing repeated spaces; do not match against the previous roster by name, email, or any identifier. Preview incoming names and Availability Windows, warn that the roster and Accompanist weekly availability will be replaced, Lesson assignments cleared, and all Jury Availability Windows removed, then apply atomically. Preserve Lessons, Jury Required values, Panels, Panel dates, and Panel selections. Create a fresh internal Pianist/Person identity for each distinct imported name. Pianist IDs and other internal identifiers are never part of user-facing create/edit/import/export workflows. New email defaults blank unless explicitly mapped; Max Hours Per Week defaults to 40.
+Accompanist Availability import is a full Pianist-roster replacement. Within one import, group rows only by Pianist Name after trimming surrounding whitespace and collapsing repeated spaces; do not match against the previous roster by name, email, or any identifier. Preview incoming names and Availability Windows, warn that the roster and Accompanist weekly availability will be replaced, Lesson assignments cleared, and all Jury Availability Windows removed, then apply atomically. Preserve Lessons, Jury Required values, Panels, Panel dates, and Panel selections. Create a fresh internal Pianist/Person identity for each distinct imported name. Pianist IDs and other internal identifiers are never part of user-facing create/edit/import/export workflows. New email defaults blank unless explicitly mapped; Max Hours Per Week may be mapped from an optional column (a number from 0 to 168) and defaults to 40 when unmapped or blank. The import is launched by "Import Pianist Roster" in the pianist list.
 
 Share report rendering/export infrastructure, but modules own report definitions, fields, filters, and row semantics. Do not create a universal report designer or permit arbitrary SQL.
 

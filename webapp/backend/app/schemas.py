@@ -129,23 +129,13 @@ class AvailabilitySlotOut(BaseModel):
     status: str
 
 
-class AvailabilityWindowColumns(BaseModel):
-    start_column: str | None = None
-    end_column: str | None = None
-
-
 class AvailabilityImportMapping(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    layout: Literal["normalized", "wide"]
     person_name_column: str | None = None
     email_column: str | None = None
-    day_column: str | None = None
-    start_column: str | None = None
-    end_column: str | None = None
-    status_column: str | None = None
-    wide_status: Literal["Available", "Tentative", "Unavailable"] = "Available"
-    wide_windows: dict[str, list[AvailabilityWindowColumns]] = Field(default_factory=dict)
+    max_hours_column: str | None = None
+    days: dict[str, str | None] = Field(default_factory=dict)
 
 
 class AvailabilityImportInspection(BaseModel):
@@ -154,8 +144,8 @@ class AvailabilityImportInspection(BaseModel):
     selected_sheet: str | None = None
     columns: list[str]
     sample_rows: list[dict[str, str]]
-    suggested_normalized: dict[str, str | None]
-    suggested_wide_windows: dict[str, list[AvailabilityWindowColumns]]
+    suggested_columns: dict[str, str | None]
+    suggested_days: dict[str, str | None]
 
 
 class AvailabilityImportIssueOut(BaseModel):

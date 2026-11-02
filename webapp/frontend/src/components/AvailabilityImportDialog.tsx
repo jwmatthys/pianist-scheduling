@@ -3,20 +3,11 @@ import { api } from "../lib/api";
 import { chooseLocalFile } from "../lib/platform";
 import { useScrollToPreview } from "../lib/useScrollToPreview";
 import { ImportTemplateLinks } from "./ImportTemplateLinks";
-import { DAYS_ORDER, type AvailabilityImportInspection, type AvailabilityImportLayout, type AvailabilityImportMapping, type AvailabilityImportPreview, type AvailabilityStatus, type AvailabilityWindowColumns } from "../lib/types";
+import { DAYS_ORDER, type AvailabilityImportInspection, type AvailabilityImportMapping, type AvailabilityImportPreview } from "../lib/types";
 
 type Props = {
   onBeforeApply: () => Promise<boolean>;
   onApplied: () => Promise<void>;
-};
-
-const COLUMN_LABELS: Record<string, string> = {
-  person_name_column: "Pianist name",
-  email_column: "Email",
-  day_column: "Weekday",
-  start_column: "Start time",
-  end_column: "End time",
-  status_column: "Status",
 };
 
 function ColumnSelect({
@@ -41,25 +32,6 @@ function ColumnSelect({
   );
 }
 
-function initialMappings(inspection: AvailabilityImportInspection) {
-  const suggested = inspection.suggested_normalized;
-  const hasNormalized = Boolean(
-    suggested.person_name_column && suggested.day_column && suggested.start_column &&
-    suggested.end_column && suggested.status_column
-  );
-  const hasWide = Object.values(inspection.suggested_wide_windows).some((pairs) => pairs.length > 0);
-  return {
-    layout: hasNormalized || !hasWide ? "normalized" as const : "wide" as const,
-    person: suggested.person_name_column ?? "",
-    email: suggested.email_column ?? "",
-    day: suggested.day_column ?? "",
-    start: suggested.start_column ?? "",
-    end: suggested.end_column ?? "",
-    status: suggested.status_column ?? "",
-    wideWindows: inspection.suggested_wide_windows,
-  };
-}
-
 function formatMinute(value: number) {
   if (value === 1440) return "24:00";
   const hour = Math.floor(value / 60).toString().padStart(2, "0");
@@ -70,15 +42,10 @@ function formatMinute(value: number) {
 export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [inspection, setInspection] = useState<AvailabilityImportInspection | null>(null);
-  const [layout, setLayout] = useState<AvailabilityImportLayout>("normalized");
   const [personColumn, setPersonColumn] = useState("");
   const [emailColumn, setEmailColumn] = useState("");
-  const [dayColumn, setDayColumn] = useState("");
-  const [startColumn, setStartColumn] = useState("");
-  const [endColumn, setEndColumn] = useState("");
-  const [statusColumn, setStatusColumn] = useState("");
-  const [wideStatus, setWideStatus] = useState<AvailabilityStatus>("Available");
-  const [wideWindows, setWideWindows] = useState<Record<string, AvailabilityWindowColumns[]>>({});
+  const [hoursColumn, setHoursColumn] = useState("");
+  const [dayColumns, setDayColumns] = useState<Record<string, string | null>>({});
   const [preview, setPreview] = useState<AvailabilityImportPreview | null>(null);
   const previewRef = useScrollToPreview<HTMLElement>(preview);
   const [busy, setBusy] = useState(false);
@@ -92,16 +59,11 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
   }
 
   function loadInspection(next: AvailabilityImportInspection) {
-    const mapping = initialMappings(next);
     setInspection(next);
-    setLayout(mapping.layout);
-    setPersonColumn(mapping.person);
-    setEmailColumn(mapping.email);
-    setDayColumn(mapping.day);
-    setStartColumn(mapping.start);
-    setEndColumn(mapping.end);
-    setStatusColumn(mapping.status);
-    setWideWindows(mapping.wideWindows);
+    setPersonColumn(next.suggested_columns.person_name_column ?? "");
+    setEmailColumn(next.suggested_columns.email_column ?? "");
+    setHoursColumn(next.suggested_columns.max_hours_column ?? "");
+    setDayColumns(next.suggested_days);
     setPreview(null);
   }
 
@@ -139,23 +101,12 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
   }
 
   function mappingPayload(): AvailabilityImportMapping {
-    return layout === "normalized"
-      ? {
-          layout,
-          person_name_column: personColumn || null,
-          email_column: emailColumn || null,
-          day_column: dayColumn || null,
-          start_column: startColumn || null,
-          end_column: endColumn || null,
-          status_column: statusColumn || null,
-        }
-      : {
-          layout,
-          person_name_column: personColumn || null,
-          email_column: emailColumn || null,
-          wide_status: wideStatus,
-          wide_windows: wideWindows,
-        };
+    return {
+      person_name_column: personColumn || null,
+      email_column: emailColumn || null,
+      max_hours_column: hoursColumn || null,
+      days: dayColumns,
+    };
   }
 
   async function createPreview() {
@@ -196,23 +147,16 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
     }
   }
 
-  function changeWideWindow(day: string, index: number, property: keyof AvailabilityWindowColumns, value: string | null) {
-    updateMapping(() => setWideWindows((current) => ({
-      ...current,
-      [day]: current[day].map((pair, pairIndex) => pairIndex === index ? { ...pair, [property]: value } : pair),
-    })));
-  }
-
   return (
     <>
       <button type="button" className="secondary-btn" onClick={openDialog}>
-        Import Availability
+        Import Pianist Roster
       </button>
       <dialog className="availability-import-dialog" ref={dialogRef}>
         <div className="availability-import-content">
           <header className="availability-import-heading">
             <div>
-              <h2>Import Pianist Availability</h2>
+              <h2>Import Pianist Roster</h2>
               <p className="muted">CSV, XLSX, or XLS</p>
             </div>
             <button type="button" className="dialog-close" aria-label="Close" onClick={() => dialogRef.current?.close()}>
@@ -245,16 +189,6 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
                 </label>
               )}
 
-              <label className="availability-map-field availability-layout-select">
-                <span>Spreadsheet layout</span>
-                <select value={layout} onChange={(event) => {
-                  updateMapping(() => setLayout(event.target.value as AvailabilityImportLayout));
-                }}>
-                  <option value="normalized">One availability window per row</option>
-                  <option value="wide">One respondent per row</option>
-                </select>
-              </label>
-
               <section className="availability-mapping-section">
                 <h3>Column mapping</h3>
                 <ColumnSelect
@@ -270,83 +204,28 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
                     columns={inspection.columns}
                     onChange={(value) => updateMapping(() => setEmailColumn(value ?? ""))}
                   />
+                  <ColumnSelect
+                    label="Max hours per week (optional)"
+                    value={hoursColumn || null}
+                    columns={inspection.columns}
+                    onChange={(value) => updateMapping(() => setHoursColumn(value ?? ""))}
+                  />
                 </div>
-                {layout === "normalized" ? (
-                  <div className="availability-normalized-mapping">
-                    {(["day_column", "start_column", "end_column", "status_column"] as const).map((field) => {
-                      const value = {
-                        day_column: dayColumn,
-                        start_column: startColumn,
-                        end_column: endColumn,
-                        status_column: statusColumn,
-                      }[field];
-                      const setter = {
-                        day_column: setDayColumn,
-                        start_column: setStartColumn,
-                        end_column: setEndColumn,
-                        status_column: setStatusColumn,
-                      }[field];
-                      return (
-                        <ColumnSelect
-                          key={field}
-                          label={COLUMN_LABELS[field]}
-                          value={value}
-                          columns={inspection.columns}
-                          onChange={(next) => updateMapping(() => setter(next ?? ""))}
-                        />
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <>
-                    <label className="availability-map-field">
-                      <span>Status for mapped windows</span>
-                      <select value={wideStatus} onChange={(event) => updateMapping(() => setWideStatus(event.target.value as AvailabilityStatus))}>
-                        <option>Available</option>
-                        <option>Tentative</option>
-                        <option>Unavailable</option>
-                      </select>
-                    </label>
-                    <div className="wide-day-mappings">
-                      {DAYS_ORDER.map((day) => {
-                        const pairs = wideWindows[day] ?? [];
-                        return (
-                          <details key={day} open={pairs.length > 0}>
-                            <summary>{day}{pairs.length ? ` (${pairs.length} window${pairs.length === 1 ? "" : "s"})` : ""}</summary>
-                            {pairs.map((pair, index) => (
-                              <div className="wide-window-pair" key={`${day}-${index}`}>
-                                <ColumnSelect
-                                  label={`${day} window ${index + 1} start`}
-                                  value={pair.start_column}
-                                  columns={inspection.columns}
-                                  onChange={(value) => changeWideWindow(day, index, "start_column", value)}
-                                />
-                                <ColumnSelect
-                                  label={`${day} window ${index + 1} end`}
-                                  value={pair.end_column}
-                                  columns={inspection.columns}
-                                  onChange={(value) => changeWideWindow(day, index, "end_column", value)}
-                                />
-                                <button type="button" onClick={() => updateMapping(() => setWideWindows((current) => ({
-                                  ...current,
-                                  [day]: current[day].filter((_, pairIndex) => pairIndex !== index),
-                                })))}>
-                                  Remove
-                                </button>
-                              </div>
-                            ))}
-                            <button type="button" className="secondary-btn small-button" onClick={() => updateMapping(() => setWideWindows((current) => ({
-                              ...current,
-                              [day]: [...(current[day] ?? []), { start_column: null, end_column: null }],
-                            })))}>
-                              Add time window
-                            </button>
-                          </details>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
+                <h4>Weekly availability</h4>
+                <div className="availability-normalized-mapping">
+                  {DAYS_ORDER.map((day) => (
+                    <ColumnSelect
+                      key={day}
+                      label={day}
+                      value={dayColumns[day] ?? null}
+                      columns={inspection.columns}
+                      onChange={(value) => updateMapping(() => setDayColumns((current) => ({ ...current, [day]: value })))}
+                    />
+                  ))}
+                </div>
+                <p className="muted">
+                  Weekday cells list Availability Windows such as 8:00 AM-12:00 PM; prefix an entry with T for Tentative and separate entries with semicolons. Blank cells mean no availability. Blank Max Hours Per Week defaults to 40.
+                </p>
               </section>
 
               <details className="availability-source-preview">
@@ -364,7 +243,7 @@ export function AvailabilityImportDialog({ onBeforeApply, onApplied }: Props) {
               </details>
 
               <p className="muted availability-completeness-note">
-                Names in this file group that respondent's rows. Applying replaces the entire Pianist roster and weekly Availability Windows; all Lesson assignments are cleared. Blank mapped windows mean Unavailable. Missing mappings or malformed rows block the import.
+                Rows with the same Pianist name are combined. Applying replaces the entire Pianist roster and weekly Availability Windows; all Lesson assignments are cleared. Missing mappings or malformed cells block the import.
               </p>
 
               <div className="availability-import-actions">

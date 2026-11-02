@@ -1,4 +1,3 @@
-import { generateAvailabilityTemplateCsv } from "./availabilityTemplate";
 import type { ReportCell } from "./reportTable";
 
 export type ImportTemplateKey =
@@ -43,8 +42,8 @@ export const IMPORT_TEMPLATES: Record<ImportTemplateKey, ImportTemplate> = {
     fileName: "pianist-availability-template",
     description: "Pianist availability",
     sheetName: "Availability",
-    columns: [],
-    rows: [],
+    columns: ["Pianist Name", "Pianist Email", "Max Hours Per Week", ...WEEKDAY_COLUMNS],
+    rows: [["Avery Example", "avery.example@example.edu", 20, ...WEEKDAY_SAMPLE]],
   },
   juryPanels: {
     fileName: "jury-panels-template",
@@ -111,20 +110,13 @@ function escapeCsv(value: ReportCell): string {
   return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
-/** Column headers and sample rows for a template; availability reuses its established layout. */
+/** Column headers and sample rows for a template. */
 export function getImportTemplateTable(key: ImportTemplateKey): { columns: string[]; rows: ReportCell[][] } {
-  if (key === "pianistAvailability") {
-    const [header, ...rows] = generateAvailabilityTemplateCsv()
-      .split("\r\n")
-      .map((line) => line.split(","));
-    return { columns: header, rows };
-  }
   const { columns, rows } = IMPORT_TEMPLATES[key];
   return { columns, rows };
 }
 
 export function generateImportTemplateCsv(key: ImportTemplateKey): string {
-  if (key === "pianistAvailability") return generateAvailabilityTemplateCsv();
   const { columns, rows } = IMPORT_TEMPLATES[key];
   return [columns, ...rows].map((row) => row.map(escapeCsv).join(",")).join("\r\n");
 }

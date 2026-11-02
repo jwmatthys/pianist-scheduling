@@ -132,13 +132,9 @@ class AvailabilityImportServiceTests(unittest.TestCase):
 
     def normalized_mapping(self, inspection, person="Pianist Name", email=None):
         return schemas.AvailabilityImportMapping(
-            layout="normalized",
             person_name_column=person,
             email_column=email,
-            day_column="Weekday",
-            start_column="Start",
-            end_column="End",
-            status_column="Status",
+            days=inspection.suggested_days,
         )
 
     def preview_csv(self, content, *, person="Pianist Name", email=None):
@@ -170,9 +166,9 @@ class AvailabilityImportServiceTests(unittest.TestCase):
 
     def test_import_groups_repeated_normalized_names_and_replaces_old_roster(self):
         _, preview = self.preview_csv(
-            "Pianist Name,Weekday,Start,End,Status\n"
-            "  Ari   Example  ,Mon,08:00,09:30,Available\n"
-            "Ari Example,Monday,14:00,15:00,Tentative\n"
+            "Pianist Name,Monday\n"
+            '"  Ari   Example  ",08:00-09:30\n'
+            "Ari Example,T 14:00-15:00\n"
         )
 
         self.assertTrue(preview.can_apply)
@@ -200,14 +196,14 @@ class AvailabilityImportServiceTests(unittest.TestCase):
     def test_import_without_identifier_column_creates_fresh_people_with_defaults(self):
         self.db.query(models.Pianist).delete()
         self.db.commit()
-        rows = [f"Person {index},,Mon,08:00,09:00,Available" for index in range(1, 7)]
+        rows = [f"Person {index},,08:00-09:00" for index in range(1, 7)]
         inspection, preview = self.preview_csv(
-            "Pianist Name,Email,Weekday,Start,End,Status\n" + "\n".join(rows) + "\n",
+            "Pianist Name,Email,Monday\n" + "\n".join(rows) + "\n",
         )
 
         self.assertTrue(preview.can_apply)
         self.assertEqual(preview.incoming_pianist_count, 6)
-        self.assertNotIn("person_id_column", inspection.suggested_normalized)
+        self.assertNotIn("person_id_column", inspection.suggested_columns)
         self.assertTrue(all(item.action == "new" and item.email == "" for item in preview.pianists))
         self.assertTrue(all(item.max_hours_per_week == 40 for item in preview.pianists))
 
@@ -227,25 +223,45 @@ class AvailabilityImportServiceTests(unittest.TestCase):
         self.assertEqual(self.db.query(models.AvailabilitySlot).count(), 12)
         self.assertTrue(all(pianist.availability_complete for pianist in pianists))
 
-    def test_template_and_user_models_have_no_pianist_identifier(self):
-        from pathlib import Path
+    def test_max_hours_column_is_imported_defaulted_and_validated(self):
+        inspection = self.csv_upload(
+            "Pianist Name,Max Hours Per Week,Monday\nAri Example,12.5,08:00-09:00\nBea Sample,,09:00-10:00\n"
+        )
+        self.assertEqual(inspection.suggested_columns["max_hours_column"], "Max Hours Per Week")
+        mapping = schemas.AvailabilityImportMapping(
+            person_name_column="Pianist Name", max_hours_column="Max Hours Per Week", days={"Monday": "Monday"},
+        )
+        preview = availability_importer.preview_import(
+            schemas.AvailabilityImportPreviewRequest(upload_token=inspection.upload_token, mapping=mapping), self.db,
+        )
+        self.assertEqual([p.max_hours_per_week for p in preview.pianists], [12.5, 40])
+        availability_importer.apply_import(
+            schemas.AvailabilityImportApplyRequest(preview_token=preview.preview_token, confirmed=True), self.db,
+        )
+        hours = {p.name: p.max_hours_per_week for p in self.db.query(models.Pianist).all()}
+        self.assertEqual(hours, {"Ari Example": 12.5, "Bea Sample": 40})
 
-        template = Path(__file__).resolve().parents[2] / "frontend" / "public" / "availability-template.csv"
-        self.assertEqual(template.read_text(encoding="utf-8").splitlines()[0], "Pianist Name,Day,Start,End,Status")
+        bad = self.csv_upload("Pianist Name,Max Hours Per Week,Monday\nAri Example,lots,08:00-09:00\n")
+        invalid = availability_importer.preview_import(
+            schemas.AvailabilityImportPreviewRequest(upload_token=bad.upload_token, mapping=mapping), self.db,
+        )
+        self.assertIn("INVALID_MAX_HOURS", {issue.code for issue in invalid.errors})
+        self.assertFalse(invalid.can_apply)
+
+    def test_user_models_have_no_pianist_identifier(self):
         self.assertNotIn("pianist_code", schemas.PianistCreate.model_fields)
         self.assertNotIn("pianist_code", schemas.PianistUpdate.model_fields)
         self.assertNotIn("pianist_code", schemas.PianistOut.model_fields)
         self.assertNotIn("person_id_column", schemas.AvailabilityImportMapping.model_fields)
         with self.assertRaises(Exception):
             schemas.AvailabilityImportMapping(
-                layout="normalized",
                 person_name_column="Pianist Name",
                 person_id_column="Pianist ID",
             )
 
     def test_imported_defaults_remain_editable_through_human_facing_api(self):
         _, preview = self.preview_csv(
-            "Pianist Name,Weekday,Start,End,Status\nEditable Import,Mon,08:00,09:00,Available\n"
+            "Pianist Name,Monday\nEditable Import,08:00-09:00\n"
         )
         availability_importer.apply_import(
             schemas.AvailabilityImportApplyRequest(preview_token=preview.preview_token, confirmed=True),
@@ -279,9 +295,8 @@ class AvailabilityImportServiceTests(unittest.TestCase):
         self.add_jury_availability(ari_uuid, date(2027, 12, 14))
         self.db.commit()
         _, preview = self.preview_csv(
-            "Pianist Name,Weekday,Start,End,Status\n"
-            "Would Be New,Mon,08:00,09:00,Available\n"
-            "Would Be New,Tue,10:00,,Available\n"
+            "Pianist Name,Monday,Tuesday\n"
+            "Would Be New,08:00-09:00,10:00-\n"
         )
         self.assertFalse(preview.can_apply)
         with self.assertRaises(availability_importer.AvailabilityImportError):
@@ -301,7 +316,7 @@ class AvailabilityImportServiceTests(unittest.TestCase):
         self.add_jury_availability(ari_uuid, date(2027, 12, 14))
         self.db.commit()
         _, preview = self.preview_csv(
-            "Pianist Name,Weekday,Start,End,Status\nNew Pianist,Mon,08:00,09:00,Available\n"
+            "Pianist Name,Monday\nNew Pianist,08:00-09:00\n"
         )
 
         with self.assertRaises(availability_importer.AvailabilityImportError) as raised:
@@ -338,7 +353,7 @@ class AvailabilityImportServiceTests(unittest.TestCase):
         ])
         self.db.commit()
         _, preview = self.preview_csv(
-            "Pianist Name,Weekday,Start,End,Status\nNew Pianist,Mon,08:00,09:00,Available\n"
+            "Pianist Name,Monday\nNew Pianist,08:00-09:00\n"
         )
 
         with patch.object(availability_importer, "bump_accompanist_revision", side_effect=RuntimeError("forced failure")):
@@ -362,9 +377,9 @@ class AvailabilityImportServiceTests(unittest.TestCase):
         )
 
     def test_reimport_same_name_replaces_identity_instead_of_matching_old_roster(self):
-        csv = "Pianist Name,Weekday,Start,End,Status\n"
+        csv = "Pianist Name,Monday\n"
         first_inspection, first_preview = self.preview_csv(
-            csv + "Repeat Import,Mon,08:00,09:00,Available\n",
+            csv + "Repeat Import,08:00-09:00\n",
         )
         availability_importer.apply_import(
             schemas.AvailabilityImportApplyRequest(preview_token=first_preview.preview_token, confirmed=True),
@@ -389,77 +404,44 @@ class AvailabilityImportServiceTests(unittest.TestCase):
         self.assertNotEqual(first_identity, second_identity)
         self.assertEqual(self.db.query(models.Pianist).count(), 1)
 
-    def test_xlsx_actual_time_cells_multiple_sheets_and_forms_wide_suggestions(self):
+    def test_xlsx_weekday_columns_multiple_sheets_and_suggestions(self):
         workbook = Workbook()
         sheet = workbook.active
-        sheet.title = "Form Responses"
-        headers = ["Full Name"]
-        row = ["Ari Example"]
-        for day in models.DAYS_ORDER:
-            if day == "Monday":
-                headers.extend(["Monday Start Time", "Monday End Time", "Monday Start 2", "Monday End 2"])
-                row.extend([time(8, 0), time(9, 30), time(14, 0), time(15, 0)])
-            else:
-                headers.extend([f"{day} Start Time", f"{day} End Time"])
-                row.extend([None, None])
-        sheet.append(headers)
-        sheet.append(row)
+        sheet.title = "Availability"
+        sheet.append(["Pianist Name", "Pianist Email", *models.DAYS_ORDER])
+        sheet.append(["Ari Example", "ari@example.invalid", "8:00 AM-9:30 AM; T 2:00 PM-3:00 PM", None, None, None, None, None, None])
         workbook.create_sheet("Unused Sheet").append(["Other", "Data"])
         contents = BytesIO()
         workbook.save(contents)
 
-        inspection = availability_importer.inspect_upload("forms.xlsx", contents.getvalue())
+        inspection = availability_importer.inspect_upload("weekly.xlsx", contents.getvalue())
 
-        self.assertEqual(inspection.sheets, ["Form Responses", "Unused Sheet"])
-        self.assertEqual(len(inspection.suggested_wide_windows["Monday"]), 2)
+        self.assertEqual(inspection.sheets, ["Availability", "Unused Sheet"])
+        self.assertEqual(inspection.suggested_columns["person_name_column"], "Pianist Name")
+        self.assertEqual(inspection.suggested_columns["email_column"], "Pianist Email")
+        self.assertEqual(inspection.suggested_days["Monday"], "Monday")
+        self.assertEqual(inspection.suggested_days["Sunday"], "Sunday")
         other_sheet = availability_importer.inspect_sheet(inspection.upload_token, "Unused Sheet")
         self.assertEqual(other_sheet.columns, ["Other", "Data"])
-        mapping = schemas.AvailabilityImportMapping(
-            layout="wide",
-            person_name_column="Full Name",
-            wide_status="Available",
-            wide_windows=inspection.suggested_wide_windows,
-        )
         preview = availability_importer.preview_import(
-            schemas.AvailabilityImportPreviewRequest(upload_token=inspection.upload_token, mapping=mapping),
+            schemas.AvailabilityImportPreviewRequest(
+                upload_token=inspection.upload_token,
+                mapping=self.normalized_mapping(inspection, email="Pianist Email"),
+            ),
             self.db,
         )
 
         self.assertEqual(preview.valid_window_count, 2)
         self.assertEqual([window.start_minute for window in preview.windows], [480, 840])
+        self.assertEqual([window.status for window in preview.windows], ["Available", "Tentative"])
+        self.assertEqual(preview.pianists[0].email, "ari@example.invalid")
         self.assertTrue(preview.can_apply)
-
-    def test_normalized_xlsx_reads_excel_time_cells(self):
-        workbook = Workbook()
-        sheet = workbook.active
-        sheet.append(["Pianist Name", "Weekday", "Start", "End", "Status"])
-        sheet.append(["Ari Example", "Mon", time(8, 0), time(9, 30), "Available"])
-        contents = BytesIO()
-        workbook.save(contents)
-        inspection = availability_importer.inspect_upload("normalized.xlsx", contents.getvalue())
-        preview = availability_importer.preview_import(
-            schemas.AvailabilityImportPreviewRequest(
-                upload_token=inspection.upload_token,
-                mapping=schemas.AvailabilityImportMapping(
-                    layout="normalized",
-                    person_name_column="Pianist Name",
-                    day_column="Weekday",
-                    start_column="Start",
-                    end_column="End",
-                    status_column="Status",
-                ),
-            ),
-            self.db,
-        )
-
-        self.assertEqual(preview.valid_window_count, 1)
-        self.assertEqual((preview.windows[0].start_minute, preview.windows[0].end_minute), (480, 570))
 
     def test_meaningfully_different_names_create_separate_pianists(self):
         _, preview = self.preview_csv(
-            "Pianist Name,Weekday,Start,End,Status\n"
-            "Alex Smith,Mon,08:00,09:00,Available\n"
-            "Alex J. Smith,Mon,09:00,10:00,Available\n"
+            "Pianist Name,Monday\n"
+            "Alex Smith,08:00-09:00\n"
+            "Alex J. Smith,09:00-10:00\n"
         )
 
         self.assertTrue(preview.can_apply)
@@ -473,12 +455,12 @@ class AvailabilityImportServiceTests(unittest.TestCase):
 
     def test_invalid_mapping_day_time_range_status_and_conflict_block_all_writes(self):
         missing_mapping_file = self.csv_upload(
-            "Pianist Name,Weekday,Start,End,Status\nAri Example,Mon,08:00,09:00,Available\n"
+            "Pianist Name,Monday\nAri Example,08:00-09:00\n"
         )
         missing_mapping = availability_importer.preview_import(
             schemas.AvailabilityImportPreviewRequest(
                 upload_token=missing_mapping_file.upload_token,
-                mapping=schemas.AvailabilityImportMapping(layout="normalized"),
+                mapping=schemas.AvailabilityImportMapping(),
             ),
             self.db,
         )
@@ -486,29 +468,38 @@ class AvailabilityImportServiceTests(unittest.TestCase):
         self.assertFalse(missing_mapping.can_apply)
 
         _, missing_mapping = self.preview_csv(
-            "Pianist Name,Weekday,Start,End,Status\nAri Example,Mon,08:00,09:00,Available\n",
+            "Pianist Name,Monday\nAri Example,08:00-09:00\n",
             person="Does Not Exist",
         )
         self.assertIn("INVALID_MAPPING", {issue.code for issue in missing_mapping.errors})
 
         _, invalid_rows = self.preview_csv(
-            "Pianist Name,Weekday,Start,End,Status\n"
-            "Ari Example,Funday,08:00,09:00,Available\n"
-            "Ari Example,Mon,25:00,26:00,Available\n"
-            "Ari Example,Tue,10:00,09:00,Available\n"
-            "Ari Example,Wed,08:00,09:00,Maybe\n"
+            "Pianist Name,Monday,Tuesday,Wednesday,Thursday\n"
+            "Ari Example,25:00-26:00,10:00-10:00,08:00,junk\n"
         )
-        self.assertEqual(
-            {issue.code for issue in invalid_rows.errors},
-            {"INVALID_DAY", "INVALID_START_TIME", "INVALID_END_TIME", "INVALID_TIME_RANGE", "INVALID_STATUS"},
-        )
+        self.assertEqual(len(invalid_rows.errors), 4)
+        self.assertEqual({issue.code for issue in invalid_rows.errors}, {"INVALID_AVAILABILITY"})
+        self.assertFalse(invalid_rows.can_apply)
 
         _, conflict = self.preview_csv(
-            "Pianist Name,Weekday,Start,End,Status\n"
-            "Ari Example,Mon,09:00,12:00,Available\n"
-            "Ari Example,Mon,10:00,11:00,Tentative\n"
+            "Pianist Name,Monday\n"
+            'Ari Example,"9:00-12:00; T 10:00-11:00"\n'
         )
-        self.assertIn("CONFLICTING_OVERLAP", {issue.code for issue in conflict.errors})
+        self.assertFalse(conflict.can_apply)
+        self.assertIn("overlaps", conflict.errors[0].message)
+
+        inspection = self.csv_upload("Pianist Name,Monday\nAri Example,9:00-10:00\n")
+        duplicated = availability_importer.preview_import(
+            schemas.AvailabilityImportPreviewRequest(
+                upload_token=inspection.upload_token,
+                mapping=schemas.AvailabilityImportMapping(
+                    person_name_column="Pianist Name",
+                    days={"Monday": "Pianist Name"},
+                ),
+            ),
+            self.db,
+        )
+        self.assertIn("DUPLICATE_MAPPING", {issue.code for issue in duplicated.errors})
         self.assertEqual(self.db.query(models.AvailabilitySlot).count(), 0)
 
     def test_full_replacement_clears_old_assignments_availability_and_absent_pianists(self):
@@ -599,9 +590,8 @@ class AvailabilityImportServiceTests(unittest.TestCase):
         jury_configuration = self.db.get(module_models.JuryConfiguration, active_session_uuid(self.db))
         initial_jury_revision = jury_configuration.input_revision
         _, preview = self.preview_csv(
-            "Pianist Name,Weekday,Start,End,Status\n"
-            "Ari Example,Tue,10:00,11:00,Available\n"
-            "Ari Example,Thu,09:00,10:00,Tentative\n"
+            "Pianist Name,Tuesday,Thursday\n"
+            "Ari Example,10:00-11:00,T 09:00-10:00\n"
         )
 
         self.assertEqual(preview.existing_pianist_count, 2)
@@ -692,7 +682,7 @@ class AvailabilityImportServiceTests(unittest.TestCase):
         self.db.add(models.AvailabilitySlot(pianist_id=ari_id, day="Tuesday", slot_start_minute=480, status="Available"))
         self.db.commit()
         _, preview = self.preview_csv(
-            "Pianist Name,Weekday,Start,End,Status\nAri Example,,,,\n",
+            "Pianist Name,Monday\nAri Example,\n",
         )
         self.assertTrue(preview.can_apply)
         self.assertEqual(preview.valid_window_count, 0)
@@ -717,7 +707,7 @@ class AvailabilityImportServiceTests(unittest.TestCase):
         ))
         self.db.commit()
         inspection = self.csv_upload(
-            "Pianist Name,Weekday,Start,End,Status\nAri Example,Tuesday,10:00,,Available\n"
+            "Pianist Name,Tuesday\nAri Example,10:00-\n"
         )
         preview = availability_importer.preview_import(
             schemas.AvailabilityImportPreviewRequest(
@@ -728,7 +718,7 @@ class AvailabilityImportServiceTests(unittest.TestCase):
         )
 
         self.assertFalse(preview.can_apply)
-        self.assertIn("INVALID_END_TIME", {issue.code for issue in preview.errors})
+        self.assertIn("INVALID_AVAILABILITY", {issue.code for issue in preview.errors})
         with self.assertRaises(availability_importer.AvailabilityImportError):
             availability_importer.apply_import(
                 schemas.AvailabilityImportApplyRequest(preview_token=preview.preview_token, confirmed=True),
@@ -740,72 +730,6 @@ class AvailabilityImportServiceTests(unittest.TestCase):
         )
         self.assertFalse(self.db.get(models.Pianist, ari_id).availability_complete)
 
-    def test_wide_import_missing_a_weekday_mapping_is_structurally_incomplete(self):
-        workbook = Workbook()
-        sheet = workbook.active
-        sheet.append(["Name", "Monday Start", "Monday End"])
-        sheet.append(["Ari Example", time(8, 0), time(9, 0)])
-        content = BytesIO()
-        workbook.save(content)
-        inspection = availability_importer.inspect_upload("incomplete-wide.xlsx", content.getvalue())
-        preview = availability_importer.preview_import(
-            schemas.AvailabilityImportPreviewRequest(
-                upload_token=inspection.upload_token,
-                mapping=schemas.AvailabilityImportMapping(
-                    layout="wide",
-                    person_name_column="Name",
-                    wide_windows=inspection.suggested_wide_windows,
-                ),
-            ),
-            self.db,
-        )
-
-        self.assertFalse(preview.can_apply)
-        self.assertGreaterEqual(
-            sum(issue.code == "MISSING_MAPPING" for issue in preview.errors),
-            len(models.DAYS_ORDER) - 1,
-        )
-        self.assertEqual(self.db.query(models.AvailabilitySlot).count(), 0)
-
-    def test_complete_wide_blank_days_are_unavailable_without_warnings(self):
-        workbook = Workbook()
-        sheet = workbook.active
-        headers = ["Name"]
-        row = ["Ari Example"]
-        for day in models.DAYS_ORDER:
-            headers.extend([f"{day} Start", f"{day} End"])
-            if day == "Monday":
-                row.extend([time(8, 0), time(9, 0)])
-            else:
-                row.extend([None, None])
-        sheet.append(headers)
-        sheet.append(row)
-        content = BytesIO()
-        workbook.save(content)
-        inspection = availability_importer.inspect_upload("wide.xlsx", content.getvalue())
-        mapping = schemas.AvailabilityImportMapping(
-            layout="wide",
-            person_name_column="Name",
-            wide_windows=inspection.suggested_wide_windows,
-        )
-        preview = availability_importer.preview_import(
-            schemas.AvailabilityImportPreviewRequest(upload_token=inspection.upload_token, mapping=mapping),
-            self.db,
-        )
-        self.assertEqual(preview.pianists[0].days, ["Monday"])
-        self.assertEqual(preview.valid_window_count, 1)
-        self.assertFalse(any(issue.code in {"MISSING_VS_UNAVAILABLE", "MISSING_DAY_DATA", "NO_AVAILABILITY"} for issue in preview.warnings))
-        self.assertTrue(preview.can_apply)
-
-        availability_importer.apply_import(
-            schemas.AvailabilityImportApplyRequest(preview_token=preview.preview_token, confirmed=True),
-            self.db,
-        )
-        slots = self.db.query(models.AvailabilitySlot).filter_by(pianist_id=self.pianist_id("Ari Example")).all()
-        self.assertEqual(len(slots), 2)
-        self.assertTrue(all(slot.status == "Available" for slot in slots))
-        self.assertTrue(self.db.get(models.Pianist, self.pianist_id("Ari Example")).availability_complete)
-
     def test_imported_availability_survives_session_archive_round_trip(self):
         from app.services.session_files import create_new_session, export_session_archive, restore_session
 
@@ -816,18 +740,14 @@ class AvailabilityImportServiceTests(unittest.TestCase):
             session = Session(engine)
             inspection = availability_importer.inspect_upload(
                 "round-trip.csv",
-                b"Pianist Name,Weekday,Start,End,Status\nRound Trip Pianist,Mon,08:00,09:00,Available\n",
+                b"Pianist Name,Monday\nRound Trip Pianist,08:00-09:00\n",
             )
             preview = availability_importer.preview_import(
                 schemas.AvailabilityImportPreviewRequest(
                     upload_token=inspection.upload_token,
                     mapping=schemas.AvailabilityImportMapping(
-                        layout="normalized",
                         person_name_column="Pianist Name",
-                        day_column="Weekday",
-                        start_column="Start",
-                        end_column="End",
-                        status_column="Status",
+                        days={"Monday": "Monday"},
                     ),
                 ),
                 session,

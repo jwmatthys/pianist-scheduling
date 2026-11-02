@@ -137,7 +137,7 @@ Do not replace Accompanist's grid or round all windows to 30-minute slots. Its c
 Use a shared import pipeline, not a universal spreadsheet schema:
 
 1. A module chooses an availability import action and supplies its own required/optional field map and target owner context.
-2. The shared file service accepts local CSV/XLS/XLSX files, including spreadsheets exported from Microsoft Forms. There is no Forms API or network dependency.
+2. The shared file service accepts local CSV/XLS/XLSX files, arranged in the shared weekday-column availability format. There is no Forms API or network dependency.
 3. A common parser returns source columns/rows; a module-owned mapping profile maps columns such as person/student/resource, day/date, start, end, and status.
 4. Preview normalized windows, duplicates, invalid times, unknown statuses, and conflicts before commit. Keep row-level warnings and import provenance.
 5. Commit valid windows transactionally to the selected module's availability set. The imported rows become ordinary editable application records.

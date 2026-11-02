@@ -115,6 +115,10 @@ export const PianistsPage = forwardRef<PianistsPageHandle>(function PianistsPage
             Add pianist
           </button>
         </form>
+        <AvailabilityImportDialog
+          onBeforeApply={prepareAvailabilityImport}
+          onApplied={refreshAvailabilityAfterImport}
+        />
         <ul className="pianist-list">
           {pianists.map((p) => (
             <li key={p.id} className={p.id === selectedId ? "selected" : ""}>
@@ -145,10 +149,6 @@ export const PianistsPage = forwardRef<PianistsPageHandle>(function PianistsPage
         ) : (
           <h3>Pianist availability</h3>
         )}
-          <AvailabilityImportDialog
-            onBeforeApply={prepareAvailabilityImport}
-            onApplied={refreshAvailabilityAfterImport}
-          />
         </div>
         {profileMessage && <div className="availability-success" role="status">{profileMessage}</div>}
         {profileError && <div className="error-banner" role="alert">{profileError}</div>}

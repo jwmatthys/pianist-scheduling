@@ -26,23 +26,11 @@ export interface AvailabilitySlot {
   status: AvailabilityStatus;
 }
 
-export type AvailabilityImportLayout = "normalized" | "wide";
-
-export interface AvailabilityWindowColumns {
-  start_column: string | null;
-  end_column: string | null;
-}
-
 export interface AvailabilityImportMapping {
-  layout: AvailabilityImportLayout;
   person_name_column: string | null;
   email_column?: string | null;
-  day_column?: string | null;
-  start_column?: string | null;
-  end_column?: string | null;
-  status_column?: string | null;
-  wide_status?: AvailabilityStatus;
-  wide_windows?: Record<string, AvailabilityWindowColumns[]>;
+  max_hours_column?: string | null;
+  days: Record<string, string | null>;
 }
 
 export interface AvailabilityImportInspection {
@@ -51,8 +39,8 @@ export interface AvailabilityImportInspection {
   selected_sheet: string | null;
   columns: string[];
   sample_rows: Record<string, string>[];
-  suggested_normalized: Record<string, string | null>;
-  suggested_wide_windows: Record<string, AvailabilityWindowColumns[]>;
+  suggested_columns: Record<string, string | null>;
+  suggested_days: Record<string, string | null>;
 }
 
 export interface AvailabilityImportIssue {
