@@ -1139,7 +1139,16 @@ button:disabled {
   white-space: nowrap;
 }
 
+.schedule-table th.schedule-check-col,
+.schedule-table td.schedule-check-col {
+  width: 5.5rem;
+  text-align: center;
+  white-space: normal;
+}
+
 .lesson-pianist-required-control input {
+  width: 16px;
+  height: 16px;
   accent-color: var(--theme-primary);
 }
 

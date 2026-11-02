@@ -189,8 +189,8 @@ export function SchedulePage({ onImportLessons }: Props) {
               <th>Student</th>
               <th>Room</th>
               <th>Instrument</th>
-              <th>Needs pianist?</th>
-              <th>Jury required?</th>
+              <th className="schedule-check-col">Needs pianist?</th>
+              <th className="schedule-check-col">Jury required?</th>
               <th>Specific pianist</th>
               <th>Assigned pianist</th>
               <th>Hours</th>
@@ -258,7 +258,7 @@ export function SchedulePage({ onImportLessons }: Props) {
                     }
                   />
                 </td>
-                <td>
+                <td className="schedule-check-col">
                   <label className="lesson-pianist-required-control">
                     <input
                       type="checkbox"
@@ -266,10 +266,9 @@ export function SchedulePage({ onImportLessons }: Props) {
                       aria-label={`Needs pianist? for ${lesson.student}`}
                       onChange={(event) => patchLesson(lesson.id, { need_pianist: event.target.checked })}
                     />
-                    <span>{lesson.need_pianist ? "Yes" : "No"}</span>
                   </label>
                 </td>
-                <td>
+                <td className="schedule-check-col">
                   <label className="lesson-jury-required-control">
                     <input
                       type="checkbox"
@@ -277,7 +276,6 @@ export function SchedulePage({ onImportLessons }: Props) {
                       aria-label={`Jury Required for ${lesson.student}`}
                       onChange={(event) => patchLesson(lesson.id, { jury_required: event.target.checked })}
                     />
-                    <span>{lesson.jury_required ? "Yes" : "No"}</span>
                   </label>
                 </td>
                 <td>
