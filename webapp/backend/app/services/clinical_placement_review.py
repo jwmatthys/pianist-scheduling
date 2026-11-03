@@ -20,7 +20,64 @@ from .clinical_scheduling_models import (
     StudentInput,
     TagPreference,
     UnplacedReason,
+    commitment_interval,
 )
+
+
+def _same_person_overlaps(
+    students: dict[str, StudentInput],
+    opportunities: dict[str, OpportunityInput],
+    record_map: dict[str, PlacementRecord],
+) -> set[str]:
+    """Records of one person (shared Student ID) whose commitments (travel + session + travel) overlap on the same day."""
+    by_person_day: dict[tuple[str, str], list[tuple[int, int, str]]] = {}
+    for student_id, record in record_map.items():
+        opportunity = opportunities.get(record.opportunity_id) if record.opportunity_id is not None else None
+        if record.kind is PlacementKind.MANUALLY_UNPLACED or opportunity is None or record.start_minute is None:
+            continue
+        person = students[student_id].person_key or student_id
+        low, high = commitment_interval(opportunity, record.start_minute)
+        by_person_day.setdefault((person, opportunity.day), []).append((low, high, student_id))
+    overlapping: set[str] = set()
+    for items in by_person_day.values():
+        items.sort()
+        for index, current in enumerate(items):
+            for following in items[index + 1:]:
+                if following[0] >= current[1]:
+                    break
+                overlapping.update((current[2], following[2]))
+    return overlapping
+
+
+def _same_person_blocked(
+    input_data: SchedulingInput,
+    opportunities: dict[str, OpportunityInput],
+    record_map: dict[str, PlacementRecord],
+    candidates: CandidateSet,
+) -> set[str]:
+    """Unplaced students whose every feasible start collides with another commitment of the same person."""
+    person_of = {s.id: s.person_key or s.id for s in input_data.students}
+    taken: dict[str, list[tuple[str, int, int]]] = {}
+    for student_id, record in record_map.items():
+        opportunity = opportunities.get(record.opportunity_id) if record.opportunity_id is not None else None
+        if record.kind is PlacementKind.MANUALLY_UNPLACED or opportunity is None or record.start_minute is None:
+            continue
+        low, high = commitment_interval(opportunity, record.start_minute)
+        taken.setdefault(person_of[student_id], []).append((opportunity.day, low, high))
+    options: dict[str, list[tuple[str, int, int]]] = {}
+    for candidate in candidates.candidates:
+        if candidate.is_feasible and candidate.opportunity_start_minute is not None:
+            opportunity = opportunities[candidate.opportunity_id]
+            low, high = commitment_interval(opportunity, candidate.opportunity_start_minute)
+            options.setdefault(candidate.student_id, []).append((opportunity.day, low, high))
+    return {
+        student_id
+        for student_id, windows in options.items()
+        if all(
+            any(day == other[0] and low < other[2] and other[1] < high for other in taken.get(person_of[student_id], ()))
+            for day, low, high in windows
+        )
+    }
 
 
 def _warnings_for(
@@ -107,6 +164,8 @@ def review_schedule(
         for r in records
         if r.opportunity_id is not None and r.kind is not PlacementKind.MANUALLY_UNPLACED
     )
+    person_overlap_students = _same_person_overlaps(students, opportunities, record_map)
+    person_blocked = _same_person_blocked(input_data, opportunities, record_map, candidates)
     feasible = {
         (candidate.student_id, candidate.opportunity_id): candidate
         for candidate in candidates.candidates
@@ -131,6 +190,8 @@ def review_schedule(
         ):
             if record is not None and record.kind is PlacementKind.MANUALLY_UNPLACED:
                 reason = UnplacedReason.MANUALLY_UNPLACED
+            elif student_input.id in person_blocked:
+                reason = UnplacedReason.STUDENT_OVERLAP
             elif student_input.id in has_feasible_candidate:
                 reason = UnplacedReason.CAPACITY_LIMIT
             else:
@@ -164,6 +225,14 @@ def review_schedule(
             assigned_counts[opportunity.id],
             input_data,
         )
+        if student_input.id in person_overlap_students:
+            warnings = (
+                *warnings,
+                PlacementWarning(
+                    PlacementWarningCode.STUDENT_OVERLAP,
+                    "This placement overlaps another placement for the same student.",
+                ),
+            )
         tentative_minutes = DayCoverage(
             [w for w in student_input.availability if w.day == opportunity.day]
         ).tentative_minutes_if_covered(
@@ -184,7 +253,7 @@ def review_schedule(
                 warning.code is not PlacementWarningCode.CAPACITY_EXCEEDED for warning in warnings
             )
         else:
-            is_verified = feasible_start is not None
+            is_verified = feasible_start is not None and student_input.id not in person_overlap_students
         tags = tuple(sorted(input_data.tag_names[tag_id] for tag_id in opportunity.tag_ids if tag_id in input_data.tag_names))
         preferred_count = sum(
             1

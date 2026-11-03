@@ -117,7 +117,6 @@ class PlacementOpportunityTag(ModuleBase):
 class ClinicalStudent(ModuleBase):
     __tablename__ = "clinical_students"
     __table_args__ = (
-        UniqueConstraint("student_id", name="uq_clinical_students_student_id"),
         CheckConstraint("length(student_id) > 0", name="ck_clinical_students_student_id"),
     )
 

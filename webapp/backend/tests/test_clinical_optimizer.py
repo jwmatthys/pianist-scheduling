@@ -47,6 +47,72 @@ class OptimizerTests(unittest.TestCase):
         result = run([student("a", ALL_DAY), student("b", [])], [opp()])
         self.assertEqual({u.student_id: u.reason for u in result.unplaced}, {"b": UnplacedReason.NO_FEASIBLE_CANDIDATE})
 
+    def test_same_person_records_never_overlap(self):
+        from dataclasses import replace
+
+        a1 = replace(student("a1", ALL_DAY), person_key="p1")
+        a2 = replace(student("a2", ALL_DAY), person_key="p1")
+        result = run([a1, a2], [opp("o1", start=9 * H, end=10 * H), opp("o2", start=9 * H, end=10 * H)])
+        self.assertEqual(result.statistics.placed_count, 1)
+        later = run([a1, a2], [opp("o1", start=9 * H, end=10 * H), opp("o2", start=11 * H, end=12 * H)])
+        self.assertEqual(later.statistics.placed_count, 2)
+
+    def test_manual_placement_of_one_person_blocks_overlapping_automatic_placement(self):
+        from dataclasses import replace
+
+        held = replace(student("a1", ALL_DAY), person_key="p1")
+        free = replace(student("a2", ALL_DAY), person_key="p1")
+        overlapping = opp("o1", start=9 * H, end=10 * H)
+        result = run(
+            [held, free], [overlapping, opp("o2", start=11 * H, end=12 * H)],
+            [PreservedPlacement("a1", "o1", 9 * H)],
+        )
+        self.assertEqual(assigned(result), {"a2": "o2"})
+
+    def test_back_to_back_sessions_conflict_through_travel(self):
+        from dataclasses import replace
+
+        a1 = replace(student("a1", ALL_DAY), person_key="p1")
+        a2 = replace(student("a2", ALL_DAY), person_key="p1")
+        # 9-10 and 10-11 do not overlap as sessions, but 8:45-10:15 and 9:45-11:15 do.
+        for first, second in ((9, 10), (10, 9)):
+            result = run([a1, a2], [opp("o1", start=first * H, end=(first + 1) * H),
+                                    opp("o2", start=second * H, end=(second + 1) * H)])
+            self.assertEqual(result.statistics.placed_count, 1)
+            (unplaced,) = result.unplaced
+            self.assertEqual(unplaced.reason, UnplacedReason.STUDENT_OVERLAP)
+        # Without travel the same pair is fine.
+        flat = run([a1, a2], [opp("o1", start=9 * H, end=10 * H, travel=0), opp("o2", start=10 * H, end=11 * H, travel=0)])
+        self.assertEqual(flat.statistics.placed_count, 2)
+
+    def test_commitments_that_only_touch_do_not_conflict(self):
+        from dataclasses import replace
+
+        a1 = replace(student("a1", ALL_DAY), person_key="p1")
+        a2 = replace(student("a2", ALL_DAY), person_key="p1")
+        touching = run([a1, a2], [opp("o1", start=9 * H, end=10 * H),
+                                  opp("o2", start=10 * H + 30, end=11 * H + 30)])
+        self.assertEqual(touching.statistics.placed_count, 2)
+        overlapping = run([a1, a2], [opp("o1", start=9 * H, end=10 * H),
+                                     opp("o2", start=10 * H + 29, end=11 * H + 29)])
+        self.assertEqual(overlapping.statistics.placed_count, 1)
+
+    def test_manual_placement_blocks_automatic_placement_only_through_travel(self):
+        from dataclasses import replace
+
+        held = replace(student("a1", ALL_DAY), person_key="p1")
+        free = replace(student("a2", ALL_DAY), person_key="p1")
+        result = run(
+            [held, free], [opp("o1", start=9 * H, end=10 * H), opp("o2", start=10 * H, end=11 * H)],
+            [PreservedPlacement("a1", "o1", 9 * H)],
+        )
+        self.assertEqual(assigned(result), {})
+        self.assertEqual({u.student_id: u.reason for u in result.unplaced}, {"a2": UnplacedReason.STUDENT_OVERLAP})
+
+    def test_capacity_shortfall_is_not_reported_as_same_person_conflict(self):
+        result = run([student("a", ALL_DAY), student("b", ALL_DAY)], [opp("o1", start=9 * H, end=10 * H)])
+        self.assertEqual({u.reason for u in result.unplaced}, {UnplacedReason.CAPACITY_LIMIT})
+
     def test_each_student_placed_at_most_once(self):
         result = run([student("a", ALL_DAY)], [opp("o1", capacity=3), opp("o2", capacity=3)])
         self.assertEqual(len(result.placements), 1)

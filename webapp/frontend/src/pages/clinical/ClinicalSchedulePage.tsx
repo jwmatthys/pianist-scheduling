@@ -14,6 +14,7 @@ import { ConfirmDialog } from "../../components/dialogs/ConfirmDialog";
 const UNPLACED_REASONS: Record<string, string> = {
   NO_FEASIBLE_CANDIDATE: "No feasible opportunity",
   CAPACITY_LIMIT: "Capacity limit",
+  STUDENT_OVERLAP: "Overlaps another request for the same Student ID",
   MANUALLY_UNPLACED: "Manually Unplaced",
 };
 

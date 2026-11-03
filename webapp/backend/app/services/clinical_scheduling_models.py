@@ -43,6 +43,8 @@ class StudentInput:
     # Required/Preferred/Restricted only; Neutral is the absence of an entry.
     tag_preferences: dict[str, TagPreference] = field(default_factory=dict)
     student_number: str = ""
+    # Records that share a person key are one person and never hold overlapping sessions.
+    person_key: str = ""
 
 
 @dataclass(frozen=True)
@@ -218,6 +220,7 @@ class PreservedPlacement:
 
     student_id: str
     opportunity_id: str | None
+    start_minute: int | None = None
 
 
 class UnplacedReason(str, Enum):
@@ -226,6 +229,9 @@ class UnplacedReason(str, Enum):
     # assignment for other students) left them out.
     CAPACITY_LIMIT = "CAPACITY_LIMIT"
     MANUALLY_UNPLACED = "MANUALLY_UNPLACED"
+    # Every feasible opportunity collides with another commitment held by the same
+    # Student ID (another request that is placed or manually held).
+    STUDENT_OVERLAP = "STUDENT_OVERLAP"
 
 
 @dataclass(frozen=True)
@@ -302,6 +308,7 @@ class PlacementWarningCode(str, Enum):
     RESTRICTED_TAG_CONFLICT = "RESTRICTED_TAG_CONFLICT"
     CAPACITY_EXCEEDED = "CAPACITY_EXCEEDED"
     OUTSIDE_OPPORTUNITY_WINDOW = "OUTSIDE_OPPORTUNITY_WINDOW"
+    STUDENT_OVERLAP = "STUDENT_OVERLAP"
 
 
 @dataclass(frozen=True)
@@ -343,3 +350,14 @@ class PlacementVerification:
     day: str | None
     start_minute: int | None
     warnings: tuple[PlacementWarning, ...]
+
+
+def commitment_interval(opportunity: OpportunityInput, start_minute: int) -> tuple[int, int]:
+    """Full commitment for a placement: travel before + session + travel after (minutes of the day).
+
+    Records that share a Student ID must never hold overlapping commitment intervals.
+    """
+    return (
+        start_minute - opportunity.travel_minutes,
+        start_minute + opportunity.session_length_minutes + opportunity.travel_minutes,
+    )

@@ -309,14 +309,12 @@ export function ClinicalStudentRosterImportDialog({
         >
           <p className="dialog-note">Importing this file will:</p>
           <ul className="dialog-note">
-            <li>Create {preview?.students_to_create ?? 0} new student(s)</li>
-            <li>Update {preview?.students_to_update ?? 0} existing student(s) matched by Student ID</li>
-            <li>Replace availability and tag selections for every student in the file</li>
+            <li>Create {preview?.students_to_create ?? 0} student record(s), one per row, with the availability and tags in that row</li>
             <li>
-              Delete {preview?.students_to_remove ?? 0} student(s) not listed in the file, along with their{" "}
-              {preview?.placements_to_remove ?? 0} placement(s)
+              Delete all {preview?.students_to_remove ?? 0} existing student record(s), along with their{" "}
+              {preview?.placements_to_remove ?? 0} placement(s), including manual placements and Manually Unplaced decisions
             </li>
-            <li>Preserve placements of students listed in the file</li>
+            <li>Not match imported rows to existing records; rows that share a Student ID stay separate requests</li>
             <li>Preserve Clinical Sites and the Clinical Tag registry, and add any new imported tags to it</li>
             <li>Mark any generated schedule as out of date</li>
           </ul>

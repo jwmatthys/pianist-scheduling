@@ -138,7 +138,6 @@ class LessonInstructorAvailabilityWindow(ModuleBase):
 class LessonStudent(ModuleBase):
     __tablename__ = "lesson_students"
     __table_args__ = (
-        UniqueConstraint("student_id", name="uq_lesson_students_student_id"),
         CheckConstraint("length(student_id) > 0", name="ck_lesson_students_student_id"),
     )
 

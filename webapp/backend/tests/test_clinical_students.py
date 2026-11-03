@@ -63,10 +63,10 @@ class StudentRepositoryTests(ClinicalTestCase):
         second = self.repo.create_student("S2", "Two", require_name=True)
         with self.assertRaises(ClinicalValidationError) as caught:
             self.repo.create_student("ABC", "Dup", require_name=True)
-        self.assertEqual(caught.exception.code, "DUPLICATE_STUDENT_ID")
+        self.assertEqual(caught.exception.code, "STUDENT_ID_NAME_CONFLICT")
         with self.assertRaises(ClinicalValidationError):
             self.repo.update_student(second.id, "Abc", "Two")
-        self.repo.update_student(first.id, "ABC", "One Edited")  # own ID is not a duplicate
+        self.repo.update_student(first.id, "ABC", "One Edited")  # own ID is not a conflict
         with self.assertRaises(ClinicalValidationError) as caught:
             self.repo.update_student(first.id, "S1", " ")
         self.assertEqual(caught.exception.code, "INVALID_STUDENT_NAME")
@@ -208,11 +208,41 @@ class StudentImportParsingTests(unittest.TestCase):
         self.assertEqual(rows[0].errors, ["Student ID is required."])
         self.assertEqual(rows[1].errors, ["Name is required."])
 
-    def test_duplicate_ids_case_insensitive(self):
+    def test_repeated_ids_need_the_same_name(self):
         rows = parse([["S1", "A", "", ""], ["s1", "B", "", ""], ["S2", "C", "", ""]]).rows
-        self.assertTrue(any("duplicated" in e for e in rows[0].errors))
+        self.assertTrue(any("different names" in e for e in rows[0].errors))
         self.assertTrue(any("row 2" in e for e in rows[1].errors))
         self.assertEqual(rows[2].errors, [])
+        self.assertEqual([r.errors for r in parse([["S1", "A", "", ""], ["s1", " a ", "", ""]]).rows], [[], []])
+
+    def test_repeated_ids_may_differ_in_availability_and_tags(self):
+        parsed = importer.parse_students(
+            "r.csv",
+            csv_bytes(
+                [["S1", "Pat", "", "9-10", "Piano"], ["s1", "Pat", "", "13-14", "Voice"]],
+                headers=["ID", "Student", "Mail", "Monday", "Req"],
+            ),
+            None,
+            importer.ClinicalStudentsImportMapping(**{**MAPPING, "required_tags": "Req", "days": {"Monday": "Monday"}}),
+        )
+        self.assertEqual([row.errors for row in parsed.rows], [[], []])
+        self.assertNotEqual(parsed.rows[0].windows, parsed.rows[1].windows)
+        self.assertNotEqual(parsed.rows[0].tags, parsed.rows[1].tags)
+
+    def test_import_never_pairs_rows_with_existing_records(self):
+        parsed = importer.parse_students(
+            "r.csv",
+            csv_bytes([["S1", "Pat", "", "Voice"], ["S1", "Pat", "", ""]], headers=["ID", "Name", "Email", "Req"]),
+            None,
+            importer.ClinicalStudentsImportMapping(student_id="ID", name="Name", email="Email", required_tags="Req"),
+        )
+        self.assertFalse(hasattr(parsed.rows[0], "clinical_student_id"))
+        self.assertEqual([row.action for row in parsed.rows], ["create", "create"])
+        preview = importer.build_preview(parsed, set(), existing_student_count=3, existing_placement_count=2)
+        self.assertEqual(
+            (preview.students_to_create, preview.students_to_update, preview.students_to_remove, preview.placements_to_remove),
+            (2, 0, 3, 2),
+        )
 
     def test_mapping_errors_and_suggestions(self):
         with self.assertRaises(importer.ImportFileError) as caught:
@@ -239,7 +269,7 @@ class StudentImportParsingTests(unittest.TestCase):
         self.assertTrue(importer.build_preview(parse(GOOD)).can_apply)
 
 
-class StudentRosterUpsertTests(ClinicalTestCase):
+class StudentRosterReplacementTests(ClinicalTestCase):
     def seed(self):
         tag = self.repo.create_tag("kids")
         site = self.repo.create_opportunity(opportunity_input(site_name="Keep Site"), tag_ids=[tag.id])
@@ -273,14 +303,22 @@ class StudentRosterUpsertTests(ClinicalTestCase):
         self.assertEqual(state.source_data_revision, before + 1)
         self.assertTrue(state.is_schedule_stale)
 
-    def test_import_updates_matching_student_and_keeps_its_placement(self):
+    def test_reimporting_a_known_student_id_recreates_the_record_and_clears_placements(self):
         self.seed()
+        old_ids = {s.id for s in self.repo.list_students()}
         result = self.apply([["old1", "Renamed", "o@example.test", ""]])
-        self.assertEqual((result.students_created, result.students_updated, result.students_removed), (0, 1, 1))
-        student = next(s for s in self.repo.list_students() if s.student_id == "OLD1")
-        self.assertEqual((student.name, student.email), ("Renamed", "o@example.test"))
-        self.assertEqual(self.db.query(clinical.ClinicalPlacement).count(), 1)
+        self.assertEqual((result.students_created, result.students_updated, result.students_removed), (1, 0, 2))
+        self.assertEqual(result.placements_removed, 2)
+        (student,) = self.repo.list_students()
+        self.assertNotIn(student.id, old_ids)
+        self.assertEqual((student.student_id, student.name, student.email), ("old1", "Renamed", "o@example.test"))
+        self.assertEqual(self.db.query(clinical.ClinicalPlacement).count(), 0)
         self.assertEqual(self.repo.student_availability(student.id), [])
+
+    def test_repeated_student_ids_create_one_record_per_row(self):
+        self.seed()
+        self.apply([["S1", "Pat", "", ""], ["s1", "Pat", "", ""], ["S2", "Sam", "", ""]])
+        self.assertEqual(sorted(s.student_id.casefold() for s in self.repo.list_students()), ["s1", "s1", "s2"])
 
     def test_requires_confirmation(self):
         self.seed()

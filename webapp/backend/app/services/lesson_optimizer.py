@@ -293,9 +293,20 @@ def optimize_lesson_schedule(
                         total += max(0, following.lesson_start_minute - current.lesson_end_minute) % length
         return total
 
+    person_of = {student.id: student.person_key or student.id for student in students}
+
     def can_place(candidate: LessonCandidate) -> bool:
         instructor = instructor_by_id[candidate.instructor_id]
         if instructor_counts[instructor.id] >= effective_capacity[instructor.id]:
+            return False
+        person = person_of.get(candidate.student_id, candidate.student_id)
+        if any(
+            existing.day == candidate.day
+            and candidate.lesson_start_minute < existing.lesson_end_minute
+            and candidate.lesson_end_minute > existing.lesson_start_minute
+            and person_of.get(existing.student_id, existing.student_id) == person
+            for existing in assigned
+        ):
             return False
         return not any(
             existing.day == candidate.day

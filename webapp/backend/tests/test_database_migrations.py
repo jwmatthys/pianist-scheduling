@@ -209,6 +209,81 @@ class DatabaseMigrationTests(unittest.TestCase):
                 ("automatic", "Synthetic Student", "Synthetic Instructor"),
             )
 
+    def test_v15_to_v16_allows_repeated_student_ids_and_preserves_data(self):
+        migrate_database(self.engine, MIGRATIONS[:15])
+        stamp = datetime.utcnow().isoformat(sep=" ")
+        modules = (
+            ("lesson", "lesson_students", "uq_lesson_students_student_id", "lesson_student_availability_windows", "lesson_student_id"),
+            ("tutor", "tutor_students", "uq_tutor_students_student_id", "tutor_student_availability_windows", "tutor_student_id"),
+            ("clinical", "clinical_students", "uq_clinical_students_student_id", "clinical_student_availability_windows", "clinical_student_id"),
+        )
+        ids = {}
+        with self.engine.begin() as connection:
+            # Tables are created from current metadata, so restore the pre-v16 unique constraint.
+            for module, table, constraint, window_table, owner in modules:
+                sql = connection.exec_driver_sql(
+                    "SELECT sql FROM sqlite_master WHERE name = ?", (table,)
+                ).scalar_one()
+                connection.exec_driver_sql(f"DROP TABLE {table}")
+                head, _, _ = sql.rstrip().rpartition(")")
+                connection.exec_driver_sql(f"{head.rstrip()}, CONSTRAINT {constraint} UNIQUE (student_id))")
+                ids[module] = str(uuid4())
+                connection.exec_driver_sql(
+                    f"INSERT INTO {table} (id, student_id, name, email, created_at, updated_at) "
+                    "VALUES (?, 'S-1', 'Synthetic Student', '', ?, ?)",
+                    (ids[module], stamp, stamp),
+                )
+                connection.exec_driver_sql(
+                    f"INSERT INTO {window_table} (id, {owner}, day, start_minute, end_minute, status, source) "
+                    "VALUES (?, ?, 'Monday', 540, 600, 'Available', 'manual')",
+                    (str(uuid4()), ids[module]),
+                )
+                with self.assertRaises(Exception):
+                    with connection.begin_nested():
+                        connection.exec_driver_sql(
+                            f"INSERT INTO {table} (id, student_id, name, email, created_at, updated_at) "
+                            "VALUES (?, 'S-1', 'Synthetic Student', '', ?, ?)",
+                            (str(uuid4()), stamp, stamp),
+                        )
+            connection.exec_driver_sql(
+                "INSERT INTO lesson_instructors "
+                "(id, name, email, room, lesson_length_minutes, capacity, created_at, updated_at) "
+                "VALUES ('instructor-1', 'Synthetic Instructor', '', '', 60, 1, ?, ?)",
+                (stamp, stamp),
+            )
+            connection.exec_driver_sql(
+                "INSERT INTO lesson_placements (id, lesson_student_id, lesson_instructor_id, day, start_minute, "
+                "end_minute, placement_type, created_at, updated_at) "
+                "VALUES (?, ?, 'instructor-1', 'Monday', 540, 600, 'manual', ?, ?)",
+                ("placement-1", ids["lesson"], stamp, stamp),
+            )
+            connection.exec_driver_sql("PRAGMA user_version = 15")
+
+        report = migrate_database(self.engine)
+
+        self.assertEqual(report.current_version, LATEST_SCHEMA_VERSION)
+        with self.engine.begin() as connection:
+            for module, table, constraint, window_table, owner in modules:
+                row = connection.exec_driver_sql(f"SELECT id, student_id, name FROM {table}").one()
+                self.assertEqual(tuple(row), (ids[module], "S-1", "Synthetic Student"))
+                self.assertEqual(
+                    connection.exec_driver_sql(f"SELECT COUNT(*) FROM {window_table} WHERE {owner} = ?", (ids[module],)).scalar_one(),
+                    1,
+                )
+                self.assertNotIn(constraint, connection.exec_driver_sql(
+                    "SELECT sql FROM sqlite_master WHERE name = ?", (table,)
+                ).scalar_one())
+                connection.exec_driver_sql(
+                    f"INSERT INTO {table} (id, student_id, name, email, created_at, updated_at) "
+                    "VALUES (?, 'S-1', 'Synthetic Student', '', ?, ?)",
+                    (str(uuid4()), stamp, stamp),
+                )
+                self.assertEqual(connection.exec_driver_sql(f"SELECT COUNT(*) FROM {table}").scalar_one(), 2)
+            placement = connection.exec_driver_sql(
+                "SELECT id, lesson_student_id, day, start_minute, end_minute, placement_type FROM lesson_placements"
+            ).one()
+            self.assertEqual(tuple(placement), ("placement-1", ids["lesson"], "Monday", 540, 600, "manual"))
+
     def test_legacy_fixture_migrates_forward_without_losing_existing_records(self):
         self.engine.dispose()
         # sqlite3's context manager only commits; closing is required to release the file on Windows.

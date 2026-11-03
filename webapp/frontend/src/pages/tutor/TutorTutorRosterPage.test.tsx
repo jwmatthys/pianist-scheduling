@@ -266,8 +266,7 @@ describe("Tutor Roster", () => {
     vi.mocked(api.previewTutorTutorImport).mockResolvedValue(preview);
     vi.mocked(api.applyTutorTutorImport).mockResolvedValue({
       tutors_removed: 4,
-      placements_removed: 0,
-      placements_preserved: 2,
+      placements_removed: 2,
       tutors_created: 1,
       tags_created: 1,
     });

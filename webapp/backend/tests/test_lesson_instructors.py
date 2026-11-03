@@ -348,16 +348,16 @@ class ImportFlowTests(LessonTestCase):
         self.assertEqual(caught.exception.detail["code"], "CONFIRMATION_REQUIRED")
         self.assertEqual([i.name for i in self.repo.list_instructors()], ["Old Teacher"])
 
-    def test_apply_replaces_instructors_preserving_tags_and_students(self):
+    def test_apply_replaces_instructors_clearing_placements_and_preserving_tags_and_students(self):
         student = self.seed()
         before = self.revision()
         result = self.call(lesson.apply_instructor_import, confirmed=True)
         self.assertEqual(
             (
-                result.instructors_removed, result.placements_removed, result.placements_preserved,
+                result.instructors_removed, result.placements_removed,
                 result.instructors_created, result.tags_created,
             ),
-            (1, 0, 1, 1, 1),
+            (1, 1, 1, 1),
         )
         instructors = self.repo.list_instructors()
         self.assertEqual([i.name for i in instructors], ["Synthetic Teacher"])
@@ -366,10 +366,11 @@ class ImportFlowTests(LessonTestCase):
         self.assertEqual([s.name for s in self.repo.list_students()], ["Pat Test"])
         windows = self.repo.instructor_availability(instructors[0].id)
         self.assertEqual((len(windows), windows[0].source), (2, "import"))
-        self.assertIsNotNone(self.repo.get_placement(student.id))
+        self.assertEqual(self.repo.list_placements(), [])
+        self.assertFalse(self.repo.get_schedule().has_schedule)
         state = self.repo.get_state()
         self.assertEqual(state.source_data_revision, before + 1)
-        self.assertTrue(state.is_schedule_stale)
+        self.assertFalse(state.is_schedule_stale)  # nothing left to be out of date
 
     def test_apply_reparses_and_rejects_invalid_rows_atomically(self):
         student = self.seed()

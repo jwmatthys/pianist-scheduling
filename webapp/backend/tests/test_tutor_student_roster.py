@@ -84,15 +84,17 @@ class StudentApiTests(TutorTestCase):
         created = tutor_api.create_student(self.payload(), db=self.db)
         self.assertEqual(created.email, "")
 
-    def test_duplicate_student_ids_are_case_insensitive(self):
+    def test_student_ids_may_repeat_case_insensitively_for_the_same_name(self):
         tutor_api.create_student(self.payload(student_id="ab-1"), db=self.db)
+        again = tutor_api.create_student(self.payload(student_id=" AB-1 "), db=self.db)
+        self.assertEqual(again.student_id, "AB-1")
         with self.assertRaises(HTTPException) as caught:
-            tutor_api.create_student(self.payload(student_id=" AB-1 ", name="Other"), db=self.db)
-        self.assertEqual((caught.exception.status_code, caught.exception.detail["code"]), (409, "DUPLICATE_STUDENT_ID"))
+            tutor_api.create_student(self.payload(student_id="ab-1", name="Other"), db=self.db)
+        self.assertEqual((caught.exception.status_code, caught.exception.detail["code"]), (409, "STUDENT_ID_NAME_CONFLICT"))
         other = tutor_api.create_student(self.payload(student_id="AB-2", name="Other"), db=self.db)
         with self.assertRaises(HTTPException) as caught:
             tutor_api.update_student(other.id, self.payload(student_id="Ab-1", name="Other"), db=self.db)
-        self.assertEqual(caught.exception.detail["code"], "DUPLICATE_STUDENT_ID")
+        self.assertEqual(caught.exception.detail["code"], "STUDENT_ID_NAME_CONFLICT")
         # A student may keep its own Student ID, including a case change.
         same = tutor_api.update_student(other.id, self.payload(student_id="ab-2", name="Other"), db=self.db)
         self.assertEqual(same.student_id, "ab-2")
@@ -307,11 +309,16 @@ class ImportParsingTests(unittest.TestCase):
     def test_email_is_optional(self):
         self.assertEqual(parse([row_with()]).rows[0].errors, [])
 
-    def test_duplicate_ids_in_file_are_case_insensitive_errors(self):
+    def test_repeated_ids_need_the_same_name(self):
         parsed = parse([row_with("ab-1", "One"), row_with("AB-1", "Two"), row_with("AB-2", "Three")])
-        self.assertTrue(any("duplicated" in message for message in parsed.rows[0].errors))
-        self.assertTrue(any("duplicated" in message for message in parsed.rows[1].errors))
+        self.assertTrue(any("different names" in message for message in parsed.rows[0].errors))
+        self.assertTrue(any("row 3" in message for message in parsed.rows[0].errors))
+        self.assertTrue(any("different names" in message for message in parsed.rows[1].errors))
         self.assertEqual(parsed.rows[2].errors, [])
+        same = parse([row_with("ab-1", "One", monday="9-10"), row_with("AB-1", " one ", monday="9-10")])
+        self.assertEqual([row.errors for row in same.rows], [[], []])
+        different = parse([row_with("ab-1", "One", monday="9-10"), row_with("AB-1", "One", monday="10-11")])
+        self.assertEqual([row.errors for row in different.rows], [[], []])
 
     def test_invalid_availability_is_a_row_error(self):
         parsed = parse([row_with(monday="not a time")])
@@ -401,28 +408,28 @@ class ImportFlowTests(TutorTestCase):
         self.assertEqual(caught.exception.detail["code"], "CONFIRMATION_REQUIRED")
         self.assertEqual([s.student_id for s in self.repo.list_students()], ["OLD1"])
 
-    def test_apply_replaces_student_source_data_and_preserves_old_placement_for_review(self):
+    def test_apply_replaces_student_source_data_and_clears_all_placements(self):
         _, tutor, tag = self.seed()
         before = self.revision()
         result = self.call(tutor_api.apply_student_import, confirmed=True)
         self.assertEqual(
             (
-                result.students_removed, result.placements_removed,
-                result.placements_preserved, result.students_created,
+                result.students_removed, result.placements_removed, result.students_created,
             ),
-            (1, 0, 1, 1),
+            (1, 1, 1),
         )
         students = self.repo.list_students()
         self.assertEqual([(s.student_id, s.name) for s in students], [("S100", "Synthetic Student")])
         self.assertEqual(len(self.repo.student_availability(students[0].id)), 2)
         self.assertEqual(self.repo.student_tag_states(), {})
-        self.assertEqual(len(self.repo.list_placements()), 1)
+        self.assertEqual(self.repo.list_placements(), [])
+        self.assertFalse(self.repo.get_schedule().has_schedule)
         self.assertEqual([i.name for i in self.repo.list_tutors()], ["Old Teacher"])
         self.assertEqual(len(self.repo.tutor_availability(tutor.id)), 1)
         self.assertEqual(sorted(t.name for t in self.repo.list_tags()), ["ORPHAN", "VIOLIN"])
         self.assertEqual([t.name for t in self.repo.get_tutor(tutor.id).tags], ["VIOLIN"])
         self.assertEqual(self.revision(), before + 1)
-        self.assertTrue(self.repo.get_state().is_schedule_stale)
+        self.assertFalse(self.repo.get_state().is_schedule_stale)  # nothing left to be out of date
 
     def test_apply_reparses_the_file_and_rejects_invalid_rows_atomically(self):
         self.seed()
@@ -480,6 +487,19 @@ class ImportTagTests(TutorTestCase):
         self.assertEqual(row.errors, [])
         self.assertEqual(sorted(row.tags), [("CHOIR", "restricted"), ("JAZZ", "preferred"), ("PIANO", "required"), ("VIOLIN", "required")])
         self.assertEqual(parsed.tag_columns, ["Required Tags", "Preferred Tags", "Restricted Tags"])
+
+    def test_repeated_ids_may_differ_in_availability_and_tags(self):
+        rows = [
+            tag_row("Piano", student_id="S7", name="Pat"),
+            tag_row("Voice", student_id="s7", name="Pat"),
+        ]
+        rows[0][3] = "9-10"
+        rows[1][4] = "13-14"
+        parsed = importer.parse_students(
+            "s.csv", csv_bytes(rows, TAG_HEADERS), None, importer.TutorStudentImportMapping(**TAG_MAPPING)
+        )
+        self.assertEqual([row.errors for row in parsed.rows], [[], []])
+        self.assertEqual([row.tags for row in parsed.rows], [[("PIANO", "required")], [("VOICE", "required")]])
 
     def test_same_tag_in_two_state_columns_is_a_row_error(self):
         parsed = importer.parse_students(

@@ -23,6 +23,7 @@ from app.services.clinical_repository import (
     ClinicalRepository,
     ClinicalValidationError,
     PlacementOpportunityInput,
+    RosterImportRow,
 )
 
 LESSON_TABLES_DROP_ORDER = sorted(
@@ -256,13 +257,81 @@ class StudentTests(ClinicalTestCase):
             self.repo.replace_student_availability(student.id, [AvailabilityWindow("Monday", 120, 60, "Available")])
         self.assertEqual(len(self.repo.student_availability(student.id)), 1)
 
-    def test_student_id_is_required_and_unique_case_insensitively(self):
+    def test_student_id_is_required_and_may_repeat_for_the_same_name(self):
         with self.assertRaises(ClinicalValidationError):
             self.repo.create_student("  ")
-        self.repo.create_student("abc")
+        self.repo.create_student("abc", "Pat", require_name=True)
+        self.repo.create_student("ABC", " pat ", require_name=True)
         with self.assertRaises(ClinicalValidationError) as raised:
-            self.repo.create_student("ABC")
-        self.assertEqual(raised.exception.code, "DUPLICATE_STUDENT_ID")
+            self.repo.create_student("ABC", "Someone Else", require_name=True)
+        self.assertEqual(raised.exception.code, "STUDENT_ID_NAME_CONFLICT")
+
+    def test_repeated_student_id_may_differ_in_availability_and_tags(self):
+        monday = [AvailabilityWindow("Monday", 540, 600, "Available")]
+        thursday = [AvailabilityWindow("Thursday", 780, 840, "Available")]
+        first = self.repo.create_student("S-1", "Pat", availability=monday, require_name=True)
+        second = self.repo.create_student("s-1", "Pat", availability=thursday, require_name=True)
+        self.repo.set_student_tag_states(second.id, {self.repo.create_tag("Voice").id: TagState.REQUIRED})
+        self.assertEqual(self.repo.student_availability(first.id), monday)
+        self.assertEqual(self.repo.student_availability(second.id), thursday)
+        self.assertEqual(self.repo.student_tag_states().get(first.id, {}), {})
+
+    def test_roster_import_replaces_every_record_and_clears_placements(self):
+        site = self.repo.create_opportunity(opportunity_input())
+        existing = self.repo.create_student("S-1", "Pat", require_name=True)
+        existing_id = existing.id
+        self.repo.set_placement(existing.id, PlacementType.MANUAL, site.id, 480)
+
+        def row(day):
+            return RosterImportRow("S-1", "Pat", "", [AvailabilityWindow(day, 480, 600, "Available")], None)
+
+        result = self.repo.apply_roster_import([row("Tuesday"), row("Thursday")])
+        self.assertEqual((result.students_created, result.students_updated), (2, 0))
+        self.assertEqual((result.students_removed, result.placements_removed), (1, 1))
+        self.assertNotIn(existing_id, {s.id for s in self.repo.list_students()})
+        self.assertEqual(len(self.repo.list_students()), 2)
+        self.assertEqual(len(self.repo.list_placement_records()), 0)
+
+    def test_manual_placements_for_one_student_id_must_not_overlap(self):
+        site = self.repo.create_opportunity(opportunity_input(capacity=4))
+        window = [AvailabilityWindow("Tuesday", 420, 720, "Available")]
+        first = self.repo.create_student("S-1", "Pat", availability=window, require_name=True)
+        second = self.repo.create_student("S-1", "Pat", availability=window, require_name=True)
+        other = self.repo.create_student("S-2", "Sam", availability=window, require_name=True)
+        self.repo.set_placement(first.id, PlacementType.MANUAL, site.id, 480)
+        self.repo.set_placement(second.id, PlacementType.MANUAL, site.id, 510)
+        self.repo.set_placement(other.id, PlacementType.MANUAL, site.id, 510)
+
+        entries = {item.student_id: item for item in self.repo.schedule_review()[0]}
+
+        for record in (first, second):
+            self.assertIn("STUDENT_OVERLAP", {w.code.value for w in entries[record.id].warnings})
+            self.assertFalse(entries[record.id].verified)
+        self.assertNotIn("STUDENT_OVERLAP", {w.code.value for w in entries[other.id].warnings})
+        self.repo.set_placement(second.id, PlacementType.MANUAL, site.id, 570)
+        entries = {item.student_id: item for item in self.repo.schedule_review()[0]}
+        self.assertNotIn("STUDENT_OVERLAP", {w.code.value for w in entries[first.id].warnings})
+
+    def test_manual_overlap_warning_is_caused_by_travel_alone(self):
+        site = self.repo.create_opportunity(opportunity_input(capacity=4))  # 60-minute sessions, 15 minutes travel
+        window = [AvailabilityWindow("Tuesday", 420, 720, "Available")]
+        first = self.repo.create_student("S-1", "Pat", availability=window, require_name=True)
+        second = self.repo.create_student("S-1", "Pat", availability=window, require_name=True)
+        self.repo.set_placement(first.id, PlacementType.MANUAL, site.id, 480)  # 8:00-9:00
+        for start, overlaps in ((540, True), (555, True), (569, True), (570, False)):
+            self.repo.set_placement(second.id, PlacementType.MANUAL, site.id, start)
+            entries = {item.student_id: item for item in self.repo.schedule_review()[0]}
+            codes = {w.code.value for w in entries[second.id].warnings}
+            self.assertEqual("STUDENT_OVERLAP" in codes, overlaps, start)
+
+    def test_review_reports_same_person_conflict_as_the_unplaced_reason(self):
+        site = self.repo.create_opportunity(opportunity_input(capacity=4, start_minute=540, end_minute=600))
+        window = [AvailabilityWindow("Tuesday", 420, 720, "Available")]
+        placed = self.repo.create_student("S-1", "Pat", availability=window, require_name=True)
+        blocked = self.repo.create_student("S-1", "Pat", availability=window, require_name=True)
+        self.repo.set_placement(placed.id, PlacementType.MANUAL, site.id, 540)
+        entries = {item.student_id: item for item in self.repo.schedule_review()[0]}
+        self.assertEqual(entries[blocked.id].unplaced_reason.value, "STUDENT_OVERLAP")
 
     def test_delete_removes_dependents(self):
         tag = self.repo.create_tag("adult")
@@ -419,6 +488,7 @@ class ClinicalMigrationTests(ClinicalTestCase):
             "add_lesson_automatic_schedule_results",
             "align_lesson_schedule_lifecycle",
             "add_tutor_scheduling_module_tables",
+            "allow_repeated_student_ids_across_placement_records",
         ))
         with Session(self.engine) as db:
             self.assertEqual(db.get(models.Pianist, 7).name, "Synthetic Pianist")

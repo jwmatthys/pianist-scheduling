@@ -43,19 +43,12 @@ def upload(data: bytes, name="roster.csv") -> UploadFile:
     return UploadFile(file=io.BytesIO(data), filename=name)
 
 
-ROSTER = {
-    "s1": importer.ExistingStudent("pk1", "Ada Example", "", 3),
-    "s2": importer.ExistingStudent("pk2", "Ben Sample", "", 0),
-}
-
-
-def parse(rows, name="roster.csv", data=None, mapping=None, roster=ROSTER):
+def parse(rows, name="roster.csv", data=None, mapping=None):
     return importer.parse_students(
         name,
         data if data is not None else csv_bytes(rows),
         None,
         importer.ClinicalStudentsImportMapping(**(mapping or MAPPING)),
-        roster,
     )
 
 
@@ -150,14 +143,14 @@ class ParserTests(unittest.TestCase):
         row = parse([["S1", "8-12; T 10:00-14:00", "", "", ""]]).rows[0]
         self.assertTrue(any("overlaps" in error for error in row.errors), row.errors)
 
-    def test_student_matching(self):
+    def test_every_row_creates_a_record(self):
         parsed = parse([["", "8-9", "", "", ""], ["S9", "8-9", "", "", ""], ["S1", "8-9", "", "", ""],
                         ["s1", "8-9", "", "", ""]])
         self.assertIn("Student ID is required.", parsed.rows[0].errors)
         self.assertEqual(parsed.rows[1].errors, [])
-        self.assertEqual(parsed.rows[1].action, "create")
-        self.assertTrue(any("duplicated" in error for error in parsed.rows[2].errors))
-        self.assertTrue(any("duplicated" in error for error in parsed.rows[3].errors))
+        # Repeated Student IDs are separate placement requests; every row is a new record.
+        self.assertEqual([parsed.rows[2].errors, parsed.rows[3].errors], [[], []])
+        self.assertEqual([row.action for row in parsed.rows[1:]], ["create", "create", "create"])
 
     def test_mapping_validation(self):
         columns = list(HEADERS)
@@ -187,10 +180,10 @@ class ParserTests(unittest.TestCase):
         preview = importer.build_preview(parsed)
         self.assertEqual(
             [row.availability_change for row in preview.rows],
-            ["Replace 3 availability windows with 2", "Add 1 availability window"],
+            ["Add 2 availability windows", "Add 1 availability window"],
         )
         cleared = importer.build_preview(parse([["S1", "", "", "", ""]]))
-        self.assertEqual(cleared.rows[0].availability_change, "Clear availability (3 windows)")
+        self.assertEqual(cleared.rows[0].availability_change, "No availability change")
         self.assertTrue(cleared.can_apply)
 
     def test_invalid_rows_block_apply(self):
@@ -226,32 +219,34 @@ class RepositoryAndApiTests(ClinicalTestCase):
         revision, stale = state.source_data_revision, state.is_schedule_stale
         preview = self.call("preview", [["S1", "8-12", "", "", ""], ["S2", "T 1-4", "", "", ""]])
         self.assertTrue(preview.can_apply)
-        self.assertEqual(preview.rows[0].availability_change, "Replace 1 availability window with 1")
+        self.assertEqual(preview.rows[0].availability_change, "Add 1 availability window")
         self.db.rollback()
         state = self.repo.get_state()
         self.assertEqual((state.source_data_revision, state.is_schedule_stale), (revision, stale))
         self.assertEqual(len(self.repo.student_availability(self.ada.id)), 1)
         self.assertEqual(self.repo.student_availability(self.ben.id), [])
+        self.assertEqual((preview.students_to_remove, preview.placements_to_remove), (3, 1))
 
     def test_apply_replaces_roster_and_removes_absent_students(self):
         self.seed()
         before = self.repo.get_state().source_data_revision
         result = self.call("apply", [["s1", "8-10; T 1-4", "9-11", "", ""], ["S2", "", "", "", ""]])
-        self.assertEqual((result.students_created, result.students_updated, result.availability_updated, result.windows_imported), (0, 2, 2, 3))
-        self.assertEqual((result.students_removed, result.placements_removed), (1, 0))
-        ada = self.repo.student_availability(self.ada.id)
+        self.assertEqual((result.students_created, result.students_updated, result.availability_updated, result.windows_imported), (2, 0, 2, 3))
+        self.assertEqual((result.students_removed, result.placements_removed), (3, 1))
+        by_id = {s.student_id.casefold(): s for s in self.repo.list_students()}
+        ada = self.repo.student_availability(by_id["s1"].id)
         self.assertEqual(
             [(w.day, w.start_minute, w.end_minute, w.status, w.source) for w in ada],
             [("Monday", 480, 600, "Available", "import"), ("Monday", 780, 960, "Tentative", "import"),
              ("Tuesday", 540, 660, "Available", "import")],
         )
-        self.assertEqual(self.repo.student_availability(self.ben.id), [])
-        self.assertEqual([s.student_id for s in self.repo.list_students()], ["S1", "S2"])
+        self.assertEqual(self.repo.student_availability(by_id["s2"].id), [])
+        self.assertEqual(sorted(by_id), ["s1", "s2"])
         self.assertEqual(len(self.repo.list_opportunities()), 1)
-        self.assertEqual(self.db.query(ClinicalPlacement).count(), 1)
+        self.assertEqual(self.db.query(ClinicalPlacement).count(), 0)
         state = self.repo.get_state()
         self.assertEqual(state.source_data_revision, before + 1)
-        self.assertTrue(state.is_schedule_stale)
+        self.assertFalse(state.is_schedule_stale)  # every placement was cleared
 
     def test_confirmation_required(self):
         self.seed()
@@ -290,7 +285,8 @@ class RepositoryAndApiTests(ClinicalTestCase):
             file=upload(xlsx_bytes(rows), "a.xlsx"), mapping=json.dumps(MAPPING), sheet_name=None,
             confirmed=True, db=self.db,
         ))
-        self.assertEqual([w.status for w in self.repo.student_availability(self.ben.id)], ["Tentative"])
+        (ben,) = self.repo.list_students()
+        self.assertEqual([w.status for w in self.repo.student_availability(ben.id)], ["Tentative"])
 
 
 FULL_HEADERS = ["Student ID", "Name", "Email", "Mon", "Tue"]
@@ -330,21 +326,20 @@ class UnifiedImportTests(ClinicalTestCase):
         )
         self.assertEqual(
             (result.students_created, result.students_updated, result.availability_updated, result.windows_imported),
-            (1, 1, 2, 2),
+            (2, 0, 2, 2),
         )
-        ada = next(s for s in self.repo.list_students() if s.student_id == "S1")
+        ada = next(s for s in self.repo.list_students() if s.student_id.casefold() == "s1")
         self.assertEqual((ada.name, ada.email), ("Ada E.", "new@example.test"))
         self.assertEqual(len(self.repo.student_availability(ada.id)), 2)
         self.assertEqual(self.revision(), before + 1)
-        self.assertTrue(self.repo.get_state().is_schedule_stale)
-        self.assertEqual(self.db.query(ClinicalPlacement).count(), 1)
+        self.assertEqual(self.db.query(ClinicalPlacement).count(), 0)
 
-    def test_roster_only_import_clears_availability_and_bumps_once(self):
+    def test_roster_only_import_creates_students_without_availability_and_bumps_once(self):
         self.seed()
         before = self.revision()
         result = self.run_apply([["S1", "Ada Renamed", "", "x", "y"]], ROSTER_ONLY)
         self.assertEqual((result.availability_updated, result.windows_imported), (1, 0))
-        self.assertEqual(self.repo.student_availability(self.ada.id), [])
+        self.assertEqual(self.repo.student_availability(self.repo.list_students()[0].id), [])
         self.assertEqual(self.revision(), before + 1)
 
     def test_name_column_is_required(self):
@@ -354,10 +349,10 @@ class UnifiedImportTests(ClinicalTestCase):
         self.assertEqual(caught.exception.detail["code"], "INVALID_MAPPING")
         self.assertEqual(len(self.repo.student_availability(self.ada.id)), 1)
 
-    def test_all_blank_mapped_days_clear_availability(self):
+    def test_all_blank_mapped_days_create_a_student_without_availability(self):
         self.seed()
         self.run_apply([["S1", "Ada Example", "ada@example.test", "", ""]], FULL_MAPPING)
-        self.assertEqual(self.repo.student_availability(self.ada.id), [])
+        self.assertEqual(self.repo.student_availability(self.repo.list_students()[0].id), [])
 
     def test_absent_students_are_removed_with_their_placements(self):
         self.seed()
@@ -368,11 +363,27 @@ class UnifiedImportTests(ClinicalTestCase):
         self.assertEqual({s.student_id for s in self.repo.list_students()}, {"S2"})
         self.assertEqual(self.db.query(ClinicalPlacement).count(), 0)
 
-    def test_listed_students_keep_their_placement(self):
+    def test_reimporting_a_listed_student_recreates_it_and_clears_placements(self):
         self.seed()
         self.run_apply([["s1", "Ada Example", "", "8-9", ""]], FULL_MAPPING)
-        self.assertEqual(self.db.query(ClinicalPlacement).count(), 1)
-        self.assertEqual(self.repo.list_students()[0].id, self.ada.id)
+        self.assertEqual(self.db.query(ClinicalPlacement).count(), 0)
+        self.assertEqual(len(self.repo.list_students()), 1)
+        self.assertEqual(self.db.query(ClinicalPlacement).count(), 0)
+
+    def test_row_order_has_no_effect_on_the_resulting_roster(self):
+        rows = [["S1", "Ada", "", "8-9", ""], ["S2", "Ben", "", "9-10", ""], ["S1", "Ada", "", "10-11", ""]]
+
+        def snapshot():
+            return sorted(
+                (s.student_id, s.name, tuple((w.day, w.start_minute) for w in self.repo.student_availability(s.id)))
+                for s in self.repo.list_students()
+            )
+
+        self.seed()
+        self.run_apply(rows, FULL_MAPPING)
+        forward = snapshot()
+        self.run_apply(list(reversed(rows)), FULL_MAPPING)
+        self.assertEqual(snapshot(), forward)
 
     def test_preview_messages_and_no_writes(self):
         self.seed()
@@ -382,17 +393,14 @@ class UnifiedImportTests(ClinicalTestCase):
             FULL_MAPPING,
         )
         first, second = preview.rows
-        self.assertEqual((first.action, first.student_change), ("update", "Update email"))
-        self.assertEqual(first.availability_change, "Replace 1 availability window with 2")
+        self.assertEqual((first.action, first.student_change), ("create", "Create student"))
+        self.assertEqual(first.availability_change, "Add 2 availability windows")
         self.assertEqual((second.action, second.student_change), ("create", "Create student"))
-        self.assertEqual((preview.students_to_create, preview.students_to_update), (1, 1))
-        self.assertEqual((preview.students_to_remove, preview.placements_to_remove), (0, 0))
+        self.assertEqual((preview.students_to_create, preview.students_to_update), (2, 0))
+        self.assertEqual((preview.students_to_remove, preview.placements_to_remove), (1, 1))
         self.db.rollback()
         self.assertEqual(self.revision(), before)
         self.assertEqual(len(self.repo.list_students()), 1)
-        unchanged = self.run_preview([["S1", "Ada Example", "ada@example.test", "", ""]], ROSTER_ONLY).rows[0]
-        self.assertEqual((unchanged.student_change, unchanged.availability_change),
-                         ("No student change", "Clear availability (1 window)"))
 
     def test_new_student_requires_name(self):
         self.seed()
@@ -459,13 +467,14 @@ class TagImportTests(ClinicalTestCase):
             [["S1", "Ada Example", "adult", "virtual", "", ""]], self.MAPPING, confirmed=True,
         )
         self.assertEqual((result.tags_created, result.tag_states_updated), (1, 1))
-        self.assertEqual(self.states(self.ada), {"ADULT": "required", "VIRTUAL": "preferred"})
-        self.assertEqual([s.student_id for s in self.repo.list_students()], ["S1"])
+        (ada,) = self.repo.list_students()
+        self.assertEqual(self.states(ada), {"ADULT": "required", "VIRTUAL": "preferred"})
+        self.assertEqual(ada.student_id, "S1")
 
     def test_blank_cells_clear_listed_student(self):
         self.seed()
         self.call(clinical.apply_students_import, [["S1", "Ada Example", "", "", "", ""]], self.MAPPING, confirmed=True)
-        self.assertEqual(self.states(self.ada), {})
+        self.assertEqual(self.states(self.repo.list_students()[0]), {})
 
     def test_unmapped_tag_columns_clear_listed_students(self):
         self.seed()
@@ -473,14 +482,14 @@ class TagImportTests(ClinicalTestCase):
             clinical.apply_students_import, [["S1", "Ada Example", "adult", "", "", ""]],
             {"student_id": "Student ID", "name": "Name"}, confirmed=True,
         )
-        self.assertEqual(self.states(self.ada), {})
+        self.assertEqual(self.states(self.repo.list_students()[0]), {})
         self.assertEqual(len(self.repo.list_tags()), 2)
 
     def test_conflicting_states_reject_import(self):
         self.seed()
         parsed = importer.parse_students(
             "r.csv", csv_bytes([["S1", "Ada Example", "Adult", "adult", "", ""]], self.HEADERS), None,
-            importer.ClinicalStudentsImportMapping(**self.MAPPING), {},
+            importer.ClinicalStudentsImportMapping(**self.MAPPING),
         )
         self.assertTrue(parsed.rows[0].errors)
         with self.assertRaises(HTTPException):

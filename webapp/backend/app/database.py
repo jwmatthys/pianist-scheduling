@@ -1,6 +1,7 @@
 """Database engine and migration setup for the active local Scheduling Session."""
 
 import os
+import re
 from contextlib import contextmanager
 from threading import Condition, RLock
 from dataclasses import dataclass
@@ -637,6 +638,43 @@ def _upgrade_to_v15(connection: Connection) -> None:
         ))
 
 
+def _drop_unique_constraint(connection: Connection, table_name: str, constraint_name: str) -> None:
+    """Rebuild a table without one named UNIQUE constraint (SQLite cannot drop it in place)."""
+    row = connection.exec_driver_sql(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", (table_name,)
+    ).first()
+    if row is None or not row[0]:
+        return
+    pattern = re.compile(rf",\s*CONSTRAINT {re.escape(constraint_name)} UNIQUE \([^)]*\)")
+    rebuilt_sql, replacements = pattern.subn("", row[0])
+    if not replacements:
+        return
+    temp_name = f"{table_name}__rebuild"
+    rebuilt_sql = rebuilt_sql.replace(table_name, temp_name, 1)
+    index_sql = [
+        item[0] for item in connection.exec_driver_sql(
+            "SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL",
+            (table_name,),
+        )
+    ]
+    connection.exec_driver_sql(rebuilt_sql)
+    connection.exec_driver_sql(f'INSERT INTO "{temp_name}" SELECT * FROM "{table_name}"')
+    connection.exec_driver_sql(f'DROP TABLE "{table_name}"')
+    connection.exec_driver_sql(f'ALTER TABLE "{temp_name}" RENAME TO "{table_name}"')
+    for statement in index_sql:
+        connection.exec_driver_sql(statement)
+
+
+def _upgrade_to_v16(connection: Connection) -> None:
+    """Allow several student records (one per lesson, tutoring need or placement) to share a Student ID."""
+    for table_name, constraint_name in (
+        ("lesson_students", "uq_lesson_students_student_id"),
+        ("tutor_students", "uq_tutor_students_student_id"),
+        ("clinical_students", "uq_clinical_students_student_id"),
+    ):
+        _drop_unique_constraint(connection, table_name, constraint_name)
+
+
 MIGRATIONS = (
     SchemaMigration(
         version=1,
@@ -712,6 +750,11 @@ MIGRATIONS = (
         version=15,
         name="add_tutor_scheduling_module_tables",
         upgrade=_upgrade_to_v15,
+    ),
+    SchemaMigration(
+        version=16,
+        name="allow_repeated_student_ids_across_placement_records",
+        upgrade=_upgrade_to_v16,
     ),
 )
 LATEST_SCHEMA_VERSION = MIGRATIONS[-1].version

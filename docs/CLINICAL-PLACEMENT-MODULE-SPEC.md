@@ -159,7 +159,7 @@ Clinical students are module-owned records/profiles consistent with the product'
 - availability start time;
 - availability end time.
 
-The Student Roster import uses **one row per student**: recurring availability is held in weekday columns (see 6.1.1), and a Student ID that appears on more than one row is a row error.
+The Student Roster import uses **one row per placement request**: recurring availability is held in weekday columns (see 6.1.1). A Student ID identifies one person and may appear on several rows (and on several student records). Records that share a Student ID must have the same name (`STUDENT_ID_NAME_CONFLICT`; as a row error on import) but may have different availability and tags, because those belong to the placement request. Within Clinical Placement only, records that share a Student ID may never hold overlapping **commitments**, where a commitment is `[session start − travel time, session end + travel time]` (e.g. a 9:00–10:00 and a 10:00–11:00 placement with 15 minutes of travel conflict, 8:45–10:15 vs 9:45–11:15). The optimizer enforces this (including against preserved manual placements), a student blocked only by another of their own requests is reported as unplaced with reason `STUDENT_OVERLAP`, and a manual placement that overlaps another for the same Student ID raises a blocking `STUDENT_OVERLAP` warning. There is no cross-module constraint. Schema v16 removed the former unique constraint on Student ID.
 
 The user may add, edit, or delete students manually after import, and may edit their availability.
 
@@ -167,22 +167,23 @@ The user may add, edit, or delete students manually after import, and may edit t
 
 Student Roster has a single **Import Student Roster** action (`clinical_students_importer.py`, routes `/api/clinical/students/import/{inspect,preview,apply}`) that replaces the roster with the file's students and imports their recurring weekly Availability Windows in one operation. There is no standalone availability import. Weekly cell parsing is a pure shared subcomponent (`weekly_availability_cells.py`, shared with Lesson Scheduling); persistence is `ClinicalRepository.apply_roster_import`.
 
-The two-phase model applies: Phase A (inspect, map, preview) writes nothing; Phase B requires explicit confirmation, re-reads, re-parses, and re-validates the file against the current roster (never trusting browser preview data), and commits in one transaction.
+The two-phase model applies: Phase A (inspect, map, preview) writes nothing; Phase B requires explicit confirmation, re-reads, re-parses, and re-validates the file (never trusting browser preview data), and commits in one transaction.
 
 - Columns: **Student ID** (required), **Name** (required), Email, optional Required/Preferred/Restricted Tags, and optional weekday columns Monday–Sunday (Mon–Sun accepted). The user maps them in one dialog. The mapping dialog, templates and cell formats are identical to the Lesson and Tutor student roster imports.
-- Students are matched by Student ID (case-insensitive; the stored ID spelling is kept). Unknown IDs create a student; known IDs are updated and keep their internal identity and placement. Name is required on every row; Email, when mapped, is authoritative (blank or unmapped clears it). Duplicate IDs in a file are row errors.
-- Every listed student's availability is **replaced**; blank or unmapped weekday cells mean no availability.
+- Nothing is matched. Every row creates a new student record (a placement request); Student IDs are stored as given and may repeat across rows. Name is required on every row; Email is used only when mapped. Rows that share a Student ID (case-insensitive) with different names are row errors (`STUDENT_ID_NAME_CONFLICT`); availability and tags may differ between such rows.
+- Each record's availability and tag states come only from its own row; blank or unmapped weekday and tag cells mean none.
 - A weekday cell holds `;`-separated ranges such as `8:00-10:00; T 1:00 PM-4:00 PM`. Entries are Available unless prefixed `T`/`Tentative`; an optional `Available` prefix is accepted. Times use the shared `time_parsing` parser and bare hours (`8`) are accepted. When neither time includes AM/PM and the end time is earlier than the start time, the importer assumes an afternoon end time: `9:00-3:00` means `9:00 AM-3:00 PM`, and `8:00-1:00` means `8:00 AM-1:00 PM`. Existing unmarked ranges beginning before 7:00 (the grid's first hour) continue to be read as afternoon, so `T 1:00-4:00` means 1:00-4:00 PM. Explicit AM/PM values are not adjusted. Same-status overlaps merge; conflicting-status overlaps, malformed times, zero-length ranges, and invalid ranges are row errors.
-- Preview shows per row: Student ID, Name, Create/Update, student change (`Create student`, `Update name and email`, `Update name`, `Update email`, `No student change`), and availability change (`Replace 5 availability windows with 8`, `Add N …`, `Clear availability (N windows)`, `No availability change`), plus the number of students and placements that will be removed.
+- Preview shows per row: Student ID, Name, Create, student change (`Create student`), and availability change (`Add N availability windows`, `No availability change`), plus the number of existing students and placements that will be removed. The legacy `students_to_update` count is always 0 and the Update action no longer occurs.
 - Any row error rejects the entire import. Each import increments `source_data_revision` exactly once and flags an existing schedule stale.
 
 ### 6.2 Student roster import replaces the roster
 
-The file is the whole roster. Students are matched by Student ID: matched students are updated, new IDs are created, and students absent from the file are **deleted together with their placements** (automatic, manual, and Manually unplaced).
+The file is the whole roster, exactly as in Lesson and Tutor Scheduling. Applying the import **deletes every existing student record and recreates the roster from the file**. No record matching or pairing of any kind (Student ID, tags, file order, creation order) is performed, so row order has no effect.
 
-- Students listed in the file keep their placement; their availability and Required/Preferred/Restricted tag states are replaced by the file's.
-- Clinical Sites and existing Clinical tags are preserved (new imported tags are added to the registry); a generated schedule is flagged out of date through the normal source-data revision.
-- The confirmation ("Replace Student Roster?") states how many students and placements will be deleted. Placements cannot be preserved for deleted students because Clinical placements belong to the student record.
+- All existing placements are cleared with the old records: automatic, manual, and Manually unplaced. Imported students start unplaced.
+- Clinical Sites and existing Clinical tags are preserved (new imported tags are added to the registry). The import still bumps `source_data_revision` once; because no placements remain, the schedule is not shown as out of date.
+- Repeated Student IDs are allowed; availability and tags belong to each row (request).
+- The confirmation ("Replace Student Roster?") states how many student records and placements will be deleted.
 
 ### 6.3 Shared weekly Availability Window editor
 
@@ -492,7 +493,7 @@ Add module-specific automated tests at the pure-domain/service level before depe
 - Clinical uppercase display and shared case-insensitive tag identity;
 - duplicate normalized tags collapse;
 - deleting a student-used tag requires warning/confirmation behavior;
-- roster import replaces the roster by Student ID (matched students keep placements; absent students and their placements are deleted) and replaces listed students' availability and tag states.
+- roster import is a full replacement (no matching or pairing): all student records and placements are deleted and one record per file row is created with that row's availability and tags; repeated Student IDs are allowed and same-person overlap uses travel-inclusive commitments.
 
 ### Availability editor/model
 

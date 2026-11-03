@@ -128,16 +128,16 @@ describe("Student Roster page", () => {
     expect(api.setClinicalStudentTagStates).not.toHaveBeenCalled();
   });
 
-  it("shows server errors such as duplicate Student IDs", async () => {
+  it("shows server errors such as Student ID name conflicts", async () => {
     vi.mocked(api.updateClinicalStudent).mockRejectedValue(
-      new Error("409: DUPLICATE_STUDENT_ID: A student with that Student ID already exists."),
+      new Error("409: STUDENT_ID_NAME_CONFLICT: That Student ID is already used by a student with a different name."),
     );
     const user = userEvent.setup();
     render(<ClinicalStudentRosterPage />);
     await user.click(await screen.findByRole("button", { name: "Edit Ada Example" }));
     const dialog = screen.getByRole("dialog", { name: "Edit Student", hidden: true });
     await user.click(within(dialog).getByRole("button", { name: "Save Student", hidden: true }));
-    expect(await within(dialog).findByText(/already exists/)).toBeTruthy();
+    expect(await within(dialog).findByText(/different name/)).toBeTruthy();
   });
 
   it("deletes all students only after confirmation", async () => {
@@ -259,7 +259,7 @@ describe("Student Roster import dialog", () => {
   });
 
   it("renders roster and availability effects plus row-level validation, blocking import", async () => {
-    vi.mocked(api.previewClinicalStudentsImport).mockResolvedValue(previewOf(["Student ID is duplicated in this file (also on row 2)."]));
+    vi.mocked(api.previewClinicalStudentsImport).mockResolvedValue(previewOf(["Student ID is shared with row 2 but the rows have different names."]));
     const user = userEvent.setup();
     await openMapping(user);
     await user.click(screen.getByRole("button", { name: "Preview Import" }));
@@ -269,7 +269,7 @@ describe("Student Roster import dialog", () => {
     expect(within(region).getByText("Replace 5 availability windows with 8")).toBeTruthy();
     expect(within(region).getByText("Create student")).toBeTruthy();
     expect(within(region).getByText("Clear availability")).toBeTruthy();
-    expect(within(region).getByText(/duplicated in this file/)).toBeTruthy();
+    expect(within(region).getByText(/shared with row 2/)).toBeTruthy();
     expect((within(region).getByRole("button", { name: "Import Student Roster" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -292,11 +292,9 @@ describe("Student Roster import dialog", () => {
     await user.click(within(region).getByRole("button", { name: "Import Student Roster" }));
     const confirm = screen.getByRole("dialog", { name: "Replace Student Roster?", hidden: true });
     for (const text of [
-      "Create 1 new student(s)",
-      "Update 1 existing student(s) matched by Student ID",
-            "Replace availability and tag selections for every student in the file",
-      "Delete 2 student(s) not listed in the file, along with their 1 placement(s)",
-      "Preserve placements of students listed in the file",
+      "Create 1 student record(s), one per row, with the availability and tags in that row",
+      "Delete all 2 existing student record(s), along with their 1 placement(s), including manual placements and Manually Unplaced decisions",
+      "Not match imported rows to existing records; rows that share a Student ID stay separate requests",
       "Preserve Clinical Sites and the Clinical Tag registry, and add any new imported tags to it",
       "Mark any generated schedule as out of date",
     ]) {

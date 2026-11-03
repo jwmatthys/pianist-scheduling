@@ -14,7 +14,7 @@ Key characteristics:
 
 - Students receive at most one lesson assignment.
 - Lessons assigned to the same instructor may not overlap.
-- Students requiring multiple lessons are represented as multiple student records.
+- Students requiring multiple lessons are represented as multiple student records (one per lesson request) that share a Student ID. Records sharing a Student ID must have the same name, may have different availability and tags, and are never scheduled at overlapping times. This rule applies within Lesson Scheduling only.
 - Lesson Scheduling is independent from all other modules.
 
 ---
@@ -113,7 +113,8 @@ possible; it does not create assignments.
 
 The Lesson-specific optimizer and automatic schedule generation are
 implemented. The optimizer selects only feasible candidates and enforces
-one lesson per student, instructor non-overlap, effective capacity, and
+one lesson per student record, instructor non-overlap, same-Student-ID
+non-overlap, effective capacity, and
 available lesson time. Its strict lexicographic objectives and deterministic
 tie-break remain Lesson-owned as described above.
 
@@ -124,8 +125,8 @@ inputs that consume instructor capacity and block overlapping automatic
 lessons. Schedule results retain source-data provenance and advance
 `schedule_revision` after generation.
 
-Source-data changes retain placements and the current schedule, advance
-`source_data_revision`, and mark the schedule stale. Placement verification
+Individual source-data edits and single-record deletes retain placements and the current schedule, advance
+`source_data_revision`, and mark the schedule stale. Full roster replacement imports are the exception: they delete all placements and the schedule (see section 16, Imports), so nothing is stale afterward. Placement verification
 compares retained assignments with current student/instructor availability,
 lesson length, tags, effective capacity, and instructor overlap. It reports
 warnings without deleting or rewriting assignments.
@@ -140,7 +141,8 @@ warnings alongside readiness and schedule summary.
 
 The Lesson-specific optimizer consumes one `LessonSchedulingInput` snapshot
 and its matching `LessonCandidateSet`. It selects only feasible candidates
-and enforces one lesson per student, instructor non-overlap, instructor
+and enforces one lesson per student record, instructor non-overlap,
+same-Student-ID non-overlap, instructor
 capacity, and available lesson time. It does not assign beyond the
 instructor's effective capacity: the configured capacity is bounded by the
 number of non-overlapping lesson-length intervals that fit within recurring
@@ -267,6 +269,8 @@ Fields:
 - Restricted Tags
 
 Student ID is required.
+
+A Student ID identifies one person; each student record is one scheduling request. Records that share a Student ID must have the same name (`STUDENT_ID_NAME_CONFLICT`) but may have different Availability Windows and tags, because those belong to the request. The optimizer never schedules records that share a Student ID at overlapping times (within this module only); a manual placement that overlaps another placement for the same Student ID raises a blocking `STUDENT_OVERLAP` warning. Each import row creates one record; Student IDs may repeat across rows. Schema v16 removed the former unique constraint on Student ID.
 
 ---
 
@@ -616,7 +620,9 @@ possible:
 - Manual placements consume instructor capacity. Existing manual overlaps and
   other constraint violations remain visible as warnings and do not get
   silently rewritten by automatic generation.
-- Source-data changes preserve the current schedule and mark it stale.
+- Individual source-data edits and single-record deletes preserve the current
+  schedule and mark it stale. Replacement roster imports instead delete every
+  placement decision and the schedule, leaving no stale schedule.
 - Clearing the schedule requires confirmation and removes automatic
   assignments and generated unplaced reasons without deleting source data.
   Manual assignments and Manually Unplaced decisions are preserved by the
@@ -771,15 +777,15 @@ practical. Import targets and replacement/preservation rules remain
 Lesson-owned; the instructor and tutor imports map a single column to Tags,
 and unmapped columns must never become tags.
 
-Current Lesson roster imports are full replacements. They preserve existing
-placement decisions against their original stable student and instructor
-UUIDs and mark any existing schedule stale; they do not match or relink those
-decisions to replacement records by name, email, or institutional identifier.
-Verification retains the old assignment for review and identifies removed
-roster identities. Preview and confirmation must make the full-replacement
-and stale-schedule behavior clear. Clinical imports may preserve matched
-records according to Clinical-owned import rules; Lesson's replacement
-semantics remain module-owned.
+Current Lesson roster imports (instructors and students) are full replacements.
+Applying one deletes every placement decision (automatic, manual, and
+manually unplaced) and the generated schedule snapshot, unplaced rows, and
+result; nothing is matched or relinked to replacement records by name, email,
+or institutional identifier. The schedule is not stale afterward because no
+schedule remains. Preview and confirmation state how many placements will be
+deleted. Single-record deletes are different: they retain placements and
+verification reports the removed roster identity. Replacement semantics are
+aligned with Clinical but remain module-owned.
 
 ## Instructor Import
 
@@ -894,7 +900,7 @@ Do not implement:
 
 - Room conflict detection
 - Cross-module data sharing
-- Multiple assignments per student record
+- Multiple assignments per student record (use several records that share a Student ID instead)
 - Cloud synchronization
 - Analytics
 - Telemetry

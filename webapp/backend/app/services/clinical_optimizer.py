@@ -51,6 +51,7 @@ from .clinical_scheduling_models import (
     StudentInput,
     UnplacedReason,
     UnplacedStudent,
+    commitment_interval,
 )
 
 Cost = tuple[int, int, int, int]
@@ -152,32 +153,92 @@ def optimize(
         if c.is_feasible and c.student_id in eligible_ids
     }
 
+    opportunity_by_id = {o.id: o for o in opportunities}
+    person_of = {s.id: s.person_key or s.id for s in scheduling_input.students}
+
+    def interval(day: str, start: int, opportunity: OpportunityInput) -> tuple[str, int, int]:
+        low, high = commitment_interval(opportunity, start)
+        return (day, low, high)
+
+    def overlaps(first: tuple[str, int, int], second: tuple[str, int, int]) -> bool:
+        return first[0] == second[0] and first[1] < second[2] and second[1] < first[2]
+
+    # Commitments (travel + session + travel) already held by a person's other records are fixed obstacles.
+    held_intervals: dict[str, list[tuple[str, int, int]]] = {}
+    for item in preserved:
+        opportunity = opportunity_by_id.get(item.opportunity_id) if item.opportunity_id else None
+        if opportunity is not None and item.start_minute is not None:
+            person = person_of.get(item.student_id, item.student_id)
+            held_intervals.setdefault(person, []).append(interval(opportunity.day, item.start_minute, opportunity))
+
     # Node layout: 0 source, 1..S students, then opportunities, then sink.
     student_node = {s.id: 1 + index for index, s in enumerate(students)}
     opportunity_node = {o.id: 1 + len(students) + index for index, o in enumerate(opportunities)}
     source, sink = 0, 1 + len(students) + len(opportunities)
-    flow = _Flow(sink + 1)
-    for student in students:
-        flow.add_edge(source, student_node[student.id], 1, _ZERO)
-    pair_edges: list[tuple[int, Candidate]] = []
-    position = 0
+    pairs: list[tuple[StudentInput, OpportunityInput, Candidate, Cost, tuple[str, int, int]]] = []
     for student in students:
         for opportunity in opportunities:
             candidate = feasible.get((student.id, opportunity.id))
             if candidate is None or remaining[opportunity.id] <= 0:
                 continue
             assert candidate.tentative_minutes is not None and candidate.opportunity_start_minute is not None
+            slot = interval(opportunity.day, candidate.opportunity_start_minute, opportunity)
+            if any(overlaps(slot, held) for held in held_intervals.get(person_of[student.id], ())):
+                continue
             cost: Cost = (
                 -candidate.preferred_tag_match_count,
                 candidate.tentative_minutes,
                 candidate.opportunity_start_minute,
-                1 << position,
+                1 << len(pairs),
             )
-            position += 1
-            pair_edges.append((flow.add_edge(student_node[student.id], opportunity_node[opportunity.id], 1, cost), candidate))
-    for opportunity in opportunities:
-        flow.add_edge(opportunity_node[opportunity.id], sink, remaining[opportunity.id], _ZERO)
-    flow.run(source, sink)
+            pairs.append((student, opportunity, candidate, cost, slot))
+
+    def solve(forbidden: frozenset[int]) -> tuple[list[int], tuple[int, Cost]]:
+        flow = _Flow(sink + 1)
+        for student in students:
+            flow.add_edge(source, student_node[student.id], 1, _ZERO)
+        edges: list[tuple[int, int]] = []
+        for index, (student, opportunity, _, cost, _) in enumerate(pairs):
+            if index not in forbidden:
+                edges.append((flow.add_edge(student_node[student.id], opportunity_node[opportunity.id], 1, cost), index))
+        for opportunity in opportunities:
+            flow.add_edge(opportunity_node[opportunity.id], sink, remaining[opportunity.id], _ZERO)
+        flow.run(source, sink)
+        chosen = [index for edge, index in edges if flow.cap[edge] == 0]
+        total = _ZERO
+        for index in chosen:
+            total = _add(total, pairs[index][3])
+        return chosen, (-len(chosen), total)
+
+    def first_person_conflict(chosen: list[int]) -> tuple[int, int] | None:
+        for position, first in enumerate(chosen):
+            for second in chosen[position + 1:]:
+                if (
+                    person_of[pairs[first][0].id] == person_of[pairs[second][0].id]
+                    and overlaps(pairs[first][4], pairs[second][4])
+                ):
+                    return first, second
+        return None
+
+    # Records that share a person key must never hold overlapping commitments (travel included). That is not a flow
+    # constraint, so solve the flow relaxation and branch on each violated pair; every feasible
+    # schedule leaves out at least one of the two, so the search is exact. Without such
+    # conflicts the first solve is final.
+    best: list[tuple[tuple[int, Cost], list[int]] | None] = [None]
+
+    def branch(forbidden: frozenset[int]) -> None:
+        chosen, key = solve(forbidden)
+        if best[0] is not None and key >= best[0][0]:
+            return
+        conflict = first_person_conflict(chosen)
+        if conflict is None:
+            best[0] = (key, chosen)
+            return
+        branch(forbidden | {conflict[0]})
+        branch(forbidden | {conflict[1]})
+
+    branch(frozenset())
+    chosen_indices = best[0][1] if best[0] is not None else []
 
     placements = tuple(
         ProposedPlacement(
@@ -187,19 +248,35 @@ def optimize(
             preferred_tag_match_count=candidate.preferred_tag_match_count,
             tentative_minutes=candidate.tentative_minutes,  # type: ignore[arg-type]
         )
-        for edge, candidate in pair_edges
-        if flow.cap[edge] == 0
+        for index, (_, _, candidate, _, _) in enumerate(pairs)
+        if index in set(chosen_indices)
     )
     placed_ids = {item.student_id for item in placements}
     has_feasible = {student_id for student_id, _ in feasible}
-    unplaced = tuple(
-        UnplacedStudent(
-            s.id,
-            UnplacedReason.CAPACITY_LIMIT if s.id in has_feasible else UnplacedReason.NO_FEASIBLE_CANDIDATE,
-        )
-        for s in students
-        if s.id not in placed_ids
-    )
+    commitments_by_person: dict[str, list[tuple[str, int, int]]] = {
+        person: list(items) for person, items in held_intervals.items()
+    }
+    for index in chosen_indices:
+        commitments_by_person.setdefault(person_of[pairs[index][0].id], []).append(pairs[index][4])
+
+    def blocked_by_same_person(student_id: str) -> bool:
+        """True when every feasible opportunity collides with another commitment of the same person."""
+        taken = commitments_by_person.get(person_of[student_id], ())
+        options = [
+            interval(opportunity_by_id[opportunity_id].day, candidate.opportunity_start_minute, opportunity_by_id[opportunity_id])
+            for (owner, opportunity_id), candidate in feasible.items()
+            if owner == student_id
+        ]
+        return bool(options) and all(any(overlaps(option, other) for other in taken) for option in options)
+
+    def reason_for(student_id: str) -> UnplacedReason:
+        if student_id not in has_feasible:
+            return UnplacedReason.NO_FEASIBLE_CANDIDATE
+        if blocked_by_same_person(student_id):
+            return UnplacedReason.STUDENT_OVERLAP
+        return UnplacedReason.CAPACITY_LIMIT
+
+    unplaced = tuple(UnplacedStudent(s.id, reason_for(s.id)) for s in students if s.id not in placed_ids)
     return OptimizationResult(
         source_data_revision=scheduling_input.source_data_revision,
         placements=placements,

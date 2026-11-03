@@ -29,7 +29,7 @@ from ..services.clinical_repository import (
 router = APIRouter(prefix="/api/clinical", tags=["clinical placements"])
 
 _NOT_FOUND_CODES = {"TAG_NOT_FOUND", "OPPORTUNITY_NOT_FOUND", "STUDENT_NOT_FOUND"}
-_CONFLICT_CODES = {"DUPLICATE_TAG", "DUPLICATE_STUDENT_ID", "NOT_READY", "NO_MANUAL_OVERRIDE"}
+_CONFLICT_CODES = {"DUPLICATE_TAG", "STUDENT_ID_NAME_CONFLICT", "NOT_READY", "NO_MANUAL_OVERRIDE"}
 
 
 def _http_error(error: ClinicalValidationError) -> HTTPException:
@@ -508,13 +508,6 @@ def _parse_students_mapping(raw: str) -> students_importer.ClinicalStudentsImpor
         raise ClinicalImportError("INVALID_MAPPING", "The column mapping is not valid.") from error
 
 
-def _roster_snapshot(repo: ClinicalRepository) -> dict[str, students_importer.ExistingStudent]:
-    return {
-        key: students_importer.ExistingStudent(pk, name, email, count, placements)
-        for key, (pk, name, email, count, placements) in repo.roster_import_snapshot().items()
-    }
-
-
 @router.post("/students/import/inspect", response_model=students_importer.ClinicalStudentsImportInspection)
 async def inspect_students_import(file: UploadFile = File(...), sheet_name: str | None = Form(default=None)):
     try:
@@ -538,12 +531,11 @@ async def preview_students_import(
             await _read_upload(file),
             sheet_name or None,
             _parse_students_mapping(mapping),
-            _roster_snapshot(repo),
         )
     except ClinicalImportError as error:
         raise _import_http_error(error) from error
     existing_keys = {tag.normalized_name for tag in repo.list_tags()}
-    return students_importer.build_preview(parsed, existing_keys, _roster_snapshot(repo))
+    return students_importer.build_preview(parsed, existing_keys, *repo.roster_counts())
 
 
 @router.post("/students/import/apply", response_model=ClinicalStudentsImportResult)
@@ -554,7 +546,7 @@ async def apply_students_import(
     confirmed: bool = Form(default=False),
     db: Session = Depends(get_db),
 ):
-    """Phase B: re-parse against the current roster, then atomically create/update students and availability."""
+    """Phase B: re-parse the file, then atomically replace the whole student roster."""
     try:
         if not confirmed:
             raise ClinicalImportError(
@@ -566,7 +558,6 @@ async def apply_students_import(
             await _read_upload(file),
             sheet_name or None,
             _parse_students_mapping(mapping),
-            _roster_snapshot(repo),
         )
         invalid = [row for row in parsed.rows if row.errors]
         if invalid:
@@ -582,7 +573,6 @@ async def apply_students_import(
                 row.student_id,
                 row.name,
                 row.email,
-                row.clinical_student_id,
                 row.windows,
                 row.tags,
             )

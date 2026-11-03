@@ -29,7 +29,7 @@ router = APIRouter(prefix="/api/tutor", tags=["tutor scheduling"])
 _NOT_FOUND_CODES = {"TAG_NOT_FOUND", "TUTOR_NOT_FOUND", "STUDENT_NOT_FOUND"}
 _CONFLICT_CODES = {
     "DUPLICATE_TAG",
-    "DUPLICATE_STUDENT_ID",
+    "STUDENT_ID_NAME_CONFLICT",
     "NOT_READY",
     "MANUAL_PLACEMENTS_PRESENT",
 }
@@ -604,7 +604,6 @@ def delete_tag(tag_id: str, db: Session = Depends(get_db)):
 class TutorTutorImportResult(BaseModel):
     tutors_removed: int
     placements_removed: int
-    placements_preserved: int
     tutors_created: int
     tags_created: int
 
@@ -716,7 +715,6 @@ async def apply_tutor_import(
 class TutorStudentImportResult(BaseModel):
     students_removed: int
     placements_removed: int
-    placements_preserved: int
     students_created: int
     tags_created: int
 

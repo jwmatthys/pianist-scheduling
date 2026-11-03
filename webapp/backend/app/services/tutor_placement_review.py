@@ -64,6 +64,19 @@ def review_tutor_schedule(
                     break
                 overlap_students.update((current.student_id, following.student_id))
 
+    by_person_day: dict[tuple[str, str], list[TutorStoredAssignment]] = defaultdict(list)
+    for assignment in assignments:
+        known = students.get(assignment.student_id)
+        by_person_day[((known.person_key if known else "") or assignment.student_id, assignment.day)].append(assignment)
+    person_overlap_students: set[str] = set()
+    for items in by_person_day.values():
+        ordered = sorted(items, key=lambda item: (item.start_minute, item.end_minute, item.student_id))
+        for index, current in enumerate(ordered):
+            for following in ordered[index + 1:]:
+                if following.start_minute >= current.end_minute:
+                    break
+                person_overlap_students.update((current.student_id, following.student_id))
+
     feasible_starts = {
         (item.student_id, item.tutor_id, item.day, item.tutor_start_minute)
         for item in candidates.feasible
@@ -224,6 +237,11 @@ def review_tutor_schedule(
             warnings.append(TutorPlacementWarning(
                 TutorPlacementWarningCode.TUTOR_OVERLAP,
                 "This session overlaps another session assigned to the tutor.",
+            ))
+        if assignment.student_id in person_overlap_students:
+            warnings.append(TutorPlacementWarning(
+                TutorPlacementWarningCode.STUDENT_OVERLAP,
+                "This session overlaps another session for the same student.",
             ))
         warning_tuple = tuple(warnings)
         blocking = any(

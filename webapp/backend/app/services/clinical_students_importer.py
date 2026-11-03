@@ -1,22 +1,20 @@
 """Local CSV/XLSX/XLS parsing and validation for the unified Clinical Student Roster import.
 
-Pure parsing: it never touches the database. The caller supplies a snapshot of the
-current roster so rows can be classified as create/update; the router combines the result
-with ClinicalRepository.apply_roster_import for the commit phase.
+Pure parsing: it never touches the database; the router combines the result with
+ClinicalRepository.apply_roster_import for the commit phase.
 
-The file is the whole roster, one row per student, and behaves like the Lesson and Tutor
-student imports: identity, weekly availability and tag states are imported together and
-every listed student's availability and tag states are replaced (blank or unmapped
-columns mean none). Students are matched by Student ID (case-insensitive): known IDs keep
-their internal identity and placement, unknown IDs are created, and students absent from
-the file are removed together with their placements. Weekday-cell parsing lives in
+The file is the whole roster and behaves like the Lesson and Tutor student imports: one row
+is one placement request, and applying it replaces every student record and placement.
+Nothing is matched or paired with earlier records. A Student ID identifies a person and may
+repeat (names must agree); availability and tag states come from each row (blank or
+unmapped columns mean none). Weekday-cell parsing lives in
 ``weekly_availability_cells``. Tags missing from the Clinical registry are created on apply.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal, Mapping
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -114,22 +112,12 @@ class ClinicalStudentsImportPreview(BaseModel):
     can_apply: bool
 
 
-@dataclass(frozen=True)
-class ExistingStudent:
-    clinical_student_id: str
-    name: str
-    email: str
-    window_count: int
-    placement_count: int = 0
-
-
 @dataclass
 class ParsedStudent:
     row_number: int
     student_id: str = ""
     name: str = ""
     email: str = ""
-    clinical_student_id: str | None = None
     # None only while the row has errors.
     windows: list[AvailabilityWindow] | None = None
     action: Literal["create", "update"] | None = None
@@ -219,16 +207,18 @@ def _names(row: ParsedStudent, state: TagState) -> list[str]:
     return [name for name, value in row.tags if value == state.value]
 
 
-def _student_change(existing: ExistingStudent | None, name_changed: bool, email_changed: bool) -> str:
-    if existing is None:
-        return "Create student"
-    if name_changed and email_changed:
-        return "Update name and email"
-    if name_changed:
-        return "Update name"
-    if email_changed:
-        return "Update email"
-    return "No student change"
+def _require_consistent_person(group: list[ParsedStudent]) -> None:
+    """Rows sharing a Student ID are separate placements for one person, so the name must agree; availability belongs to each placement."""
+    conflicts = []
+    if len({" ".join(row.name.split()).casefold() for row in group}) > 1:
+        conflicts.append("different names")
+    for conflict in conflicts:
+        for row in group:
+            others = ", ".join(str(other.row_number) for other in group if other is not row)
+            row.errors.append(
+                f"Student ID is shared with row {others} but the rows have {conflict}. "
+                "Rows that share a Student ID must have the same name."
+            )
 
 
 def parse_students(
@@ -236,10 +226,8 @@ def parse_students(
     content: bytes,
     sheet_name: str | None,
     mapping: ClinicalStudentsImportMapping,
-    roster: Mapping[str, ExistingStudent] | None = None,
 ) -> ParsedStudents:
-    """Parse the file against the roster snapshot (keyed by case-folded Student ID)."""
-    roster = roster or {}
+    """Parse the file. Every row becomes a new record: the import replaces the whole roster."""
     frame, _, selected = read_frame(filename, content, sheet_name)
     validate_mapping(mapping, list(frame.columns))
     day_columns = mapped_day_columns(mapping.days)
@@ -254,27 +242,12 @@ def parse_students(
         row = ParsedStudent(row_number=index + 2)
         rows.append(row)
         row.student_id = cell_text(record.get(mapping.student_id))
-        file_name = cell_text(record.get(mapping.name)) if mapping.name else ""
-        file_email = cell_text(record.get(mapping.email)) if mapping.email else None
+        row.name = cell_text(record.get(mapping.name)) if mapping.name else ""
+        row.email = cell_text(record.get(mapping.email)) if mapping.email else ""
         if not row.student_id:
             row.errors.append("Student ID is required.")
-        existing = roster.get(row.student_id.casefold()) if row.student_id else None
-        if row.student_id:
-            row.action = "update" if existing else "create"
-            row.clinical_student_id = existing.clinical_student_id if existing else None
-
-        if existing is None:
-            row.name = file_name
-            row.email = file_email or ""
-            if row.student_id and not file_name:
-                row.errors.append("Name is required.")
-            row.student_change = "Create student" if row.action else ""
-        else:
-            row.name = file_name
-            row.email = file_email or ""
-            if not file_name:
-                row.errors.append("Name is required.")
-            row.student_change = _student_change(existing, row.name != existing.name, row.email != existing.email)
+        elif not row.name:
+            row.errors.append("Name is required.")
 
         _parse_tags(row, record, tag_columns)
 
@@ -283,7 +256,6 @@ def parse_students(
         row.warnings.extend(week.warnings)
         if not week.errors:
             row.windows = week.windows
-            row.availability_change = describe_change(existing.window_count if existing else 0, len(week.windows))
 
     by_key: dict[str, list[ParsedStudent]] = {}
     for row in rows:
@@ -291,9 +263,12 @@ def parse_students(
             by_key.setdefault(row.student_id.casefold(), []).append(row)
     for group in by_key.values():
         if len(group) > 1:
-            for row in group:
-                others = ", ".join(str(other.row_number) for other in group if other is not row)
-                row.errors.append(f"Student ID is duplicated in this file (also on row {others}).")
+            _require_consistent_person(group)
+    for row in rows:
+        row.action = "create"
+        row.student_change = "Create student"
+        if row.windows is not None:
+            row.availability_change = describe_change(0, len(row.windows))
     return ParsedStudents(
         selected_sheet=selected,
         availability_mapped=bool(day_columns),
@@ -305,11 +280,10 @@ def parse_students(
 def build_preview(
     parsed: ParsedStudents,
     existing_tag_keys: set[str] | None = None,
-    roster: Mapping[str, ExistingStudent] | None = None,
+    existing_student_count: int = 0,
+    existing_placement_count: int = 0,
 ) -> ClinicalStudentsImportPreview:
     existing_tag_keys = existing_tag_keys or set()
-    listed = {row.student_id.casefold() for row in parsed.rows if row.student_id}
-    removed = [student for key, student in (roster or {}).items() if key not in listed]
     new_tags: dict[str, str] = {}
     reused: dict[str, str] = {}
     for row in parsed.rows:
@@ -322,10 +296,10 @@ def build_preview(
         total_rows=len(parsed.rows),
         valid_rows=len(parsed.rows) - invalid,
         invalid_rows=invalid,
-        students_to_create=sum(1 for row in parsed.rows if row.action == "create" and not row.errors),
-        students_to_update=sum(1 for row in parsed.rows if row.action == "update" and not row.errors),
-        students_to_remove=len(removed),
-        placements_to_remove=sum(student.placement_count for student in removed),
+        students_to_create=sum(1 for row in parsed.rows if not row.errors),
+        students_to_update=0,
+        students_to_remove=existing_student_count,
+        placements_to_remove=existing_placement_count,
         availability_mapped=parsed.availability_mapped,
         tag_columns=parsed.tag_columns,
         new_tags=sorted(new_tags.values()),

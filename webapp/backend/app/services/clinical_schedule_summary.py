@@ -41,9 +41,6 @@ def summarize_schedule(
         if entry.tentative_minutes is not None:
             tentative += entry.tentative_minutes
 
-    has_feasible = {
-        candidate.student_id for candidate in candidates.candidates if candidate.is_feasible
-    }
     unplaced = []
     for student in sorted(scheduling_input.students, key=lambda s: (s.label.casefold(), s.id)):
         if student.id in placed:
@@ -51,10 +48,8 @@ def summarize_schedule(
         record = by_record.get(student.id)
         if record is not None and record.kind is PlacementKind.MANUALLY_UNPLACED:
             reason = UnplacedReason.MANUALLY_UNPLACED
-        elif student.id in has_feasible:
-            reason = UnplacedReason.CAPACITY_LIMIT
         else:
-            reason = UnplacedReason.NO_FEASIBLE_CANDIDATE
+            reason = reviewed_by_student[student.id].unplaced_reason or UnplacedReason.NO_FEASIBLE_CANDIDATE
         unplaced.append(UnplacedStudent(student.id, reason))
 
     total_capacity = sum(o.capacity for o in opportunities.values() if opportunity_window_issue(o) is None)

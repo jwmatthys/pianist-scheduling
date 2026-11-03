@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Iterable, Mapping, Sequence
+from typing import Collection, Iterable, Mapping, Sequence
 
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
@@ -103,7 +103,6 @@ class StudentInput:
 class LessonStudentReplaceResult:
     students_removed: int
     placements_removed: int
-    placements_preserved: int
     students_created: int
     tags_created: int = 0
 
@@ -112,13 +111,16 @@ class LessonStudentReplaceResult:
 class LessonReplaceResult:
     instructors_removed: int
     placements_removed: int
-    placements_preserved: int
     instructors_created: int
     tags_created: int
 
 
 def _now() -> datetime:
     return datetime.utcnow()
+
+
+def _student_name_key(name: str) -> str:
+    return " ".join((name or "").split()).casefold()
 
 
 def _is_int(value: object) -> bool:
@@ -349,7 +351,7 @@ class LessonRepository:
     def replace_instructors(
         self, instructors: Iterable[tuple[InstructorInput, Sequence[AvailabilityWindow], Iterable[str]]]
     ) -> "LessonReplaceResult":
-        """Replace instructors without deleting schedule decisions."""
+        """Replace all instructors; every placement decision and schedule snapshot is cleared."""
         prepared = [
             (
                 self._clean_instructor_values(
@@ -361,8 +363,7 @@ class LessonRepository:
             for values, windows, names in instructors
         ]
         instructors_removed = self.db.query(func.count(LessonInstructor.id)).scalar() or 0
-        placements_removed = 0
-        placements_preserved = self.db.query(func.count(LessonPlacement.id)).scalar() or 0
+        placements_removed = self.clear_all_placements()
         self.db.query(LessonInstructorTag).delete()
         self.db.query(LessonInstructorAvailabilityWindow).delete()
         self.db.query(LessonInstructor).delete()
@@ -392,7 +393,6 @@ class LessonRepository:
         return LessonReplaceResult(
             instructors_removed=instructors_removed,
             placements_removed=placements_removed,
-            placements_preserved=placements_preserved,
             instructors_created=len(prepared),
             tags_created=tags_created,
         )
@@ -513,22 +513,33 @@ class LessonRepository:
         student_id: str,
         name: str,
         email: str,
-        exclude_id: str | None = None,
-        check_unique: bool = True,
+        exclude_ids: Collection[str] = (),
+        check_identity: bool = True,
     ) -> tuple[str, str, str]:
         cleaned_id = (student_id or "").strip()
         if not cleaned_id:
             raise LessonValidationError("INVALID_STUDENT_ID", "Student ID is required.")
-        if check_unique:
-            query = self.db.query(LessonStudent.id).filter(func.lower(LessonStudent.student_id) == cleaned_id.lower())
-            if exclude_id is not None:
-                query = query.filter(LessonStudent.id != exclude_id)
-            if query.first() is not None:
-                raise LessonValidationError("DUPLICATE_STUDENT_ID", "A student with that Student ID already exists.")
         cleaned_name = " ".join((name or "").split())
         if not cleaned_name:
             raise LessonValidationError("INVALID_STUDENT_NAME", "Name is required.")
+        if check_identity:
+            self._require_consistent_student_name(cleaned_id, cleaned_name, exclude_ids)
         return cleaned_id, cleaned_name, (email or "").strip()
+
+    def _require_consistent_student_name(
+        self, student_id: str, name: str, exclude_ids: Collection[str] = ()
+    ) -> None:
+        """Records sharing a Student ID are one person, so their names must agree."""
+        query = self.db.query(LessonStudent.name).filter(func.lower(LessonStudent.student_id) == student_id.lower())
+        if exclude_ids:
+            query = query.filter(LessonStudent.id.notin_(list(exclude_ids)))
+        for (other_name,) in query:
+            if _student_name_key(other_name) != _student_name_key(name):
+                raise LessonValidationError(
+                    "STUDENT_ID_NAME_CONFLICT",
+                    f"Student ID {student_id} already belongs to {other_name}. "
+                    "Records that share a Student ID must have the same name.",
+                )
 
     def create_student(
         self,
@@ -566,10 +577,19 @@ class LessonRepository:
     ) -> LessonStudent:
         """Update fields (and, when given, the full tag-state set) as one source-data change."""
         student = self.get_student(lesson_student_id)
-        cleaned = self._clean_student_values(
-            student_id, name, email, exclude_id=student.id
+        cleaned = self._clean_student_values(student_id, name, email, check_identity=False)
+        siblings = (
+            self.db.query(LessonStudent)
+            .filter(func.lower(LessonStudent.student_id) == student.student_id.lower(), LessonStudent.id != student.id)
+            .all()
+            if cleaned[0].lower() == student.student_id.lower() else []
         )
+        # An unchanged Student ID keeps the person's other records, so a rename applies to all of them.
+        self._require_consistent_student_name(cleaned[0], cleaned[1], [student.id, *(item.id for item in siblings)])
         validated_states = self._validated_tag_states(tag_states) if tag_states is not None else None
+        for sibling in siblings:
+            sibling.name, sibling.email = cleaned[1], cleaned[2]
+            sibling.updated_at = _now()
         student.student_id, student.name, student.email = cleaned
         student.updated_at = _now()
         self.db.flush()
@@ -639,6 +659,7 @@ class LessonRepository:
                     name=student.name,
                     availability=tuple(student_windows[student.id]),
                     tag_states=tuple(sorted(student_states[student.id])),
+                    person_key=student.student_id.casefold(),
                 )
                 for student in students
             ),
@@ -1205,24 +1226,28 @@ class LessonRepository:
     ) -> LessonStudentReplaceResult:
         """Full replacement of students as one source-data change (caller owns the transaction).
 
-        Existing placement decisions are retained and the resulting schedule becomes stale.
+        Every placement decision and schedule snapshot is cleared with the old records (nothing is relinked).
         Student availability and tag state are replaced and imported tags missing from the registry are created.
         """
         prepared: list[tuple[tuple[str, str, str], list[AvailabilityWindow], list[tuple[str, LessonTagState]]]] = []
-        seen: set[str] = set()
+        people: dict[str, tuple[str]] = {}
         for values, windows, tag_pairs in students:
-            # Existing students are about to be replaced, so only uniqueness within the batch matters.
+            # Existing students are about to be replaced, so only consistency within the batch matters.
             cleaned = self._clean_student_values(
-                values.student_id, values.name, values.email, check_unique=False
+                values.student_id, values.name, values.email, check_identity=False
             )
-            if cleaned[0].casefold() in seen:
-                raise LessonValidationError("DUPLICATE_STUDENT_ID", "A student with that Student ID already exists.")
-            seen.add(cleaned[0].casefold())
+            validated_windows = self._validated_windows(windows)
+            known = people.setdefault(cleaned[0].casefold(), (cleaned[1],))
+            if _student_name_key(known[0]) != _student_name_key(cleaned[1]):
+                raise LessonValidationError(
+                    "STUDENT_ID_NAME_CONFLICT",
+                    f"Student ID {cleaned[0]} is used for different names. "
+                    "Records that share a Student ID must have the same name.",
+                )
             states = [(name, LessonTagState(state)) for name, state in tag_pairs]
-            prepared.append((cleaned, self._validated_windows(windows), states))
+            prepared.append((cleaned, validated_windows, states))
         students_removed = self.db.query(func.count(LessonStudent.id)).scalar() or 0
-        placements_removed = 0
-        placements_preserved = self.db.query(func.count(LessonPlacement.id)).scalar() or 0
+        placements_removed = self.clear_all_placements()
         self.db.query(LessonStudentTagState).delete()
         self.db.query(LessonStudentAvailabilityWindow).delete()
         self.db.query(LessonStudent).delete()
@@ -1250,7 +1275,6 @@ class LessonRepository:
         return LessonStudentReplaceResult(
             students_removed=students_removed,
             placements_removed=placements_removed,
-            placements_preserved=placements_preserved,
             students_created=len(prepared),
             tags_created=tags_created,
         )

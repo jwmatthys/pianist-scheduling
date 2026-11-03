@@ -608,7 +608,7 @@ export type PlacementState = "unassigned" | "assigned" | "manuallyUnplaced";
 export interface ClinicalUnplacedStudent {
   student_id: string;
   student_name: string;
-  reason: "NO_FEASIBLE_CANDIDATE" | "CAPACITY_LIMIT" | "MANUALLY_UNPLACED";
+  reason: "NO_FEASIBLE_CANDIDATE" | "CAPACITY_LIMIT" | "STUDENT_OVERLAP" | "MANUALLY_UNPLACED";
 }
 
 export interface ClinicalSchedule {
@@ -643,7 +643,8 @@ export interface ClinicalPlacementWarning {
     | "REQUIRED_TAG_MISSING"
     | "RESTRICTED_TAG_CONFLICT"
     | "CAPACITY_EXCEEDED"
-    | "OUTSIDE_OPPORTUNITY_WINDOW";
+    | "OUTSIDE_OPPORTUNITY_WINDOW"
+    | "STUDENT_OVERLAP";
   message: string;
 }
 
@@ -762,7 +763,6 @@ export interface LessonInstructorImportPreview {
 export interface LessonInstructorImportResult {
   instructors_removed: number;
   placements_removed: number;
-  placements_preserved: number;
   instructors_created: number;
   tags_created: number;
 }
@@ -834,7 +834,6 @@ export interface LessonStudentImportPreview {
 export interface LessonStudentImportResult {
   students_removed: number;
   placements_removed: number;
-  placements_preserved: number;
   students_created: number;
   tags_created: number;
 }
@@ -1011,7 +1010,6 @@ export interface TutorTutorImportPreview {
 export interface TutorTutorImportResult {
   tutors_removed: number;
   placements_removed: number;
-  placements_preserved: number;
   tutors_created: number;
   tags_created: number;
 }
@@ -1083,7 +1081,6 @@ export interface TutorStudentImportPreview {
 export interface TutorStudentImportResult {
   students_removed: number;
   placements_removed: number;
-  placements_preserved: number;
   students_created: number;
   tags_created: number;
 }

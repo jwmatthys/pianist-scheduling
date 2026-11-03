@@ -233,10 +233,19 @@ def parse_students(
         if row.student_id:
             by_key.setdefault(row.student_id.casefold(), []).append(row)
     for group in by_key.values():
-        if len(group) > 1:
+        if len(group) < 2:
+            continue
+        # Rows sharing a Student ID are separate tutors for one person, so the name must agree; availability belongs to each request.
+        conflicts = []
+        if len({" ".join(row.name.split()).casefold() for row in group}) > 1:
+            conflicts.append("different names")
+        for conflict in conflicts:
             for row in group:
                 others = ", ".join(str(other.row_number) for other in group if other is not row)
-                row.errors.append(f"Student ID is duplicated in this file (also on row {others}).")
+                row.errors.append(
+                    f"Student ID is shared with row {others} but the rows have {conflict}. "
+                    "Rows that share a Student ID must have the same name."
+                )
     return ParsedStudents(
         selected_sheet=selected,
         availability_mapped=bool(day_columns),

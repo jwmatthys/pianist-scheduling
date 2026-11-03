@@ -118,7 +118,7 @@ export function TutorStudentImportDialog({
       await onImported(
         `Imported ${result.students_created} ${
           result.students_created === 1 ? "student" : "students"
-        }; replaced ${result.students_removed} and preserved ${result.placements_preserved} placement decision(s) in the stale schedule and created ${result.tags_created} new tag(s).`,
+        }; replaced ${result.students_removed}, cleared ${result.placements_removed} placement(s), and created ${result.tags_created} new tag(s).`,
       );
       onClose();
     } catch (cause) {
@@ -303,7 +303,7 @@ export function TutorStudentImportDialog({
           <ul className="dialog-note">
             <li>Delete all current students ({preview?.existing_student_count ?? 0} currently)</li>
             <li>Replace all students, their availability, and their tag selections with imported data</li>
-            <li>Preserve existing placement decisions ({preview?.existing_placement_count ?? 0}); the schedule will be marked stale</li>
+            <li>Delete all existing placements ({preview?.existing_placement_count ?? 0}) and the generated schedule</li>
             <li>Clear tutor schedules</li>
             <li>Preserve Tutor records and Tutor availability</li>
             <li>Preserve the Tutor Tag registry and add any new imported tags to it</li>

@@ -22,7 +22,7 @@ from app.lesson_models import (
 from app.module_models import ModuleBase
 from app.services.availability import AvailabilityWindow
 from app.services.clinical_repository import ClinicalRepository
-from app.services.lesson_repository import LessonRepository, LessonValidationError
+from app.services.lesson_repository import LessonRepository, LessonValidationError, StudentInput
 
 LESSON_TABLES = {
     "lesson_tags",
@@ -90,15 +90,66 @@ class LessonPersistenceTests(LessonTestCase):
         with self.assertRaises(LessonValidationError):
             self.repo.create_instructor("A", capacity=0)
 
-    def test_student_creation_requires_unique_case_insensitive_student_id(self):
+    def test_student_id_may_repeat_only_for_the_same_name(self):
         student = self.repo.create_student(" S-1 ", "Pat Test", "pat@example.test")
         self.assertEqual(student.student_id, "S-1")
         with self.assertRaises(LessonValidationError) as missing:
             self.repo.create_student("  ")
         self.assertEqual(missing.exception.code, "INVALID_STUDENT_ID")
-        with self.assertRaises(LessonValidationError) as duplicate:
+        with self.assertRaises(LessonValidationError) as conflict:
             self.repo.create_student("s-1", "Another Student")
-        self.assertEqual(duplicate.exception.code, "DUPLICATE_STUDENT_ID")
+        self.assertEqual(conflict.exception.code, "STUDENT_ID_NAME_CONFLICT")
+        second = self.repo.create_student("S-1", "  pat   TEST ")
+        self.assertEqual(len([item for item in self.repo.list_students() if item.student_id.casefold() == "s-1"]), 2)
+        # A rename of an unchanged Student ID applies to every record of that person.
+        self.repo.update_student(second.id, "S-1", "Pat Renamed")
+        self.assertEqual({item.name for item in self.repo.list_students()}, {"Pat Renamed"})
+
+    def test_repeated_student_id_may_differ_in_availability_and_tags(self):
+        tag = self.repo.create_tag("Voice")
+        piano = self.repo.create_student("S-1", "Pat", availability=[window("Tuesday")])
+        voice = self.repo.create_student(
+            "s-1", "Pat", availability=[window("Thursday")], tag_states={tag.id: LessonTagState.REQUIRED}
+        )
+        self.assertEqual([item.day for item in self.repo.student_availability(piano.id)], ["Tuesday"])
+        self.assertEqual([item.day for item in self.repo.student_availability(voice.id)], ["Thursday"])
+        self.assertEqual(self.repo.student_tag_states().get(piano.id, {}), {})
+        self.assertEqual(self.repo.student_tag_states()[voice.id], {tag.id: LessonTagState.REQUIRED})
+
+    def test_replace_students_accepts_repeated_ids_but_blocks_name_conflicts(self):
+        def entry(student_id, name, day, tags=()):
+            return (StudentInput(student_id, name, ""), [window(day)], list(tags))
+
+        result = self.repo.replace_students([
+            entry("S-1", "Pat", "Tuesday"),
+            entry("s-1", " pat ", "Thursday", [("Voice", "required")]),
+        ])
+        self.assertEqual(result.students_created, 2)
+        with self.assertRaises(LessonValidationError) as conflict:
+            self.repo.replace_students([entry("S-1", "Pat", "Monday"), entry("S-1", "Other", "Monday")])
+        self.assertEqual(conflict.exception.code, "STUDENT_ID_NAME_CONFLICT")
+        self.assertEqual(len(self.repo.list_students()), 2)
+
+    def test_manual_placements_for_one_student_id_must_not_overlap(self):
+        instructor_a = self.repo.create_instructor("A", capacity=4, availability=[window()])
+        instructor_b = self.repo.create_instructor("B", capacity=4, availability=[window()])
+        first = self.repo.create_student("S-1", "Pat", availability=[window()])
+        second = self.repo.create_student("S-1", "Pat", availability=[window()])
+        other = self.repo.create_student("S-2", "Sam", availability=[window()])
+        self.repo.set_manual_placement(first.id, instructor_a.id, "Monday", 540)
+        self.repo.set_manual_placement(second.id, instructor_b.id, "Monday", 570)
+        self.repo.set_manual_placement(other.id, instructor_b.id, "Monday", 660)
+
+        entries = {item.student_id: item for item in self.repo._schedule_review()[3]}
+
+        for record in (first, second):
+            codes = {warning.code.value for warning in entries[record.id].warnings}
+            self.assertIn("STUDENT_OVERLAP", codes)
+            self.assertFalse(entries[record.id].verified)
+        self.assertNotIn("STUDENT_OVERLAP", {warning.code.value for warning in entries[other.id].warnings})
+        self.repo.set_manual_placement(second.id, instructor_b.id, "Monday", 600)
+        entries = {item.student_id: item for item in self.repo._schedule_review()[3]}
+        self.assertNotIn("STUDENT_OVERLAP", {warning.code.value for warning in entries[first.id].warnings})
 
     def test_student_creation_and_update_require_a_name(self):
         with self.assertRaises(LessonValidationError) as missing:
@@ -279,6 +330,7 @@ class LessonMigrationTests(LessonTestCase):
             "add_lesson_automatic_schedule_results",
             "align_lesson_schedule_lifecycle",
             "add_tutor_scheduling_module_tables",
+            "allow_repeated_student_ids_across_placement_records",
         ))
         with Session(self.engine) as db:
             self.assertEqual(db.get(models.Pianist, 7).name, "Synthetic Pianist")
@@ -309,6 +361,7 @@ class LessonMigrationTests(LessonTestCase):
             "add_lesson_automatic_schedule_results",
             "align_lesson_schedule_lifecycle",
             "add_tutor_scheduling_module_tables",
+            "allow_repeated_student_ids_across_placement_records",
         ))
         with Session(self.engine) as db:
             self.assertEqual(db.get(lesson_models.LessonPlacement, placement.id).placement_type, "manual")

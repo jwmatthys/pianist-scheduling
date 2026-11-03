@@ -115,7 +115,7 @@ export function LessonInstructorImportDialog({
       await onImported(
         `Imported ${result.instructors_created} ${
           result.instructors_created === 1 ? "instructor" : "instructors"
-        }; replaced ${result.instructors_removed}, preserved ${result.placements_preserved} placement decision(s) in the stale schedule, and created ${result.tags_created} new tag(s).`,
+        }; replaced ${result.instructors_removed}, cleared ${result.placements_removed} placement(s), and created ${result.tags_created} new tag(s).`,
       );
       onClose();
     } catch (cause) {
@@ -287,7 +287,7 @@ export function LessonInstructorImportDialog({
             <li>Replace all instructors, their availability, and their tags with imported data</li>
             <li>Preserve the Lesson Tag registry</li>
             <li>Preserve Student records</li>
-            <li>Preserve existing placement decisions ({preview?.existing_placement_count ?? 0}); the schedule will be marked stale</li>
+            <li>Delete all existing placements ({preview?.existing_placement_count ?? 0}) and the generated schedule</li>
             <li>Clear lesson schedules</li>
           </ul>
         </ConfirmDialog>

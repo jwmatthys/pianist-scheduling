@@ -29,6 +29,8 @@ class TutorStudentInput:
     availability: tuple[AvailabilityWindow, ...]
     # Neutral is represented by an absent entry.
     tag_states: tuple[tuple[str, TutorTagState], ...]
+    # Records that share a person key are one person and are never scheduled at overlapping times.
+    person_key: str = ""
 
 
 @dataclass(frozen=True)
@@ -176,6 +178,7 @@ class TutorPlacementWarningCode(str, Enum):
     RESTRICTED_TAG_CONFLICT = "RESTRICTED_TAG_CONFLICT"
     TUTOR_CAPACITY_EXCEEDED = "TUTOR_CAPACITY_EXCEEDED"
     TUTOR_OVERLAP = "TUTOR_OVERLAP"
+    STUDENT_OVERLAP = "STUDENT_OVERLAP"
     NOT_FEASIBLE_CANDIDATE = "NOT_FEASIBLE_CANDIDATE"
     TENTATIVE_AVAILABILITY = "TENTATIVE_AVAILABILITY"
 

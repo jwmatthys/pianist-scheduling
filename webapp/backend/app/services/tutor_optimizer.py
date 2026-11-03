@@ -293,9 +293,20 @@ def optimize_tutor_schedule(
                         total += max(0, following.tutor_start_minute - current.tutor_end_minute) % length
         return total
 
+    person_of = {student.id: student.person_key or student.id for student in students}
+
     def can_place(candidate: TutorCandidate) -> bool:
         tutor = tutor_by_id[candidate.tutor_id]
         if tutor_counts[tutor.id] >= effective_capacity[tutor.id]:
+            return False
+        person = person_of.get(candidate.student_id, candidate.student_id)
+        if any(
+            existing.day == candidate.day
+            and candidate.tutor_start_minute < existing.tutor_end_minute
+            and candidate.tutor_end_minute > existing.tutor_start_minute
+            and person_of.get(existing.student_id, existing.student_id) == person
+            for existing in assigned
+        ):
             return False
         return not any(
             existing.day == candidate.day

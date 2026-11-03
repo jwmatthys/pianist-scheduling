@@ -60,6 +60,28 @@ class TutorOptimizerTests(TutorTestCase):
         self.assertEqual(result.statistics.students_scheduled, 1)
         self.assertEqual(result.unplaced_students[0].reason.value, "TUTOR_OVERLAP")
 
+    def test_one_student_id_is_never_scheduled_at_overlapping_times(self):
+        for name in ("Tutor A", "Tutor B"):
+            self.repo.create_tutor(name, capacity=4, availability=[window(start=540, end=660)])
+        for _ in range(2):
+            self.repo.create_student("S-1", "Pat", availability=[window(start=540, end=600)])
+
+        _, _, result = self.optimize()
+
+        self.assertEqual(result.statistics.students_scheduled, 1)
+
+    def test_one_student_id_can_hold_back_to_back_tutors(self):
+        for name in ("Tutor A", "Tutor B"):
+            self.repo.create_tutor(name, capacity=4, availability=[window(start=540, end=660)])
+        for _ in range(2):
+            self.repo.create_student("S-1", "Pat", availability=[window(start=540, end=660)])
+
+        _, _, result = self.optimize()
+
+        self.assertEqual(result.statistics.students_scheduled, 2)
+        first, second = sorted(result.placements, key=lambda item: item.start_minute)
+        self.assertLessEqual(first.end_minute, second.start_minute)
+
     def test_effective_capacity_is_limited_by_schedulable_tutor_time(self):
         self.repo.create_tutor(
             "Tutor", capacity=5, availability=[window(start=540, end=660)]
