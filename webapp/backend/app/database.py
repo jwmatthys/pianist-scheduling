@@ -11,8 +11,9 @@ from pathlib import Path
 from typing import Callable
 from uuid import uuid4
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import DateTime, bindparam, create_engine, event, text
 from sqlalchemy.engine import Connection, Engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from . import startup_profile
@@ -33,6 +34,31 @@ ACTIVE_DATABASE_SESSIONS = 0
 
 class Base(DeclarativeBase):
     pass
+
+
+SUPPRESS_ACTIVITY = "suppress_session_activity"
+
+
+@event.listens_for(Session, "before_flush")
+def _record_session_activity(session: Session, flush_context, instances) -> None:
+    """Advance the active session's last-activity time whenever ORM data is created, changed or deleted.
+
+    This is the single central hook; callers never stamp activity themselves. Raw-SQL migrations and
+    archive restore/staging do not count as activity (staging sessions set SUPPRESS_ACTIVITY).
+    """
+    if session.info.get(SUPPRESS_ACTIVITY):
+        return
+    if not (session.new or session.deleted or any(session.is_modified(item) for item in session.dirty)):
+        return
+    now = datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None)
+    try:
+        session.connection().execute(
+            text("UPDATE scheduling_sessions SET last_activity_utc = :now").bindparams(bindparam("now", type_=DateTime)),
+            {"now": now},
+        )
+    except OperationalError:
+        # Unmigrated legacy databases have no session table or column yet; there is nothing to stamp.
+        pass
 
 
 def get_db():
@@ -675,6 +701,21 @@ def _upgrade_to_v16(connection: Connection) -> None:
         _drop_unique_constraint(connection, table_name, constraint_name)
 
 
+def _upgrade_to_v17(connection: Connection) -> None:
+    """Add the hidden last-saved UTC timestamp used for archive recency warnings."""
+    if "last_saved_utc" not in _column_names(connection, "scheduling_sessions"):
+        connection.exec_driver_sql("ALTER TABLE scheduling_sessions ADD COLUMN last_saved_utc DATETIME")
+
+
+def _upgrade_to_v18(connection: Connection) -> None:
+    """Replace export-based recency with activity-based recency; activity is unknown until the next change."""
+    columns = _column_names(connection, "scheduling_sessions")
+    if "last_activity_utc" not in columns:
+        connection.exec_driver_sql("ALTER TABLE scheduling_sessions ADD COLUMN last_activity_utc DATETIME")
+    if "last_saved_utc" in columns:
+        connection.exec_driver_sql("ALTER TABLE scheduling_sessions DROP COLUMN last_saved_utc")
+
+
 MIGRATIONS = (
     SchemaMigration(
         version=1,
@@ -755,6 +796,16 @@ MIGRATIONS = (
         version=16,
         name="allow_repeated_student_ids_across_placement_records",
         upgrade=_upgrade_to_v16,
+    ),
+    SchemaMigration(
+        version=17,
+        name="add_session_last_saved_utc",
+        upgrade=_upgrade_to_v17,
+    ),
+    SchemaMigration(
+        version=18,
+        name="replace_last_saved_with_last_activity_utc",
+        upgrade=_upgrade_to_v18,
     ),
 )
 LATEST_SCHEMA_VERSION = MIGRATIONS[-1].version

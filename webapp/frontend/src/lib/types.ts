@@ -148,6 +148,12 @@ export interface SchedulingSession {
   modified_at: string;
 }
 
+export interface SessionArchiveInspection {
+  archive_exported_utc: string | null;
+  current_activity_utc: string | null;
+  is_older: boolean;
+}
+
 export interface SchedulingSessionInput {
   institution_name: string;
   program_name: string;

@@ -28,6 +28,7 @@ import type {
   RunAssignmentResult,
   SchedulingSession,
   SchedulingSessionInput,
+  SessionArchiveInspection,
   ClinicalSitesImportInspection,
   LessonInstructor,
   LessonInstructorFields,
@@ -131,6 +132,12 @@ export const api = {
     if (!response.ok) throw new Error(`Session export failed (${response.status}).`);
     return new Uint8Array(await response.arrayBuffer());
   },
+  inspectSessionArchive: (archive: Uint8Array) =>
+    request<SessionArchiveInspection>("/api/session/restore/inspect", {
+      method: "POST",
+      headers: { "Content-Type": "application/vnd.music-program-scheduler.session+zip" },
+      body: archive,
+    }),
   restoreSession: (archive: Uint8Array) =>
     request<SchedulingSession>("/api/session/restore?confirmed=true", {
       method: "POST",

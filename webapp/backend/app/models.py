@@ -48,6 +48,9 @@ class SchedulingSession(Base):
     end_date: Mapped[date | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     modified_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    # Naive UTC instant (whole seconds) of the last meaningful change to this session's data; internal only.
+    # Maintained by the flush hook in database.py; unknown (NULL) until the first change after migration.
+    last_activity_utc: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class Pianist(Base):

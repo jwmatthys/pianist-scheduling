@@ -17,7 +17,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
-from ..database import database_operation_lock, LATEST_SCHEMA_VERSION, migrate_database
+from ..database import SUPPRESS_ACTIVITY, database_operation_lock, LATEST_SCHEMA_VERSION, migrate_database
 
 ARCHIVE_FORMAT = "music-program-scheduler-session"
 ARCHIVE_VERSION = 1
@@ -91,6 +91,7 @@ def _replace_metadata(target_engine: Engine, values: schemas.SessionMetadataIn, 
     from .. import tutor_models  # noqa: F401
 
     with Session(target_engine) as db:
+        db.info[SUPPRESS_ACTIVITY] = True
         rows = db.query(models.SchedulingSession).all()
         if len(rows) != 1:
             raise SessionFileError("INVALID_SESSION_METADATA", "The staged database must contain exactly one session.")
@@ -115,7 +116,31 @@ def _replace_metadata(target_engine: Engine, values: schemas.SessionMetadataIn, 
         db.commit()
 
 
-def _manifest(target_engine: Engine, database_bytes: bytes) -> schemas.SessionArchiveManifest:
+def _utc_now_seconds() -> datetime:
+    return datetime.now(timezone.utc).replace(microsecond=0)
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+def _set_last_activity(target_engine: Engine, moment: datetime | None) -> None:
+    """Explicitly set the activity time (new sessions); ordinary changes are stamped by the flush hook."""
+    with Session(target_engine) as db:
+        db.info[SUPPRESS_ACTIVITY] = True
+        rows = db.query(models.SchedulingSession).all()
+        if len(rows) != 1:
+            raise SessionFileError("INVALID_SESSION_METADATA", "The active database must contain exactly one session.")
+        value = _as_utc(moment)
+        rows[0].last_activity_utc = value.replace(tzinfo=None) if value else None
+        db.commit()
+
+
+def _manifest(
+    target_engine: Engine, database_bytes: bytes, exported_at: datetime
+) -> schemas.SessionArchiveManifest:
     session = _session_metadata(target_engine)
     with target_engine.connect() as connection:
         schema_version = connection.exec_driver_sql("PRAGMA user_version").scalar_one()
@@ -133,7 +158,7 @@ def _manifest(target_engine: Engine, database_bytes: bytes) -> schemas.SessionAr
         },
         applicationVersion="0.0.0",
         databaseSchemaVersion=schema_version,
-        exportedAt=datetime.now(timezone.utc),
+        exportedAt=exported_at,
         payload={"path": DATABASE_ENTRY, "sha256": hashlib.sha256(database_bytes).hexdigest()},
     )
 
@@ -158,9 +183,11 @@ def _snapshot_database(target_engine: Engine) -> bytes:
 
 
 def export_session_archive(target_engine: Engine) -> bytes:
+    """Write an archive whose manifest `exportedAt` is the UTC export time; export is not session activity."""
     with database_operation_lock():
+        exported_at = _utc_now_seconds()
         database_bytes = _snapshot_database(target_engine)
-        manifest = _manifest(target_engine, database_bytes)
+        manifest = _manifest(target_engine, database_bytes, exported_at)
         archive = BytesIO()
         with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as output:
             output.writestr("manifest.json", manifest.model_dump_json(by_alias=True))
@@ -365,6 +392,7 @@ def create_new_session(
             try:
                 migrate_database(staged_engine)
                 _replace_metadata(staged_engine, metadata)
+                _set_last_activity(staged_engine, _utc_now_seconds())
             except Exception as error:
                 staged_engine.dispose()
                 if isinstance(error, SessionFileError):
@@ -406,3 +434,16 @@ def restore_session(
             create_recovery_snapshot(target_engine, recovery_directory)
             _activate_staged_database(target_engine, staged_path)
         return schemas.SessionMetadataOut.model_validate(_session_metadata(target_engine), from_attributes=True)
+
+def inspect_session_archive(target_engine: Engine, archive_bytes: bytes) -> schemas.SessionArchiveInspection:
+    """Validate an archive without changing anything and report whether it is older than the active session."""
+    with database_operation_lock():
+        manifest, database_bytes = _validate_archive(archive_bytes)
+        _check_database_payload(database_bytes, manifest)
+        archive_saved = _as_utc(manifest.exported_at)
+        current_activity = _as_utc(_session_metadata(target_engine).last_activity_utc)
+        return schemas.SessionArchiveInspection(
+            archive_exported_utc=archive_saved,
+            current_activity_utc=current_activity,
+            is_older=archive_saved is not None and current_activity is not None and archive_saved < current_activity,
+        )

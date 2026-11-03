@@ -8,6 +8,7 @@ from ..services.session_files import (
     create_new_session,
     export_session_archive,
     get_active_session,
+    inspect_session_archive,
     restore_session,
     update_session_metadata,
 )
@@ -62,16 +63,31 @@ def update_active_session(payload: schemas.SessionMetadataIn):
         raise _http_error(error) from error
 
 
-@router.post("/restore", response_model=schemas.SessionMetadataOut)
-async def restore_active_session(request: Request, confirmed: bool = Query(default=False)):
-    if not confirmed:
-        raise HTTPException(409, detail={"code": "CONFIRMATION_REQUIRED", "message": "Confirm replacing the active session."})
+async def _read_archive(request: Request) -> bytes:
     archive = bytearray()
     async for chunk in request.stream():
         archive.extend(chunk)
         if len(archive) > MAX_ARCHIVE_BYTES:
             raise HTTPException(413, detail={"code": "SESSION_TOO_LARGE", "message": "The selected session archive exceeds the supported size."})
+    return bytes(archive)
+
+
+@router.post("/restore/inspect", response_model=schemas.SessionArchiveInspection)
+async def inspect_archive_before_restore(request: Request):
+    """Read-only: validate the archive and report whether it predates the active session."""
+    archive = await _read_archive(request)
     try:
-        return restore_session(engine, bytes(archive))
+        return inspect_session_archive(engine, archive)
+    except SessionFileError as error:
+        raise _http_error(error) from error
+
+
+@router.post("/restore", response_model=schemas.SessionMetadataOut)
+async def restore_active_session(request: Request, confirmed: bool = Query(default=False)):
+    if not confirmed:
+        raise HTTPException(409, detail={"code": "CONFIRMATION_REQUIRED", "message": "Confirm replacing the active session."})
+    archive = await _read_archive(request)
+    try:
+        return restore_session(engine, archive)
     except SessionFileError as error:
         raise _http_error(error) from error

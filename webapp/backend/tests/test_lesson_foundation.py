@@ -331,6 +331,8 @@ class LessonMigrationTests(LessonTestCase):
             "align_lesson_schedule_lifecycle",
             "add_tutor_scheduling_module_tables",
             "allow_repeated_student_ids_across_placement_records",
+            "add_session_last_saved_utc",
+            "replace_last_saved_with_last_activity_utc",
         ))
         with Session(self.engine) as db:
             self.assertEqual(db.get(models.Pianist, 7).name, "Synthetic Pianist")
@@ -362,6 +364,8 @@ class LessonMigrationTests(LessonTestCase):
             "align_lesson_schedule_lifecycle",
             "add_tutor_scheduling_module_tables",
             "allow_repeated_student_ids_across_placement_records",
+            "add_session_last_saved_utc",
+            "replace_last_saved_with_last_activity_utc",
         ))
         with Session(self.engine) as db:
             self.assertEqual(db.get(lesson_models.LessonPlacement, placement.id).placement_type, "manual")

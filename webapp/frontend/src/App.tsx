@@ -4,7 +4,9 @@ import "./App.css";
 import { api } from "./lib/api";
 import { chooseSessionArchive, saveSessionArchive } from "./lib/platform";
 import * as startupProfile from "./lib/startupProfile";
-import type { SchedulingSession, SchedulingSessionInput } from "./lib/types";
+import type { SchedulingSession, SchedulingSessionInput, SessionArchiveInspection } from "./lib/types";
+import { formatUtcTimestampLocally } from "./lib/time";
+import { Modal } from "./components/dialogs/Modal";
 import { SCHEDULING_MODULES, type ModuleKey } from "./moduleRegistry";
 import { ModuleShell } from "./components/ModuleShell";
 import { ClinicalModule } from "./pages/ClinicalModule";
@@ -24,6 +26,7 @@ function AppContent() {
   const [sessionFormKey, setSessionFormKey] = useState(0);
   const [busy, setBusy] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const [olderArchive, setOlderArchive] = useState<{ archive: Uint8Array; inspection: SessionArchiveInspection } | null>(null);
   const accompanistModuleRef = useRef<AccompanistModuleHandle>(null);
   const newSessionDialogRef = useRef<HTMLDialogElement>(null);
 
@@ -96,11 +99,34 @@ function AppContent() {
     try {
       const archive = await chooseSessionArchive();
       if (!archive) return;
-      if (!window.confirm("Replace the active session with this archive? A local recovery snapshot will be created before replacement.")) return;
-      setBusy(true);
-      const nextSession = await api.restoreSession(archive);
-      setSession(nextSession);
-      setActiveModule(null);
+      const inspection = await api.inspectSessionArchive(archive);
+      if (inspection.is_older) {
+        setOlderArchive({ archive, inspection });
+        return;
+      }
+      await confirmAndRestore(archive);
+    } catch (error) {
+      setSessionError(error instanceof Error ? error.message : "Could not open the session archive.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmAndRestore(archive: Uint8Array) {
+    if (!window.confirm("Replace the active session with this archive? A local recovery snapshot will be created before replacement.")) return;
+    setBusy(true);
+    const nextSession = await api.restoreSession(archive);
+    setSession(nextSession);
+    setActiveModule(null);
+  }
+
+  async function continueOpeningOlderArchive() {
+    const pending = olderArchive;
+    if (!pending) return;
+    setOlderArchive(null);
+    setSessionError(null);
+    try {
+      await confirmAndRestore(pending.archive);
     } catch (error) {
       setSessionError(error instanceof Error ? error.message : "Could not open the session archive.");
     } finally {
@@ -152,6 +178,31 @@ function AppContent() {
             </section>
           )}
         </ModuleShell>
+      )}
+      {olderArchive && (
+        <Modal title="Open Older Session Archive?" onClose={() => setOlderArchive(null)}>
+          <p className="dialog-note">
+            This session archive was saved earlier than the session currently open in Scheduling Maestro.
+          </p>
+          <p className="dialog-note">
+            Current session:
+            <br />
+            {formatUtcTimestampLocally(olderArchive.inspection.current_activity_utc ?? "")}
+          </p>
+          <p className="dialog-note">
+            Archive being opened:
+            <br />
+            {formatUtcTimestampLocally(olderArchive.inspection.archive_exported_utc ?? "")}
+          </p>
+          <p className="dialog-note">
+            You may be intentionally opening an older archive, but recent changes from the currently open session may not be present.
+          </p>
+          <p className="dialog-note">Do you want to continue opening this archive?</p>
+          <div className="dialog-actions">
+            <button type="button" onClick={() => setOlderArchive(null)}>Cancel</button>
+            <button type="button" onClick={() => void continueOpeningOlderArchive()}>Continue Opening</button>
+          </div>
+        </Modal>
       )}
       <dialog className="session-dialog" ref={newSessionDialogRef}>
         <form key={sessionFormKey} onSubmit={(event) => void handleNewSession(event)}>

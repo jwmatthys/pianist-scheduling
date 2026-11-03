@@ -83,8 +83,17 @@ class SessionArchiveManifest(BaseModel):
     term: SessionArchiveTerm
     application_version: str = Field(alias="applicationVersion", max_length=40)
     database_schema_version: int = Field(alias="databaseSchemaVersion", ge=0)
-    exported_at: datetime = Field(alias="exportedAt")
+    # Canonical UTC save timestamp; absent in archives written before recency warnings.
+    exported_at: datetime | None = Field(default=None, alias="exportedAt")
     payload: SessionArchivePayload
+
+
+class SessionArchiveInspection(BaseModel):
+    """Read-only comparison of an archive's export time with the active session's last activity."""
+
+    archive_exported_utc: datetime | None
+    current_activity_utc: datetime | None
+    is_older: bool
 
 
 class PianistCreate(BaseModel):

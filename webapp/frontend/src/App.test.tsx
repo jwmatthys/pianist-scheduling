@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "./lib/api";
 import type { SchedulingSession } from "./lib/types";
+import { chooseSessionArchive } from "./lib/platform";
 import App from "./App";
 
 vi.mock("./lib/api", () => ({
@@ -9,6 +10,8 @@ vi.mock("./lib/api", () => ({
     getSession: vi.fn(),
     createSession: vi.fn(),
     updateSession: vi.fn(),
+    inspectSessionArchive: vi.fn(),
+    restoreSession: vi.fn(),
   },
 }));
 
@@ -106,5 +109,65 @@ describe("Scheduling Session form", () => {
         term_label: "Fall 2027",
       });
     });
+  });
+});
+
+describe("Opening an older session archive", () => {
+  const archive = new Uint8Array([1, 2, 3]);
+
+  beforeEach(() => {
+    vi.mocked(chooseSessionArchive).mockResolvedValue(archive);
+    vi.mocked(api.restoreSession).mockResolvedValue(session);
+  });
+
+  async function openArchive() {
+    render(<App />);
+    await screen.findByText("Example University");
+    fireEvent.click(screen.getByRole("button", { name: "Open Session" }));
+  }
+
+  it("warns without restoring, and Cancel changes nothing", async () => {
+    vi.mocked(api.inspectSessionArchive).mockResolvedValue({
+      archive_exported_utc: "2026-11-01T10:00:00Z",
+      current_activity_utc: "2026-11-02T21:14:33Z",
+      is_older: true,
+    });
+    await openArchive();
+
+    const dialog = await screen.findByRole("dialog", { name: "Open Older Session Archive?" });
+    expect(dialog.textContent).toContain("saved earlier than the session currently open");
+    expect(dialog.textContent).toContain("Current session:");
+    expect(dialog.textContent).toContain("Archive being opened:");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByRole("dialog", { name: "Open Older Session Archive?" })).toBeNull();
+    expect(api.restoreSession).not.toHaveBeenCalled();
+  });
+
+  it("Continue Opening proceeds with the existing restore workflow", async () => {
+    vi.mocked(api.inspectSessionArchive).mockResolvedValue({
+      archive_exported_utc: "2026-11-01T10:00:00Z",
+      current_activity_utc: "2026-11-02T21:14:33Z",
+      is_older: true,
+    });
+    await openArchive();
+
+    const dialog = await screen.findByRole("dialog", { name: "Open Older Session Archive?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Continue Opening" }));
+
+    await waitFor(() => expect(api.restoreSession).toHaveBeenCalledWith(archive));
+    expect(window.confirm).toHaveBeenCalled();
+  });
+
+  it("opens a non-older archive without the warning", async () => {
+    vi.mocked(api.inspectSessionArchive).mockResolvedValue({
+      archive_exported_utc: null,
+      current_activity_utc: null,
+      is_older: false,
+    });
+    await openArchive();
+
+    await waitFor(() => expect(api.restoreSession).toHaveBeenCalledWith(archive));
+    expect(screen.queryByRole("dialog", { name: "Open Older Session Archive?" })).toBeNull();
   });
 });
