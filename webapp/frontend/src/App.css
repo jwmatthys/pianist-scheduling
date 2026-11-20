@@ -146,6 +146,26 @@ button:disabled {
   border-collapse: collapse;
   width: 100%;
   font-size: 0.85rem;
+  font-weight: 400;
+}
+
+.schedule-table {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 0.85rem;
+  font-weight: 400;
+  font-synthesis: none;
+  line-height: 1.25;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+.schedule-table tbody tr {
+  background: var(--theme-surface);
+}
+
+.schedule-table tbody td {
+  background: inherit;
 }
 
 .preview-table th,
@@ -438,6 +458,9 @@ button:disabled {
   border-radius: 4px;
   padding: 0.15rem 0.3rem;
   font-size: 0.85rem;
+  font-family: inherit;
+  font-weight: 400;
+  line-height: inherit;
   width: 100%;
   min-width: 90px;
 }
@@ -462,6 +485,27 @@ button:disabled {
   white-space: nowrap;
 }
 
+.schedule-note-info-icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-right: 0.2em;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+  vertical-align: -0.12em;
+}
+
+.schedule-table td,
+.schedule-table td .fit-badge {
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 400;
+  line-height: inherit;
+}
+
 .row-unassigned {
   background: var(--theme-error-soft);
 }
@@ -478,10 +522,19 @@ button:disabled {
   background: var(--theme-warning-soft);
 }
 
+.schedule-table tbody tr.row-unassigned td,
+.schedule-table tbody tr.row-conflict td {
+  background: var(--theme-error-soft);
+}
+
+.schedule-table tbody tr.row-overcap td,
+.schedule-table tbody tr.row-warn td {
+  background: var(--theme-warning-soft);
+}
+
 .fit-badge {
   padding: 0.1rem 0.4rem;
   border-radius: 4px;
-  font-size: 0.78rem;
   white-space: nowrap;
 }
 

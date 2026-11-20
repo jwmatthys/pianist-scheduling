@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import type { Lesson, Pianist } from "../lib/types";
 import { inputValueToMinutes, minutesToInputValue } from "../lib/time";
@@ -25,6 +25,25 @@ function fitClass(lesson: Lesson): string {
   if (lesson.fit_quality === "Near" || lesson.fit_quality.startsWith("Overlap") || lesson.notes.includes("TENTATIVE"))
     return "row-warn";
   return "";
+}
+
+function ScheduleNotes({ text }: { text: string }) {
+  const parts = text.split("\u2139");
+  return (
+    <>
+      {parts.map((part, index) => (
+        <Fragment key={index}>
+          {index > 0 && (
+            <svg className="schedule-note-info-icon" viewBox="0 0 16 16" role="img" aria-label="Information">
+              <circle cx="8" cy="8" r="6.25" />
+              <path d="M8 7v4M8 5h.01" />
+            </svg>
+          )}
+          {part}
+        </Fragment>
+      ))}
+    </>
+  );
 }
 
 export function SchedulePage({ onImportLessons }: Props) {
@@ -312,8 +331,8 @@ export function SchedulePage({ onImportLessons }: Props) {
                     {lesson.fit_quality || "\u2014"}
                   </span>
                 </td>
-                <td className="notes-cell" title={lesson.notes}>
-                  {lesson.notes}
+                <td className="notes-cell" title={lesson.notes.replace(/\u2139\s*/g, "")}>
+                  <ScheduleNotes text={lesson.notes} />
                 </td>
                 <td>
                   <button

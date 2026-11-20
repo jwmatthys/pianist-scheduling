@@ -20,8 +20,6 @@ function installHighlightApi() {
   return registry;
 }
 
-const text = (range: Range) => range.toString();
-
 function Harness() {
   const scopeRef = useRef<HTMLElement>(null);
   const [tab, setTab] = useState<"roster" | "schedule">("roster");
@@ -72,6 +70,19 @@ function ControlsHarness() {
   );
 }
 
+function RileyHarness({ notes }: { notes: string }) {
+  const scopeRef = useRef<HTMLElement>(null);
+  return (
+    <div>
+      <main ref={scopeRef}>
+        <input defaultValue="Riley Example" aria-label="Student" />
+        <table><tbody><tr><td>{notes}</td></tr></tbody></table>
+      </main>
+      <FindOnPage scopeRef={scopeRef} />
+    </div>
+  );
+}
+
 describe("FindOnPage", () => {
   let registry: Map<string, FakeHighlight>;
   const scrollIntoView = vi.fn();
@@ -103,11 +114,12 @@ describe("FindOnPage", () => {
 
     // John Smith, SMITHSON, smith again; hidden and out-of-scope text is ignored.
     expect(screen.getByRole("status").textContent).toBe("1 of 3");
-    const current = registry.get("find-current")!.ranges.map(text);
-    const others = registry.get("find-match")!.ranges.map(text);
-    expect(current).toEqual(["Smith"]);
-    expect(others).toEqual(["SMITH", "smith"]);
-    expect(registry.get("find-current")!.priority).toBe(1);
+    const current = document.querySelector('[data-find-match="current"]');
+    const others = Array.from(document.querySelectorAll('[data-find-match="match"]'));
+    expect(current?.textContent).toBe("John Smith");
+    expect(others.map((element) => element.textContent)).toEqual(["SMITHSON, Alex", "smith again"]);
+    expect(registry.has("find-current")).toBe(false);
+    expect(registry.has("find-match")).toBe(false);
 
     expect(screen.getByText("Taylor Jones")).toBeTruthy();
     expect(screen.getByText("John Smith")).toBeTruthy();
@@ -125,8 +137,7 @@ describe("FindOnPage", () => {
     render(<Harness />);
     const input = openFind();
     fireEvent.change(input, { target: { value: "smith" } });
-    expect(registry.has("find-current")).toBe(true);
-    expect(registry.has("find-match")).toBe(true);
+    expect(document.querySelectorAll("[data-find-match]").length).toBe(3);
 
     fireEvent.change(input, { target: { value: "" } });
 
@@ -143,7 +154,7 @@ describe("FindOnPage", () => {
 
     fireEvent.keyDown(input, { key: "ArrowDown" });
     expect(screen.getByRole("status").textContent).toBe("2 of 3");
-    expect(registry.get("find-current")!.ranges.map(text)).toEqual(["SMITH"]);
+    expect(document.querySelector('[data-find-match="current"]')?.textContent).toBe("SMITHSON, Alex");
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
 
     fireEvent.keyDown(input, { key: "ArrowRight" });
@@ -172,7 +183,7 @@ describe("FindOnPage", () => {
     render(<Harness />);
     const input = openFind();
     fireEvent.change(input, { target: { value: "smith" } });
-    expect(registry.has("find-match")).toBe(true);
+    expect(document.querySelectorAll("[data-find-match]").length).toBe(3);
 
     fireEvent.keyDown(input, { key: "Escape" });
     expect(registry.has("find-match")).toBe(false);
@@ -209,9 +220,21 @@ describe("FindOnPage", () => {
     expect(screen.getByRole("status").textContent).toBe("1 of 3");
 
     const marked = Array.from(document.querySelectorAll("[data-find-match]"));
-    expect(marked.map((element) => element.tagName)).toEqual(["INPUT", "TEXTAREA"]);
+    expect(marked.map((element) => element.tagName)).toEqual(["INPUT", "TEXTAREA", "P"]);
 
     fireEvent.change(input, { target: { value: "" } });
     expect(document.querySelectorAll("[data-find-match]").length).toBe(0);
+  });
+
+  it("does not mark unrelated Notes text when matched table content rerenders", () => {
+    const { rerender } = render(<RileyHarness notes="REQUIRED PIANIST: no assignment" />);
+    fireEvent.change(openFind(), { target: { value: "Riley" } });
+
+    expect(screen.getByRole("textbox", { name: "Student" }).getAttribute("data-find-match")).toBe("current");
+    expect(screen.getByText("REQUIRED PIANIST: no assignment").hasAttribute("data-find-match")).toBe(false);
+
+    rerender(<RileyHarness notes="REQUIRED PIANIST: no finalized assignment" />);
+
+    expect(screen.getByText("REQUIRED PIANIST: no finalized assignment").hasAttribute("data-find-match")).toBe(false);
   });
 });

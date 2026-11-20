@@ -1,6 +1,6 @@
 // Pure helpers for browser-style Find-on-Page. Matching is case-insensitive substring
-// search over rendered text nodes; highlighting uses the CSS Custom Highlight API so the
-// React-managed DOM is never mutated.
+// search over rendered text nodes. Rendering marks containing elements instead of
+// retaining CSS Highlight ranges, which can become stale as React updates table cells.
 
 export const MATCH_HIGHLIGHT = "find-match";
 export const CURRENT_HIGHLIGHT = "find-current";
@@ -116,24 +116,29 @@ function clearControlMarks(): void {
   document.querySelectorAll(`[${CONTROL_ATTRIBUTE}]`).forEach((element) => element.removeAttribute(CONTROL_ATTRIBUTE));
 }
 
+function matchElement(match: FindMatch): HTMLElement | null {
+  if (!(match instanceof Range)) return match;
+  const parent = match.startContainer.parentElement;
+  if (!parent) return null;
+  return parent.closest<HTMLElement>("td, th, li, p, div, span") ?? parent;
+}
+
 export function applyHighlights(matches: FindMatch[], current: FindMatch | null): void {
   clearControlMarks();
-  for (const match of matches) {
-    if (!(match instanceof Range)) match.setAttribute(CONTROL_ATTRIBUTE, match === current ? "current" : "match");
-  }
   const support = highlightSupport();
-  if (!support) return;
-  support.registry.delete(MATCH_HIGHLIGHT);
-  support.registry.delete(CURRENT_HIGHLIGHT);
-  const others = matches.filter((match): match is Range => match instanceof Range && match !== current);
-  if (others.length > 0) {
-    support.registry.set(MATCH_HIGHLIGHT, new support.Highlight(...others));
+  // Also remove highlights registered by older builds before marking the live DOM.
+  if (support) {
+    support.registry.delete(MATCH_HIGHLIGHT);
+    support.registry.delete(CURRENT_HIGHLIGHT);
   }
-  if (current instanceof Range) {
-    const currentHighlight = new support.Highlight(current);
-    currentHighlight.priority = 1;
-    support.registry.set(CURRENT_HIGHLIGHT, currentHighlight);
+  const currentElement = current ? matchElement(current) : null;
+  for (const match of matches) {
+    const element = matchElement(match);
+    if (element && element !== currentElement) {
+      element.setAttribute(CONTROL_ATTRIBUTE, "match");
+    }
   }
+  currentElement?.setAttribute(CONTROL_ATTRIBUTE, "current");
 }
 
 export function clearHighlights(): void {
