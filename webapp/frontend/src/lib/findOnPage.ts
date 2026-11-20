@@ -123,14 +123,16 @@ export function applyHighlights(matches: FindMatch[], current: FindMatch | null)
   }
   const support = highlightSupport();
   if (!support) return;
+  support.registry.delete(MATCH_HIGHLIGHT);
+  support.registry.delete(CURRENT_HIGHLIGHT);
   const others = matches.filter((match): match is Range => match instanceof Range && match !== current);
-  support.registry.set(MATCH_HIGHLIGHT, new support.Highlight(...others));
+  if (others.length > 0) {
+    support.registry.set(MATCH_HIGHLIGHT, new support.Highlight(...others));
+  }
   if (current instanceof Range) {
     const currentHighlight = new support.Highlight(current);
     currentHighlight.priority = 1;
     support.registry.set(CURRENT_HIGHLIGHT, currentHighlight);
-  } else {
-    support.registry.delete(CURRENT_HIGHLIGHT);
   }
 }
 

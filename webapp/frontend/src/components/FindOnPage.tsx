@@ -141,6 +141,12 @@ export function FindOnPage({ scopeRef, resetKey }: Props) {
     }
   }
 
+  function updateQuery(value: string) {
+    clearHighlights();
+    setRanges([]);
+    setQuery(value);
+  }
+
   if (!open) return null;
 
   const position = Math.min(index, Math.max(ranges.length - 1, 0));
@@ -156,7 +162,7 @@ export function FindOnPage({ scopeRef, resetKey }: Props) {
         autoComplete="off"
         spellCheck={false}
         value={query}
-        onChange={(event) => setQuery(event.target.value)}
+        onChange={(event) => updateQuery(event.target.value)}
       />
       <span className="find-on-page-status" role="status" aria-live="polite">{status}</span>
       <button type="button" aria-label="Previous match" disabled={ranges.length === 0} onClick={() => step(-1)}>{"\u2191"}</button>

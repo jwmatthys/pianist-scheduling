@@ -121,6 +121,20 @@ describe("FindOnPage", () => {
     expect(registry.has("find-current")).toBe(false);
   });
 
+  it("removes text highlights as soon as the query is cleared", () => {
+    render(<Harness />);
+    const input = openFind();
+    fireEvent.change(input, { target: { value: "smith" } });
+    expect(registry.has("find-current")).toBe(true);
+    expect(registry.has("find-match")).toBe(true);
+
+    fireEvent.change(input, { target: { value: "" } });
+
+    expect(screen.getByRole("status").textContent).toBe("");
+    expect(registry.has("find-match")).toBe(false);
+    expect(registry.has("find-current")).toBe(false);
+  });
+
   it("moves between matches with arrow keys, wrapping around, and scrolls the current match into view", () => {
     render(<Harness />);
     const input = openFind();
