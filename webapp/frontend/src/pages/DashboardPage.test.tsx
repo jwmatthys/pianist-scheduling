@@ -12,6 +12,10 @@ function renderDashboard(onOpenModule = vi.fn()) {
       <DashboardPage
         session={null}
         busy={false}
+        licenseStatus={null}
+        trialRemaining={null}
+        trialError={null}
+        onLicenseStatus={vi.fn()}
         onEditSession={vi.fn()}
         onNewSession={vi.fn()}
         onOpenSession={vi.fn()}
@@ -62,6 +66,8 @@ describe("DashboardPage module layout", () => {
   it("still offers the theme chooser", () => {
     renderDashboard();
     expect(screen.getByRole("button", { name: "Choose theme" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "License" })).not.toBeNull();
+    const licenseButton = screen.getByRole("button", { name: "License" });
+    expect(licenseButton.classList.contains("license-button")).toBe(true);
+    expect(licenseButton.closest(".dashboard-header")).toBeNull();
   });
 });

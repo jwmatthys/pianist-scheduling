@@ -2,7 +2,7 @@
 
 ## Status
 
-Phase 1 license infrastructure is implemented: offline Ed25519 verification, JSON license files, `SM1-` encoded license keys, local activation persistence, API endpoints, and a License section. Trial timing, expiration behavior, feature lockouts, and other Phase 2 behavior remain unimplemented.
+Offline Ed25519 verification, license activation, and a 30-minute cumulative-use trial with expiration lockout are implemented.
 
 ## Purpose
 
@@ -70,22 +70,29 @@ The trial timer measures cumulative usage time.
 
 The remaining trial time should be visible from the Dashboard.
 
+The countdown is displayed beside License on the Dashboard. It counts while
+the application is open, including time spent in modules, and is stored in
+the local application database rather than in a Scheduling Session. The
+frontend sends a local heartbeat every five seconds; a gap contributes at most
+ten seconds, so interrupted or suspended sessions do not count indefinitely.
+When the counter reaches zero, it remains at zero and the application locks
+until a valid license is activated. A valid activation hides the countdown and
+pauses trial accounting.
+
 ---
 
 ## Trial Expired
 
-When cumulative usage reaches 30 minutes:
+When cumulative usage reaches 30 minutes, an activation window blocks the
+application:
 
 ```text
 Scheduling Maestro
 
-Trial Expired
-
-This copy requires activation.
+Scheduling Maestro trial expired. Upload or enter your license key to activate.
 
 [Import License File]
 [Enter License Key]
-[Quit]
 ```
 
 All application features are locked.
@@ -93,7 +100,7 @@ All application features are locked.
 Users may:
 
 - activate the software
-- quit the application
+- quit the application using the window controls
 
 Users may not:
 
@@ -102,6 +109,11 @@ Users may not:
 - generate schedules
 - view schedules
 - modify settings
+
+The local API rejects scheduling requests with `TRIAL_EXPIRED` while the trial
+is expired. Health, license status, trial heartbeat, and license activation
+remain available. The lock preserves the current in-memory view so users can
+continue after activation; requests already in progress are not canceled.
 
 ---
 
@@ -122,6 +134,10 @@ Perpetual
 The application becomes permanently available.
 
 No further activation is required.
+
+A different valid license can be activated at any time using either method.
+It replaces the stored license and its displayed metadata. An unsuccessful
+activation leaves the existing license unchanged.
 
 ---
 
@@ -179,7 +195,8 @@ Example:
   "licensed_to": "University of Somewhere",
   "license_type": "PERPETUAL",
   "issued": "2026-11-23",
-  "license_version": 1
+  "license_version": 1,
+  "key_id": "v1"
 }
 ```
 
@@ -257,6 +274,15 @@ Initial value:
 
 ---
 
+### key_id
+
+The identifier of the signing key, included in and covered by the signed
+payload for newly issued licenses. Older licenses omit this field and remain
+valid. The verified signing-key identifier is also reported as
+`signing_key_id` in license status metadata.
+
+---
+
 # Cryptographic Design
 
 ## Signing Algorithm
@@ -279,7 +305,7 @@ The private key must never be distributed with the application.
 
 ## Public Key
 
-The application ships with an embedded Ed25519 public key.
+The application ships with an embedded set of trusted Ed25519 public keys.
 
 The application verifies all licenses locally.
 
@@ -314,7 +340,8 @@ Example:
     "licensed_to": "University of Somewhere",
     "license_type": "PERPETUAL",
     "issued": "2026-11-23",
-    "license_version": 1
+    "license_version": 1,
+    "key_id": "v1"
   },
   "signature": "BASE64_SIGNATURE"
 }
@@ -541,6 +568,7 @@ the repository root, using the backend Python environment described in
 
 ```sh
 python tools/generate_license.py \
+  --private-key ~/SchedulingMaestroKeys/scheduling-maestro-ed25519-private.pem \
   --licensed-to "University of Wisconsin-Whitewater"
 ```
 
@@ -551,12 +579,20 @@ files contain equivalent signed license data; share them with the customer
 through an appropriate secure channel. Generated output filenames are
 gitignored.
 
-The tool reads the unencrypted Ed25519 private signing key from
-`.local-license-keys/scheduling-maestro-ed25519-private.pem` in the repository
-root, regardless of the current directory. It verifies that the key matches
-the public key embedded in the application. The private key signs licenses;
-the application uses only the public key for offline verification and never
-reads the private key.
+In the License dialog, Import License File accepts either the JSON
+`scheduling-maestro.license` file or the text `license-key.txt` file. The
+contents of `license-key.txt` can also be pasted into Enter License Key.
+Renaming a file does not change its contents.
+
+Store the unencrypted Ed25519 private signing key outside the repository, for
+example in `~/SchedulingMaestroKeys/`, with access restricted to authorized
+issuers. The generator never discovers a private key automatically:
+`--private-key` is required. It defaults to key ID `v1`; pass `--key-id v2`
+when issuing with a different configured trusted key. It checks that the
+provided private key matches the selected trusted public key before writing
+anything and prints both the key ID and the public key. The application uses
+only trusted public keys for offline verification and never reads the private
+key.
 
 Back up the private key securely, encrypted and access-controlled, with at
 least one separately stored offline copy. Test the ability to restore it.
@@ -565,7 +601,66 @@ security boundary and does not prevent other backup or synchronization
 software from copying it. If the private key is lost, licenses cannot be
 issued for the embedded public key; restore the matching backup. A replacement
 key requires an application update and a deliberate compatibility plan for
-previously issued licenses.
+previously issued licenses. See [Signing Key Rotation](#signing-key-rotation).
+
+## Inspecting Licenses
+
+The developer-only inspector uses the application's parsing and verification
+logic without activating or changing the stored license:
+
+```sh
+python tools/inspect_license.py --file scheduling-maestro.license
+python tools/inspect_license.py --key "SM1-..."
+```
+
+It prints the license metadata, verified signing key ID, and result. Malformed
+input reports `CORRUPTED LICENSE`; a failed signature reports `INVALID
+SIGNATURE`, or `UNKNOWN SIGNING KEY` when its declared key ID is not in the
+trust store. An unknown ID on a failed signature is only a hint: the data
+could also be corrupted. Metadata shown for a failed verification is
+unverified. When a trusted key verifies the signature, its actual ID is
+reported even if the declared ID differs. A license for another product
+reports `WRONG PRODUCT`. Valid inspection exits with status 0; invalid
+licenses and file-read errors exit nonzero. Passing a key on a command line
+may expose it in shell history or process listings; use a local file instead
+when appropriate.
+
+## Signing Key Rotation
+
+The application embeds the trusted public-key mapping in
+[`webapp/backend/app/license_keys.py`](../webapp/backend/app/license_keys.py).
+Each identifier uniquely identifies one Ed25519 public key. Verification
+tries the trusted keys and succeeds if any validates the canonical signed
+payload. The optional signed `key_id` is the issuer's identifier; the
+`signing_key_id` returned in status metadata is determined by the key that
+actually verified the signature, not by trusting that claim.
+
+The original `v1` public key remains trusted. Legacy payloads without
+`key_id` retain their original canonical bytes and existing stored
+activations are reverified without modification or reactivation. The
+`.license` envelope and `SM1-` encoding remain unchanged.
+
+To introduce a future `v2` key:
+
+1. Generate and securely back up a new private key outside application builds.
+2. Add its public key under a unique `v2` identifier to the trust store, while
+   retaining `v1`. Test both legacy and new signatures, then distribute the
+   application update before issuing licenses with the new key.
+3. Keep the `v2` private key outside the repository, and pass its path with
+   `--private-key` and `--key-id v2` to the developer-only generator. The
+   generator checks that the private key matches the selected trusted public
+   key before writing either output.
+4. Continue trusting `v1` so existing customers do not need to reactivate.
+
+**Compatibility:** older application versions reject the new `key_id` field,
+even on licenses still signed by `v1`. Distribute this application update
+before issuing any newly generated license containing `key_id`. Previously
+issued licenses continue to work in the updated application.
+
+Keeping a compromised key trusted also keeps accepting signatures made with
+it. Removing that key would invalidate its existing licenses, so any response
+to compromise requires a separate migration decision; there is no online
+revocation service.
 
 ---
 

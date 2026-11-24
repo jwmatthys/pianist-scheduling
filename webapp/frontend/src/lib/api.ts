@@ -121,7 +121,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 export const api = {
   // Active Scheduling Session
   getSession: () => request<SchedulingSession>("/api/session"),
-  getLicenseStatus: () => request<LicenseStatus>("/api/license/status"),
+  getLicenseStatus: () => request<LicenseStatus>("/api/license/status", { cache: "no-store" }),
+  trialHeartbeat: () => request<LicenseStatus>("/api/license/trial-heartbeat", { method: "POST" }),
   activateLicenseFile: (file: File) => {
     const form = new FormData();
     form.append("file", file);

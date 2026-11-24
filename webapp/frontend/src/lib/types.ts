@@ -23,6 +23,7 @@ export interface LicensePayload {
   license_type: string;
   issued: string;
   license_version: 1;
+  key_id: string | null;
 }
 
 export interface LicenseStatus {
@@ -30,6 +31,8 @@ export interface LicenseStatus {
   payload: LicensePayload | null;
   activated_at: string | null;
   error: string | null;
+  trial_seconds_remaining: number | null;
+  signing_key_id: string | null;
 }
 
 export interface Pianist {

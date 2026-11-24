@@ -827,11 +827,25 @@ def _create_license_activations(connection: Connection) -> None:
     )
 
 
+def _create_trial_usage(connection: Connection) -> None:
+    connection.exec_driver_sql(
+        "CREATE TABLE trial_usage ("
+        "singleton INTEGER PRIMARY KEY CHECK (singleton = 1), "
+        "elapsed_ms INTEGER NOT NULL CHECK (elapsed_ms >= 0))"
+    )
+    connection.exec_driver_sql("INSERT INTO trial_usage (singleton, elapsed_ms) VALUES (1, 0)")
+
+
 APPLICATION_MIGRATIONS = (
     SchemaMigration(
         version=1,
         name="create_license_activation_state",
         upgrade=_create_license_activations,
+    ),
+    SchemaMigration(
+        version=2,
+        name="create_trial_usage",
+        upgrade=_create_trial_usage,
     ),
 )
 LATEST_APPLICATION_SCHEMA_VERSION = APPLICATION_MIGRATIONS[-1].version
@@ -868,7 +882,10 @@ def migrate_application_database(
                         "UNRECOGNIZED_APPLICATION_DATABASE",
                         "The unversioned application database contains unrecognized tables.",
                     )
-                if initial_version == latest_version and existing_tables != {"license_activations"}:
+                expected_tables = {"license_activations"}
+                if latest_version >= 2:
+                    expected_tables.add("trial_usage")
+                if initial_version == latest_version and existing_tables != expected_tables:
                     raise DatabaseMigrationError(
                         "INVALID_APPLICATION_DATABASE_SCHEMA",
                         "The application database does not match the supported schema.",
@@ -904,6 +921,11 @@ def migrate_application_database(
                     raise DatabaseMigrationError(
                         "INVALID_APPLICATION_DATABASE_SCHEMA",
                         "The license activation table does not match the supported schema.",
+                    )
+                if latest_version >= 2 and _column_names(connection, "trial_usage") != {"singleton", "elapsed_ms"}:
+                    raise DatabaseMigrationError(
+                        "INVALID_APPLICATION_DATABASE_SCHEMA",
+                        "The trial usage table does not match the supported schema.",
                     )
                 connection.commit()
                 return MigrationReport(

@@ -24,6 +24,11 @@ def get_status(license_service: LicenseService = Depends(get_license_service)):
     return license_service.get_license_status()
 
 
+@router.post("/trial-heartbeat", response_model=LicenseStatus)
+def trial_heartbeat(license_service: LicenseService = Depends(get_license_service)):
+    return license_service.trial_heartbeat()
+
+
 @router.post("/activate-file", response_model=LicenseStatus)
 async def activate_file(
     file: UploadFile = File(...),

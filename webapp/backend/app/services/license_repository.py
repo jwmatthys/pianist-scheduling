@@ -49,7 +49,7 @@ class LicenseRepository:
 
     def save_license_record(self, payload: LicensePayload, signature: str, activated_at: datetime) -> LicenseRecord:
         payload_json = json.dumps(
-            payload.model_dump(mode="json"),
+            payload.model_dump(mode="json", exclude_none=True),
             ensure_ascii=False,
             separators=(",", ":"),
             sort_keys=True,
@@ -77,6 +77,18 @@ class LicenseRepository:
     def clear_license(self) -> None:
         with self._engine.begin() as connection:
             connection.execute(text("DELETE FROM license_activations WHERE singleton = 1"))
+
+    def get_trial_elapsed_ms(self) -> int:
+        with self._engine.connect() as connection:
+            return connection.execute(text("SELECT elapsed_ms FROM trial_usage WHERE singleton = 1")).scalar_one()
+
+    def add_trial_elapsed_ms(self, elapsed_ms: int) -> int:
+        with self._engine.begin() as connection:
+            connection.execute(
+                text("UPDATE trial_usage SET elapsed_ms = elapsed_ms + :elapsed WHERE singleton = 1"),
+                {"elapsed": elapsed_ms},
+            )
+            return connection.execute(text("SELECT elapsed_ms FROM trial_usage WHERE singleton = 1")).scalar_one()
 
 
 repository = LicenseRepository(license_engine)

@@ -730,6 +730,21 @@ button:disabled {
   box-shadow: 0 2px 10px var(--theme-shadow);
 }
 
+.license-control {
+  position: fixed;
+  left: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.license-countdown {
+  color: var(--theme-text-muted-readable);
+  font-size: 0.8rem;
+}
+
 .theme-switcher-button:hover {
   background: var(--theme-surface-muted);
 }
@@ -806,19 +821,20 @@ button:disabled {
     right: 0.75rem;
     bottom: 0.75rem;
   }
+
+  .license-control {
+    left: 0.75rem;
+    bottom: 0.75rem;
+  }
 }
 
 .app-dashboard {
   width: min(1080px, 100%);
   margin: 0 auto;
-  padding: 2rem 1.5rem 3rem;
+  padding: 2rem 1.5rem 5rem;
 }
 
 .dashboard-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
   margin-bottom: 2rem;
 }
 
@@ -835,6 +851,16 @@ button:disabled {
 .license-dialog-content {
   display: grid;
   gap: 1rem;
+}
+
+.trial-expired-title {
+  margin: 0;
+  font-size: 1.2rem;
+  line-height: 1.4;
+}
+
+.app-shell[aria-hidden="true"] {
+  visibility: hidden;
 }
 
 .license-status {

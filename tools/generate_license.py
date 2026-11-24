@@ -16,28 +16,28 @@ from pydantic import ValidationError
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPOSITORY_ROOT / "webapp" / "backend"))
 
+from app.license_keys import TRUSTED_PUBLIC_KEYS
 from app.license_schemas import LicensePayload
 from app.services.license_service import (
     PRODUCT_NAME,
-    PUBLIC_KEY_B64,
     canonical_payload_bytes,
     encode_license_key,
 )
 
-PRIVATE_KEY_PATH = REPOSITORY_ROOT / ".local-license-keys" / "scheduling-maestro-ed25519-private.pem"
+ACTIVE_SIGNING_KEY_ID = "v1"
 
 
 class GenerationError(Exception):
     pass
 
 
-def load_private_key(path: Path) -> Ed25519PrivateKey:
+def load_private_key(path: Path, expected_public_key: str, key_id: str) -> Ed25519PrivateKey:
     try:
         pem = path.read_bytes()
     except OSError as error:
         raise GenerationError(
             f"Cannot read private signing key at {path}: {error.strerror or error}. "
-            "Restore the original key from a secure backup."
+            "Provide a readable private key or restore it from a secure backup."
         ) from error
     try:
         private_key = serialization.load_pem_private_key(pem, password=None)
@@ -52,16 +52,30 @@ def load_private_key(path: Path) -> Ed25519PrivateKey:
         encoding=serialization.Encoding.Raw,
         format=serialization.PublicFormat.Raw,
     )
-    if base64.b64encode(public_key).decode("ascii") != PUBLIC_KEY_B64:
+    if base64.b64encode(public_key).decode("ascii") != expected_public_key:
         raise GenerationError(
-            "The private signing key does not match the application's embedded public key. "
+            f"The private signing key does not match trusted public key '{key_id}'. "
             "Restore the matching private key before generating licenses."
         )
     return private_key
 
 
-def generate_license(licensed_to: str, output_dir: Path) -> tuple[Path, Path]:
-    private_key = load_private_key(PRIVATE_KEY_PATH)
+def generate_license(
+    licensed_to: str, output_dir: Path, private_key_path: Path, key_id: str = ACTIVE_SIGNING_KEY_ID,
+) -> tuple[Path, Path]:
+    if (
+        not key_id.strip()
+        or key_id != key_id.strip()
+        or len(key_id) > 100
+    ):
+        raise GenerationError("Signing key identifier must be non-empty, trimmed, and at most 100 characters.")
+    public_key = TRUSTED_PUBLIC_KEYS.get(key_id)
+    if public_key is None:
+        raise GenerationError(
+            f"Signing key '{key_id}' is not configured in the application trust store. "
+            "Select a trusted key ID."
+        )
+    private_key = load_private_key(private_key_path.expanduser(), public_key, key_id)
     try:
         payload = LicensePayload.model_validate({
             "product": PRODUCT_NAME,
@@ -69,6 +83,7 @@ def generate_license(licensed_to: str, output_dir: Path) -> tuple[Path, Path]:
             "license_type": "PERPETUAL",
             "issued": date.today().isoformat(),
             "license_version": 1,
+            "key_id": key_id,
         })
     except ValidationError as error:
         raise GenerationError(
@@ -81,7 +96,7 @@ def generate_license(licensed_to: str, output_dir: Path) -> tuple[Path, Path]:
         raise GenerationError("Licensed-to must contain valid Unicode text.") from error
     signature = base64.b64encode(private_key.sign(canonical_payload)).decode("ascii")
     license_json = json.dumps(
-        {"payload": payload.model_dump(mode="json"), "signature": signature},
+        {"payload": payload.model_dump(mode="json", exclude_none=True), "signature": signature},
         ensure_ascii=False,
         indent=2,
     ) + "\n"
@@ -118,6 +133,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Generate an offline Scheduling Maestro license.")
     parser.add_argument("--licensed-to", required=True, help="Name of the licensed person or organization.")
     parser.add_argument(
+        "--private-key", required=True, type=Path,
+        help="Path to the Ed25519 private signing key; it is never auto-discovered.",
+    )
+    parser.add_argument(
+        "--key-id", default=ACTIVE_SIGNING_KEY_ID,
+        help=f"Trusted signing key identifier (default: {ACTIVE_SIGNING_KEY_ID}).",
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         default=Path.cwd(),
@@ -125,10 +148,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     try:
-        license_path, key_path = generate_license(args.licensed_to, args.output_dir)
+        license_path, key_path = generate_license(args.licensed_to, args.output_dir, args.private_key, args.key_id)
     except GenerationError as error:
         parser.exit(1, f"Error: {error}\n")
-    print(f"License file: {license_path}\nLicense key: {key_path}")
+    print(
+        f"Signing key ID: {args.key_id}\n"
+        f"Trusted public key (base64): {TRUSTED_PUBLIC_KEYS[args.key_id]}\n"
+        f"License file: {license_path}\nLicense key: {key_path}"
+    )
     return 0
 
 

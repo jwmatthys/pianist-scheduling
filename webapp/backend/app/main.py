@@ -1,5 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.concurrency import run_in_threadpool
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 
 from . import startup_profile
 from .database import init_db
@@ -32,6 +35,27 @@ LOCAL_ORIGINS = [
     "null",
 ]
 
+
+class TrialLockMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        allowed = {
+            ("GET", "/api/health"),
+            ("GET", "/api/license/status"),
+            ("POST", "/api/license/trial-heartbeat"),
+            ("POST", "/api/license/activate-file"),
+            ("POST", "/api/license/activate-key"),
+        }
+        if request.url.path.startswith("/api/") and (request.method, request.url.path) not in allowed:
+            status = await run_in_threadpool(license_service.trial_heartbeat)
+            if status.status != "licensed" and status.trial_seconds_remaining == 0:
+                return JSONResponse(
+                    status_code=423,
+                    content={"detail": {"code": "TRIAL_EXPIRED", "message": "The trial has expired. Activate a license to continue."}},
+                )
+        return await call_next(request)
+
+
+app.add_middleware(TrialLockMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=LOCAL_ORIGINS,

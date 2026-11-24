@@ -14,12 +14,20 @@ class LicensePayload(BaseModel):
     license_type: str = Field(min_length=1, max_length=50)
     issued: date
     license_version: Literal[1]
+    key_id: str | None = Field(default=None, min_length=1, max_length=100)
 
     @field_validator("product", "licensed_to", "license_type")
     @classmethod
     def values_must_be_trimmed(cls, value: str) -> str:
         if not value.strip() or value != value.strip():
             raise ValueError("Value must be non-empty and have no surrounding whitespace.")
+        return value
+
+    @field_validator("key_id")
+    @classmethod
+    def key_id_must_be_trimmed(cls, value: str | None) -> str:
+        if value is None or not value.strip() or value != value.strip():
+            raise ValueError("Key identifier must be non-empty and have no surrounding whitespace.")
         return value
 
     @field_validator("issued", mode="before")
@@ -47,6 +55,8 @@ class LicenseStatus(BaseModel):
     payload: LicensePayload | None = None
     activated_at: datetime | None = None
     error: str | None = None
+    trial_seconds_remaining: int | None = None
+    signing_key_id: str | None = None
 
 
 class LicenseKeyRequest(BaseModel):

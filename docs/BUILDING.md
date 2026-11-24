@@ -33,13 +33,28 @@ From `webapp/frontend`:
 
 Tauri starts its development or packaged API process itself on an ephemeral loopback port; do not start Uvicorn separately for `npm run tauri:dev`.
 
-The license generator in `tools/generate_license.py` is developer-only and is
-not shipped in application builds. It reads the local private signing key;
-the private key must never be shipped. The application embeds only the public
-key for verification. See [Generating Licenses](LICENSE-SPEC.md#generating-licenses)
-for the command, output, and key-backup guidance.
+The license generation and inspection tools are developer-only and are not
+shipped in application builds. Private signing keys must never be shipped;
+the application embeds only trusted public keys for verification.
 
 `npm run tauri:dev` also prints `[STARTUP]` timing lines (Rust, backend, and frontend phases plus a `Total startup time` summary) to the terminal. To profile any other build, set `SCHEDULING_MAESTRO_STARTUP_PROFILE=1` and run it from a terminal; `=0` disables it. See "Startup Profiling" in [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## License Issuance Workflow
+
+From the repository root, using the backend Python environment:
+
+```sh
+python tools/generate_license.py \
+  --private-key ~/SchedulingMaestroKeys/scheduling-maestro-ed25519-private.pem \
+  --licensed-to "University of Wisconsin-Whitewater"
+
+python tools/inspect_license.py --file scheduling-maestro.license
+```
+
+The explicit private-key path is required and should be outside the repository.
+Use `--key-id` to select a trusted key other than the default `v1`. See
+[Generating Licenses](LICENSE-SPEC.md#generating-licenses) for output,
+inspection, rotation, and key-backup guidance.
 
 ## Tauri Production Build
 
