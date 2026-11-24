@@ -33,6 +33,12 @@ From `webapp/frontend`:
 
 Tauri starts its development or packaged API process itself on an ephemeral loopback port; do not start Uvicorn separately for `npm run tauri:dev`.
 
+The license generator in `tools/generate_license.py` is developer-only and is
+not shipped in application builds. It reads the local private signing key;
+the private key must never be shipped. The application embeds only the public
+key for verification. See [Generating Licenses](LICENSE-SPEC.md#generating-licenses)
+for the command, output, and key-backup guidance.
+
 `npm run tauri:dev` also prints `[STARTUP]` timing lines (Rust, backend, and frontend phases plus a `Total startup time` summary) to the terminal. To profile any other build, set `SCHEDULING_MAESTRO_STARTUP_PROFILE=1` and run it from a terminal; `=0` disables it. See "Startup Profiling" in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Tauri Production Build
@@ -59,7 +65,7 @@ This generates the PNG, ICNS, and ICO assets in `src-tauri/icons`. The Tauri bun
 
 ## Local Data and Network
 
-Tauri stores `pianist_scheduling.db` under its per-user application-data directory. Electron continues to use Electron's `userData` directory, so test data and database changes are not shared between the two shells. Recovery archives live in the database directory's `recovery/` subdirectory; only the latest three are retained. The temporary backend binds only to `127.0.0.1`; its selected endpoint is passed to React through a Rust command. Tauri's official dialog and filesystem plugins are limited to open/save dialogs and file operations on dialog-selected paths. No external services are configured.
+Tauri stores `pianist_scheduling.db` and the separate `scheduling_maestro_license.sqlite3` under its per-user application-data directory. License activation is independent of the active session database and is not included in session archives. Electron continues to use Electron's `userData` directory, so test data and database changes are not shared between the two shells. Recovery archives live in the session database directory's `recovery/` subdirectory; only the latest three are retained. The temporary backend binds only to `127.0.0.1`; its selected endpoint is passed to React through a Rust command. Tauri's official dialog and filesystem plugins are limited to open/save dialogs and file operations on dialog-selected paths. No external services are configured.
 
 `.mpsession` archives are unencrypted and can include student educational information. Exported archives should be stored and transferred according to institutional policy. Export creates a portable copy; normal application edits are persisted automatically to the active local SQLite database.
 

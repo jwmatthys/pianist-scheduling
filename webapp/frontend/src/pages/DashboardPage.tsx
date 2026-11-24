@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { SCHEDULING_MODULES, formatSessionIdentity, type ModuleKey } from "../moduleRegistry";
 import type { SchedulingSession } from "../lib/types";
 import { ThemeDialog } from "../components/ThemeDialog";
+import { LicenseDialog } from "../components/LicenseDialog";
 
 const INDEPENDENT_MODULE_KEYS: ModuleKey[] = ["lesson", "tutor", "clinical"];
 
@@ -54,6 +55,7 @@ export function DashboardPage({
       <ThemeDialog />
       <header className="dashboard-header">
         <h1 ref={headingRef} tabIndex={-1}>Scheduling Maestro</h1>
+        <LicenseDialog />
       </header>
 
       <section className="dashboard-session" aria-labelledby="active-session-heading">

@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import startup_profile
 from .database import init_db
+from .services.license_service import service as license_service
 
 startup_profile.mark("Configuration loaded")
 from .routers import (
@@ -12,6 +13,7 @@ from .routers import (
     availability_imports,
     clinical,
     imports,
+    license,
     jury,
     lesson_scheduling,
     pianists,
@@ -47,6 +49,7 @@ def on_startup():
     except Exception:
         startup_profile.emit_event("database-initialization-failed")
         raise
+    license_service.initialize()
     startup_profile.mark("Database initialization complete")
     startup_profile.mark("FastAPI startup complete")
     startup_profile.log_summary()
@@ -56,6 +59,7 @@ for _name, _router in (
     ("pianists", pianists),
     ("accompanist_lessons", accompanist_lessons),
     ("imports", imports),
+    ("license", license),
     ("assignments", assignments),
     ("reports", reports),
     ("session", session),

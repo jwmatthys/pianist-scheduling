@@ -815,6 +815,10 @@ button:disabled {
 }
 
 .dashboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
   margin-bottom: 2rem;
 }
 
@@ -822,6 +826,50 @@ button:disabled {
   margin: 0;
   font-size: 1.9rem;
   color: var(--theme-primary);
+}
+
+.license-dialog {
+  width: min(500px, calc(100vw - 32px));
+}
+
+.license-dialog-content {
+  display: grid;
+  gap: 1rem;
+}
+
+.license-status {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.8rem;
+  border: 1px solid var(--theme-border);
+  border-radius: 4px;
+  background: var(--theme-surface-muted);
+}
+
+.license-status p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.license-dialog form {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.license-dialog form label {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.license-dialog form input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--theme-border-strong);
+  border-radius: 4px;
+  background: var(--theme-surface);
+  color: var(--theme-text);
+  font: inherit;
 }
 
 .dashboard-session {

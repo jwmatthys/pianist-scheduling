@@ -17,6 +17,21 @@ export function dayIndex(day: string): number {
 
 export type AvailabilityStatus = "Available" | "Tentative" | "Unavailable";
 
+export interface LicensePayload {
+  product: string;
+  licensed_to: string;
+  license_type: string;
+  issued: string;
+  license_version: 1;
+}
+
+export interface LicenseStatus {
+  status: "unlicensed" | "licensed" | "invalid";
+  payload: LicensePayload | null;
+  activated_at: string | null;
+  error: string | null;
+}
+
 export interface Pianist {
   id: number;
   name: string;

@@ -14,7 +14,11 @@ jury_schedule_*.xlsx
 
 # Webapp
 webapp/backend/.venv/
+.local-license-keys/
+scheduling-maestro.license
+license-key.txt
 webapp/backend/pianist_scheduling.db
+webapp/backend/scheduling_maestro_license.sqlite3
 webapp/backend/build/pianist-scheduling-api-*/
 webapp/backend/dist/
 webapp/backend/pianist-scheduling-api-*.spec

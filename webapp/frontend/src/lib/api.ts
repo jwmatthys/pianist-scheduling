@@ -24,6 +24,7 @@ import type {
   JuryScheduleHistoryItem,
   JuryScheduleResult,
   Lesson,
+  LicenseStatus,
   Pianist,
   RunAssignmentResult,
   SchedulingSession,
@@ -120,6 +121,20 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 export const api = {
   // Active Scheduling Session
   getSession: () => request<SchedulingSession>("/api/session"),
+  getLicenseStatus: () => request<LicenseStatus>("/api/license/status"),
+  activateLicenseFile: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<LicenseStatus>("/api/license/activate-file", {
+      method: "POST",
+      body: form,
+    });
+  },
+  activateLicenseKey: (key: string) =>
+    request<LicenseStatus>("/api/license/activate-key", {
+      method: "POST",
+      body: JSON.stringify({ key }),
+    }),
   updateSession: (data: SchedulingSessionInput) =>
     request<SchedulingSession>("/api/session", { method: "PUT", body: JSON.stringify(data) }),
   createSession: (data: SchedulingSessionInput) =>

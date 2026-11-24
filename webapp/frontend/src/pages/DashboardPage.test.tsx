@@ -62,5 +62,6 @@ describe("DashboardPage module layout", () => {
   it("still offers the theme chooser", () => {
     renderDashboard();
     expect(screen.getByRole("button", { name: "Choose theme" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "License" })).not.toBeNull();
   });
 });

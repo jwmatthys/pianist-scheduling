@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Phase 1 license infrastructure is implemented: offline Ed25519 verification, JSON license files, `SM1-` encoded license keys, local activation persistence, API endpoints, and a License section. Trial timing, expiration behavior, feature lockouts, and other Phase 2 behavior remain unimplemented.
 
 ## Purpose
 
@@ -340,6 +340,10 @@ The exact encoding format is implementation-defined.
 
 The application must decode and verify the same underlying signed payload used in the license file.
 
+### Phase 1 Encoding
+
+The encoded key uses the `SM1-` prefix followed by unpadded URL-safe Base64 of the compact UTF-8 JSON envelope containing `payload` and `signature`. Signature generation signs the canonical payload JSON (UTF-8, sorted keys, compact separators); the key and license file carry the exact same payload and Base64 signature.
+
 ---
 
 # Storage
@@ -529,18 +533,39 @@ This tradeoff is intentional.
 
 ---
 
-# License Generation Tool
+## Generating Licenses
 
-A separate internal tool shall:
+The generator is a developer-only tool, not part of application builds. From
+the repository root, using the backend Python environment described in
+[BUILDING.md](BUILDING.md), run:
 
-1. Accept purchaser information.
-2. Generate the payload.
-3. Sign the payload.
-4. Produce:
-   - scheduling-maestro.license
-   - equivalent license key
+```sh
+python tools/generate_license.py \
+  --licensed-to "University of Wisconsin-Whitewater"
+```
 
-The application never contains the private signing key.
+This writes `scheduling-maestro.license` and `license-key.txt` in the current
+directory. Pass `--output-dir /path/to/existing/directory` to select another
+existing directory. The tool refuses to overwrite either output file. Both
+files contain equivalent signed license data; share them with the customer
+through an appropriate secure channel. Generated output filenames are
+gitignored.
+
+The tool reads the unencrypted Ed25519 private signing key from
+`.local-license-keys/scheduling-maestro-ed25519-private.pem` in the repository
+root, regardless of the current directory. It verifies that the key matches
+the public key embedded in the application. The private key signs licenses;
+the application uses only the public key for offline verification and never
+reads the private key.
+
+Back up the private key securely, encrypted and access-controlled, with at
+least one separately stored offline copy. Test the ability to restore it.
+Do not commit, distribute, or include it in builds; `.gitignore` is not a
+security boundary and does not prevent other backup or synchronization
+software from copying it. If the private key is lost, licenses cannot be
+issued for the embedded public key; restore the matching backup. A replacement
+key requires an application update and a deliberate compatibility plan for
+previously issued licenses.
 
 ---
 

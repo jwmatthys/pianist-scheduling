@@ -23,6 +23,12 @@ DB_PATH = Path(
 ).expanduser().resolve()
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 DATABASE_URL = f"sqlite:///{DB_PATH}"
+LICENSE_DB_PATH = Path(
+    os.environ.get(
+        "SCHEDULING_MAESTRO_LICENSE_DB_PATH",
+        DB_PATH.with_name("scheduling_maestro_license.sqlite3"),
+    )
+).expanduser().resolve()
 
 with startup_profile.measure("SQLAlchemy engine and sessionmaker creation"):
     engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
@@ -809,6 +815,117 @@ MIGRATIONS = (
     ),
 )
 LATEST_SCHEMA_VERSION = MIGRATIONS[-1].version
+
+
+def _create_license_activations(connection: Connection) -> None:
+    connection.exec_driver_sql(
+        "CREATE TABLE license_activations ("
+        "singleton INTEGER PRIMARY KEY CHECK (singleton = 1), "
+        "payload_json TEXT NOT NULL, "
+        "signature TEXT NOT NULL, "
+        "activated_at TEXT NOT NULL)"
+    )
+
+
+APPLICATION_MIGRATIONS = (
+    SchemaMigration(
+        version=1,
+        name="create_license_activation_state",
+        upgrade=_create_license_activations,
+    ),
+)
+LATEST_APPLICATION_SCHEMA_VERSION = APPLICATION_MIGRATIONS[-1].version
+
+
+def migrate_application_database(
+    target_engine: Engine,
+    migrations: tuple[SchemaMigration, ...] = APPLICATION_MIGRATIONS,
+) -> MigrationReport:
+    """Migrate app-owned state kept outside portable Scheduling Session archives."""
+    versions = [migration.version for migration in migrations]
+    if versions != list(range(1, len(versions) + 1)):
+        raise DatabaseMigrationError(
+            "INVALID_MIGRATION_REGISTRY",
+            "Application migrations must be ordered and numbered consecutively from version 1.",
+        )
+    latest_version = versions[-1] if versions else 0
+
+    try:
+        with target_engine.connect() as connection:
+            try:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                initial_version = connection.exec_driver_sql("PRAGMA user_version").scalar_one()
+                if initial_version > latest_version:
+                    raise DatabaseMigrationError(
+                        "UNSUPPORTED_SCHEMA_VERSION",
+                        f"Application database schema version {initial_version} is newer than "
+                        f"the supported version {latest_version}; use a newer application version.",
+                    )
+
+                existing_tables = _table_names(connection)
+                if initial_version == 0 and existing_tables:
+                    raise DatabaseMigrationError(
+                        "UNRECOGNIZED_APPLICATION_DATABASE",
+                        "The unversioned application database contains unrecognized tables.",
+                    )
+                if initial_version == latest_version and existing_tables != {"license_activations"}:
+                    raise DatabaseMigrationError(
+                        "INVALID_APPLICATION_DATABASE_SCHEMA",
+                        "The application database does not match the supported schema.",
+                    )
+
+                current_version = initial_version
+                applied_migrations = []
+                migration_by_version = {migration.version: migration for migration in migrations}
+                while current_version < latest_version:
+                    migration = migration_by_version.get(current_version + 1)
+                    if migration is None:
+                        raise DatabaseMigrationError(
+                            "INVALID_MIGRATION_REGISTRY",
+                            f"No application migration is registered for schema version {current_version + 1}.",
+                        )
+                    try:
+                        migration.upgrade(connection)
+                    except Exception as error:
+                        raise DatabaseMigrationError(
+                            "MIGRATION_FAILED",
+                            f"Application migration {migration.version} ({migration.name}) failed: {error}",
+                        ) from error
+                    connection.exec_driver_sql(f"PRAGMA user_version = {migration.version}")
+                    current_version = migration.version
+                    applied_migrations.append(migration.name)
+
+                if _column_names(connection, "license_activations") != {
+                    "singleton",
+                    "payload_json",
+                    "signature",
+                    "activated_at",
+                }:
+                    raise DatabaseMigrationError(
+                        "INVALID_APPLICATION_DATABASE_SCHEMA",
+                        "The license activation table does not match the supported schema.",
+                    )
+                connection.commit()
+                return MigrationReport(
+                    initial_state=(
+                        DatabaseState.FRESH if initial_version == 0 else
+                        DatabaseState.CURRENT if initial_version == latest_version else
+                        DatabaseState.VERSIONED_OLD
+                    ),
+                    initial_version=initial_version,
+                    current_version=current_version,
+                    applied_migrations=tuple(applied_migrations),
+                )
+            except Exception:
+                connection.rollback()
+                raise
+    except DatabaseMigrationError:
+        raise
+    except Exception as error:
+        raise DatabaseMigrationError(
+            "INVALID_OR_INACCESSIBLE_DATABASE",
+            f"Could not inspect or migrate the application database: {error}",
+        ) from error
 
 
 def migrate_database(
