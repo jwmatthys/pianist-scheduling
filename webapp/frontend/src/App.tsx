@@ -79,7 +79,13 @@ function AppContent() {
     return () => window.clearInterval(timer);
   }, [trialClock]);
 
+  const isLicensed = licenseStatus?.status === "licensed";
+
   useEffect(() => {
+    if (isLicensed) {
+      setTrialError(null);
+      return;
+    }
     let active = true;
     let pending = false;
     async function heartbeat() {
@@ -93,6 +99,7 @@ function AppContent() {
           setTrialError(null);
         }
       } catch (error) {
+        console.warn("Trial heartbeat failed:", error);
         if (active && revision === licenseRevision.current) {
           setTrialError(error instanceof Error ? error.message : "Could not update trial time.");
         }
@@ -106,7 +113,7 @@ function AppContent() {
       active = false;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [isLicensed]);
 
   useEffect(() => {
     if (!canUseApp || session) return;
